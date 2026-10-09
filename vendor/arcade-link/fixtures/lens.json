@@ -1,0 +1,14 @@
+{
+  "id": "arcade.lens",
+  "name": "Arcade Lens",
+  "version": "0.0.0-mock",
+  "oneshot": true,
+  "actions": [
+    { "id": "lens.capture", "title": "Capture a region", "verb": "capture", "produces": ["file/image", "screen/region"],
+      "effects": ["opens-ui"], "interactive": true,
+      "mock": { "result": { "outputs": [{ "type": "file/image", "path": "/nonexistent/region.png", "owner": "arcade.lens" }] } } },
+    { "id": "lens.recognize", "title": "Recognize", "verb": "recognize", "accepts": ["file/image", "text/plain"], "produces": ["structured/findings"],
+      "mock": { "result": { "outputs": [{ "type": "text/plain", "text": "Hello from OCR" }], "data": { "findings": [] } } } },
+    { "id": "lens.pin", "title": "Pin", "verb": "pin", "accepts": ["file/image"], "effects": ["opens-ui"], "interactive": true }
+  ]
+}

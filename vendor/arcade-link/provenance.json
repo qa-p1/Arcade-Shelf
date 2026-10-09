@@ -1,0 +1,99 @@
+{
+  "repository": "https://github.com/qa-p1/Arcade-Link",
+  "tag": "v0.1.0",
+  "commit": "337b85fe85fca3e68ec472a6337aa9ebd77fc7ef",
+  "license": "MIT OR Apache-2.0 (MIT option selected)",
+  "licenseSource": "Cargo.toml workspace.package.license at pinned commit; upstream has no standalone LICENSE file",
+  "files": [
+    {
+      "source": "fixtures/box.json",
+      "destination": "vendor/arcade-link/fixtures/box.json",
+      "sha256": "bfe441e561ecf2a3b3fae11bbd25d09051766ed29f38e9bf9272d56cd39c3f54"
+    },
+    {
+      "source": "fixtures/clipboard.json",
+      "destination": "vendor/arcade-link/fixtures/clipboard.json",
+      "sha256": "688350bb70433e11bf303b0749599bd2cf12ae36b5423b27f7809cb07805d734"
+    },
+    {
+      "source": "fixtures/lens.json",
+      "destination": "vendor/arcade-link/fixtures/lens.json",
+      "sha256": "210b2e1af97fe21f71a27ea131719c052aaa53c34d9a48111a873ba19f71bfc0"
+    },
+    {
+      "source": "fixtures/look.json",
+      "destination": "vendor/arcade-link/fixtures/look.json",
+      "sha256": "2b45a35247285049fb3080ae70d5f86ab2794a673a238e332f5e856141b459d8"
+    },
+    {
+      "source": "fixtures/private-clipboard.json",
+      "destination": "vendor/arcade-link/fixtures/private-clipboard.json",
+      "sha256": "2cbf4748070cb47979a74184d59368eabb6f2aa64634c1a900dc49f57bc4f63a"
+    },
+    {
+      "source": "fixtures/wheel.json",
+      "destination": "vendor/arcade-link/fixtures/wheel.json",
+      "sha256": "d60754103b050b3efb93cf1212570b9ed28d61c800d5d13adc40ad594f4ee66a"
+    },
+    {
+      "source": "qt/ArcadeLink.cpp",
+      "destination": "vendor/arcade-link/qt/ArcadeLink.cpp",
+      "sha256": "7866fafa320a237d5495e8c44de6a0c17f72524ec7e9140eee912fcfd9b15e20"
+    },
+    {
+      "source": "qt/ArcadeLink.h",
+      "destination": "vendor/arcade-link/qt/ArcadeLink.h",
+      "sha256": "67be8387c41466e835b70e3f1d76a60da422e4d3dbe78376e7264fb2065acf73"
+    },
+    {
+      "source": "qt/tests/tst_Server.cpp",
+      "destination": "vendor/arcade-link/qt/tests/tst_Server.cpp",
+      "sha256": "5d86f986481e3e6c26061a95170c8cda8a1b70b860278dd9f5f746d39ccb49a7"
+    },
+    {
+      "source": "qt/tests/tst_Vectors.cpp",
+      "destination": "vendor/arcade-link/qt/tests/tst_Vectors.cpp",
+      "sha256": "d73c7573b46a30b40121c1270fc51ff6e59a8b1d8fd0c7bbd1b7344a60e16bcd"
+    },
+    {
+      "source": "spec/vectors/accelerators.json",
+      "destination": "vendor/arcade-link/spec/vectors/accelerators.json",
+      "sha256": "3b0499e4bee055940043f76ce41733e9d07f79e12363618ddcd474db67aeb9c3"
+    },
+    {
+      "source": "spec/vectors/content.json",
+      "destination": "vendor/arcade-link/spec/vectors/content.json",
+      "sha256": "bc1b0b7e7c637dabdcc689e330cf07b99fc0ef8e06bfdfbeb7ec5d8c5e1ccc2a"
+    },
+    {
+      "source": "spec/vectors/errors.json",
+      "destination": "vendor/arcade-link/spec/vectors/errors.json",
+      "sha256": "c75dc5a3bab681566d9706c0c5b15caf236d9c16e364d145dbe6a1f330a354c1"
+    },
+    {
+      "source": "spec/vectors/manifest.json",
+      "destination": "vendor/arcade-link/spec/vectors/manifest.json",
+      "sha256": "a37b4f217629a790cfd8f2e0e0f7d76423374336eddbc350a6220ffff1e19347"
+    },
+    {
+      "source": "spec/vectors/wire.json",
+      "destination": "vendor/arcade-link/spec/vectors/wire.json",
+      "sha256": "abe417d8142eecda655f9f94303b0f681c4a86bfd84a9ff0adaa1944183c20c5"
+    },
+    {
+      "source": "tools/arcade-release.py",
+      "destination": "scripts/arcade-release.py",
+      "sha256": "52042f7a9ecac497e69b5e6a73b4fa9541c27cf725f80016466202ab076f6ae0"
+    },
+    {
+      "source": "tools/test_arcade_release.py",
+      "destination": "scripts/test_arcade_release.py",
+      "sha256": "5348868c8e679abf3861ef39e786fe655c5c2ba284bcec3bc03b1ec3ff5ef4cf"
+    },
+    {
+      "source": "spec/arcade-release.schema.json",
+      "destination": "spec/arcade-release.schema.json",
+      "sha256": "e51c243f2802450047a18ef2f5c1128f1187d9e2502e02a7f16eb38b7b3c11af"
+    }
+  ]
+}

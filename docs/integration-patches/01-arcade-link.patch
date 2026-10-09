@@ -1,0 +1,575 @@
+From 6997428a4dece7e1283e368cf755ed0b3a4f8efe Mon Sep 17 00:00:00 2001
+From: Arcade contributors <qa-p1@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 20:14:42 +0000
+Subject: [PATCH] Register Shelf and Find metadata and verify resident Shelf
+ flows
+
+---
+ SPEC.md                            | 13 ++++-
+ assets/glyphs/find.svg             |  1 +
+ assets/glyphs/shelf.svg            |  1 +
+ assets/tokens.json                 | 38 +++++++++++---
+ benchmarks/bench.py                | 22 +++++++-
+ crates/arcade-link/src/manifest.rs | 30 ++++++++++-
+ fixtures/find-designed.json        | 31 +++++++++++
+ fixtures/shelf.json                | 82 ++++++++++++++++++++++++++++++
+ qt/ArcadeLink.cpp                  |  8 ++-
+ qt/ArcadeLink.h                    |  2 +
+ qt/tests/tst_Vectors.cpp           | 10 ++++
+ tools/e2e.py                       |  9 +++-
+ tools/e2e_checks/shelf.py          | 75 +++++++++++++++++++++++++++
+ 13 files changed, 309 insertions(+), 13 deletions(-)
+ create mode 100644 assets/glyphs/find.svg
+ create mode 100644 assets/glyphs/shelf.svg
+ create mode 100644 fixtures/find-designed.json
+ create mode 100644 fixtures/shelf.json
+ create mode 100644 tools/e2e_checks/shelf.py
+
+diff --git a/SPEC.md b/SPEC.md
+index 4df519c..168e2a4 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -64,7 +64,7 @@ crate implements this behind the `engines` feature.
+ 
+ One file per app: `<registry>/<arcade-id>.json`. Canonical IDs:
+ `arcade.box`, `arcade.lens`, `arcade.look`, `arcade.wheel`,
+-`arcade.clipboard`, `arcade.tools`. They are separate from platform bundle
++`arcade.clipboard`, `arcade.tools`, `arcade.shelf`, `arcade.find`. They are separate from platform bundle
+ IDs, which never change.
+ 
+ ```jsonc
+@@ -404,6 +404,8 @@ Defaults change for new installs only; a saved shortcut is never changed.
+ | Lens | Ctrl+Alt+Shift+L | Ctrl+Alt+Shift+L | Ctrl+Alt+Shift+L |
+ | Clipboard | Ctrl+Shift+Space | Ctrl+Alt+V | Cmd+Shift+V |
+ | Wheel | F8 | F8 | F8 |
++| Shelf | Ctrl+Alt+S | Ctrl+Alt+S | Ctrl+Alt+S |
++| Find (designed) | Ctrl+Alt+F | Ctrl+Alt+F | Ctrl+Alt+F |
+ 
+ Apps publish their effective shortcuts in `shortcuts`. A shortcut recorder
+ warns "Used by <app>" when another app already uses the accelerator,
+@@ -452,9 +454,16 @@ clipboard contents without the user acting in the owner's UI.
+ | `clipboard.devices` | Clipboard | — | `structured/devices` | — | no | no |
+ | `wheel.add_action` | Wheel | `text/url`, `text/plain;hint=command`, `file/*`, `structured/arcade-action` | — | persists, opens-ui | yes | no |
+ | `wheel.show` | Wheel | — | — | opens-ui | yes | no |
++| `shelf.add` | Shelf | `file/*`, `file/*[]`, `folder/reference`, `text/plain`, `text/url`, `text/rich` | — | persists | no | no |
++| `shelf.show` | Shelf | — | — | opens-ui | yes | no |
++| `shelf.pick` | Shelf | — | `file/*[]`, `folder/reference`, `text/plain`, `text/url` | opens-ui | yes | no |
+ | `tools.install` | Tools | `text/plain` (an app ID), or `options.app` | — | opens-ui (the user confirms in Tools) | yes | no |
+ 
+-Each app documents its exposed actions in its own repository.
++Each app documents its exposed actions in its own repository. Shelf omits
++`launch.invoke`: stopped noninteractive additions use `launch.background` and
++are persisted by the resident process. Find IDs/design fixtures register the
++app only; `find.show` and `find.search` are DESIGNED and must not be advertised
++as implemented until Find publishes those actions.
+ 
+ ## 12. Conformance
+ 
+diff --git a/assets/glyphs/find.svg b/assets/glyphs/find.svg
+new file mode 100644
+index 0000000..0678f27
+--- /dev/null
++++ b/assets/glyphs/find.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+diff --git a/assets/glyphs/shelf.svg b/assets/glyphs/shelf.svg
+new file mode 100644
+index 0000000..f95b048
+--- /dev/null
++++ b/assets/glyphs/shelf.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16h16v4H4z"/><rect x="5" y="7" width="5" height="6" rx="1"/><rect x="13" y="4" width="6" height="9" rx="1"/></svg>
+diff --git a/assets/tokens.json b/assets/tokens.json
+index 982e34a..8761a3b 100644
+--- a/assets/tokens.json
++++ b/assets/tokens.json
+@@ -6,13 +6,39 @@
+     "arcade.look": "#3B82F6",
+     "arcade.wheel": "#F59E0B",
+     "arcade.clipboard": "#EC4899",
+-    "arcade.tools": "#64748B"
++    "arcade.tools": "#64748B",
++    "arcade.shelf": "#94A8FF",
++    "arcade.find": "#5CC7A4"
+   },
+   "neutral": {
+-    "dark": { "surface": "#14171C", "raised": "#1C2027", "border": "#2A2F38", "text": "#E7EAF0", "muted": "#9AA3B2" },
+-    "light": { "surface": "#FFFFFF", "raised": "#F5F6F8", "border": "#DDE1E7", "text": "#161A20", "muted": "#5B6472" }
++    "dark": {
++      "surface": "#14171C",
++      "raised": "#1C2027",
++      "border": "#2A2F38",
++      "text": "#E7EAF0",
++      "muted": "#9AA3B2"
++    },
++    "light": {
++      "surface": "#FFFFFF",
++      "raised": "#F5F6F8",
++      "border": "#DDE1E7",
++      "text": "#161A20",
++      "muted": "#5B6472"
++    }
+   },
+-  "radius": { "badge": 4, "chip": 8, "panel": 12 },
+-  "motion": { "fastMs": 120, "baseMs": 180, "slowMs": 260, "easing": "cubic-bezier(0.2, 0, 0, 1)" },
+-  "glyph": { "size": 16, "strokeWidth": 1.5 }
++  "radius": {
++    "badge": 4,
++    "chip": 8,
++    "panel": 12
++  },
++  "motion": {
++    "fastMs": 120,
++    "baseMs": 180,
++    "slowMs": 260,
++    "easing": "cubic-bezier(0.2, 0, 0, 1)"
++  },
++  "glyph": {
++    "size": 16,
++    "strokeWidth": 1.5
++  }
+ }
+diff --git a/benchmarks/bench.py b/benchmarks/bench.py
+index 09d0b45..34f1e78 100644
+--- a/benchmarks/bench.py
++++ b/benchmarks/bench.py
+@@ -38,6 +38,7 @@ LENS = CODING / "Rust/Arcade-lens"
+ LOOK = CODING / "Rust/arcade-look"
+ WHEEL = CODING / "C++/Arcade wheel"
+ CLIP = CODING / "App dev/Arcade-clipboard"
++SHELF = Path(os.environ.get("ARCADE_SHELF_REPO", str(Path(__file__).resolve().parents[2] / "Arcade-Shelf")))
+ 
+ APPS = {
+     "box": {
+@@ -60,6 +61,11 @@ APPS = {
+         "ready": "wheel",
+         "warm": [str(WHEEL / "build/arcade-wheel"), "--status"],
+     },
++    "shelf": {
++        "start": [str(SHELF / "build/arcade-shelf"), "--background"],
++        "ready": "shelf",
++        "warm": [str(SHELF / "build/arcade-shelf"), "--status"],
++    },
+     "clipboard": {
+         "start": [str(CLIP / "apps/flutter_app/build/linux/x64/release/bundle/clipboard"), "--background"],
+         "ready": "clipboard",
+@@ -178,6 +184,19 @@ def is_ready(kind: str, pid: int, root: Path, env: dict) -> bool:
+         return name_has_owner("org.gnome.NautilusPreviewer", env)
+     if kind == "wheel":
+         return wheel_status(root / "runtime")
++    if kind == "shelf":
++        endpoint = root / "arcade/run/arcade.shelf.endpoint"
++        try:
++            entry = json.loads(endpoint.read_text())
++            with socket.socket(socket.AF_UNIX) as channel:
++                channel.settimeout(0.15)
++                channel.connect(entry["address"])
++                request = {"v": 1, "id": 1, "method": "hello", "params": {
++                    "token": entry["token"], "client": {"id": "arcade.tools", "version": "benchmark"}, "protocol": [1]}}
++                channel.sendall((json.dumps(request) + "\n").encode())
++                return "result" in json.loads(channel.recv(4096))
++        except (OSError, ValueError, KeyError):
++            return False
+     if kind == "clipboard":
+         return profile_locked(root / "clipdata/profile.lock")
+     raise ValueError(kind)
+@@ -187,7 +206,7 @@ def isolated_env(root: Path) -> dict:
+     env = {k: v for k, v in os.environ.items() if k not in (
+         "WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP",
+         "DESKTOP_SESSION", "SWAYSOCK", "XDG_SESSION_TYPE", "APPIMAGE", "APPDIR", "OWD", "ARGV0")}
+-    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel"):
++    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel", "shelf"):
+         (root / d).mkdir(parents=True, exist_ok=True)
+     os.chmod(root / "runtime", 0o700)
+     env.update({
+@@ -201,6 +220,7 @@ def isolated_env(root: Path) -> dict:
+         "ARCADE_LENS_HOME": str(root / "lens"),
+         "ARCADE_DATA_DIR": str(root / "clipdata"),
+         "ARCADE_WHEEL_INSTANCE": str(root / "wheel"),
++        "ARCADE_SHELF_HOME": str(root / "shelf"),
+         "ARCADE_WHEEL_DISABLE_GLOBAL_SHORTCUT": "1",
+         "QT_QPA_PLATFORM": "xcb",
+         "GDK_BACKEND": "x11",
+diff --git a/crates/arcade-link/src/manifest.rs b/crates/arcade-link/src/manifest.rs
+index 5c47536..95c9c2a 100644
+--- a/crates/arcade-link/src/manifest.rs
++++ b/crates/arcade-link/src/manifest.rs
+@@ -17,8 +17,10 @@ pub mod ids {
+     pub const WHEEL: &str = "arcade.wheel";
+     pub const CLIPBOARD: &str = "arcade.clipboard";
+     pub const TOOLS: &str = "arcade.tools";
+-    /// The five apps, in the order the Connected apps page lists them.
+-    pub const APPS: [&str; 5] = [BOX, LENS, LOOK, WHEEL, CLIPBOARD];
++    pub const SHELF: &str = "arcade.shelf";
++    pub const FIND: &str = "arcade.find";
++    /// The apps, in the order the Connected apps page lists them.
++    pub const APPS: [&str; 7] = [BOX, LENS, LOOK, WHEEL, CLIPBOARD, SHELF, FIND];
+ }
+ 
+ /// The display name for a canonical ID.
+@@ -30,6 +32,8 @@ pub fn app_name(id: &str) -> &str {
+         ids::WHEEL => "Arcade Wheel",
+         ids::CLIPBOARD => "Arcade Clipboard",
+         ids::TOOLS => "Arcade Tools",
++        ids::SHELF => "Arcade Shelf",
++        ids::FIND => "Arcade Find",
+         other => other,
+     }
+ }
+@@ -43,6 +47,8 @@ pub fn app_pitch(id: &str) -> &'static str {
+         ids::WHEEL => "Put any action on a one-gesture radial launcher.",
+         ids::CLIPBOARD => "Send content to all your devices, end-to-end encrypted.",
+         ids::TOOLS => "Install and update the Arcade apps.",
++        ids::SHELF => "Collect, organize and transfer desktop content.",
++        ids::FIND => "Find files and folders instantly.",
+         _ => "",
+     }
+ }
+@@ -55,6 +61,8 @@ pub fn releases_url(id: &str) -> &'static str {
+         ids::LOOK => "https://github.com/qa-p1/arcade-look/releases",
+         ids::WHEEL => "https://github.com/qa-p1/Arcade-wheel/releases",
+         ids::CLIPBOARD => "https://github.com/qa-p1/Arcade-clipboard/releases",
++        ids::SHELF => "https://github.com/qa-p1/Arcade-Shelf/releases",
++        ids::FIND => "https://github.com/qa-p1/Arcade-Find/releases",
+         _ => "https://github.com/qa-p1/Arcade-tools/releases",
+     }
+ }
+@@ -396,3 +404,21 @@ mod tests {
+         std::fs::remove_dir_all(dir).ok();
+     }
+ }
++
++#[cfg(test)]
++mod onboarding_tests {
++    use super::*;
++    #[test]
++    fn shelf_and_find_have_distinct_metadata_and_stable_ids() {
++        for (id, name, repository) in [
++            (ids::SHELF, "Arcade Shelf", "Arcade-Shelf"),
++            (ids::FIND, "Arcade Find", "Arcade-Find"),
++        ] {
++            assert!(ids::APPS.contains(&id));
++            assert_eq!(app_name(id), name);
++            assert!(!app_pitch(id).is_empty());
++            assert_eq!(releases_url(id), format!("https://github.com/qa-p1/{repository}/releases"));
++        }
++        assert_eq!(ids::APPS.len(), 7);
++    }
++}
+diff --git a/fixtures/find-designed.json b/fixtures/find-designed.json
+new file mode 100644
+index 0000000..5501bf6
+--- /dev/null
++++ b/fixtures/find-designed.json
+@@ -0,0 +1,31 @@
++{
++  "comment": "DESIGNED contract fixture only; Find Link actions are not implemented at inspected feature/find-v0.1 commit 5700d0d948decbe47d9365d98851d6991ef7e33d.",
++  "id": "arcade.find",
++  "name": "Arcade Find",
++  "version": "0.1.0-mock",
++  "shortcuts": [
++    {
++      "id": "show",
++      "accelerator": "Ctrl+Alt+F"
++    }
++  ],
++  "actions": [
++    {
++      "id": "find.show",
++      "version": 1,
++      "title": "Find files",
++      "verb": "show",
++      "accepts": [
++        "text/plain",
++        "folder/reference",
++        "file/*"
++      ],
++      "produces": [],
++      "effects": [
++        "opens-ui"
++      ],
++      "interactive": true,
++      "privacy": "local"
++    }
++  ]
++}
+diff --git a/fixtures/shelf.json b/fixtures/shelf.json
+new file mode 100644
+index 0000000..b368ce8
+--- /dev/null
++++ b/fixtures/shelf.json
+@@ -0,0 +1,82 @@
++{
++  "id": "arcade.shelf",
++  "name": "Arcade Shelf",
++  "version": "0.1.0-mock",
++  "launch": {
++    "background": [
++      "--background"
++    ]
++  },
++  "shortcuts": [
++    {
++      "id": "show",
++      "accelerator": "Ctrl+Alt+S"
++    }
++  ],
++  "actions": [
++    {
++      "id": "shelf.add",
++      "version": 1,
++      "title": "Add to Shelf",
++      "verb": "add",
++      "accepts": [
++        "file/*",
++        "file/*[]",
++        "folder/reference",
++        "text/plain",
++        "text/url",
++        "text/rich"
++      ],
++      "produces": [],
++      "effects": [
++        "persists"
++      ],
++      "interactive": false,
++      "privacy": "local",
++      "mock": {
++        "result": {
++          "message": "Added 1 item to Quick Shelf",
++          "data": {
++            "shelf": {
++              "id": "quick",
++              "name": "Quick Shelf"
++            },
++            "added": [],
++            "skipped": []
++          }
++        }
++      }
++    },
++    {
++      "id": "shelf.show",
++      "version": 1,
++      "title": "Show Shelf",
++      "verb": "show",
++      "accepts": [],
++      "produces": [],
++      "effects": [
++        "opens-ui"
++      ],
++      "interactive": true,
++      "privacy": "local"
++    },
++    {
++      "id": "shelf.pick",
++      "version": 1,
++      "title": "Pick from Shelf",
++      "verb": "pick",
++      "accepts": [],
++      "produces": [
++        "file/*[]",
++        "folder/reference",
++        "text/plain",
++        "text/url"
++      ],
++      "effects": [
++        "opens-ui"
++      ],
++      "interactive": true,
++      "privacy": "local"
++    }
++  ]
++}
+diff --git a/qt/ArcadeLink.cpp b/qt/ArcadeLink.cpp
+index 6e707b3..6d40d7a 100644
+--- a/qt/ArcadeLink.cpp
++++ b/qt/ArcadeLink.cpp
+@@ -24,7 +24,7 @@ namespace ArcadeLink {
+ 
+ QList<int> supportedProtocols() { return {1}; }
+ 
+-QStringList Ids::apps() { return {Box, Lens, Look, Wheel, Clipboard}; }
++QStringList Ids::apps() { return {Box, Lens, Look, Wheel, Clipboard, Shelf, Find}; }
+ 
+ QString appName(const QString &id)
+ {
+@@ -34,6 +34,8 @@ QString appName(const QString &id)
+     if (id == Ids::Wheel) return QStringLiteral("Arcade Wheel");
+     if (id == Ids::Clipboard) return QStringLiteral("Arcade Clipboard");
+     if (id == Ids::Tools) return QStringLiteral("Arcade Tools");
++    if (id == Ids::Shelf) return QStringLiteral("Arcade Shelf");
++    if (id == Ids::Find) return QStringLiteral("Arcade Find");
+     return id;
+ }
+ 
+@@ -45,6 +47,8 @@ QString appPitch(const QString &id)
+     if (id == Ids::Wheel) return QStringLiteral("Put any action on a one-gesture radial launcher.");
+     if (id == Ids::Clipboard) return QStringLiteral("Send content to all your devices, end-to-end encrypted.");
+     if (id == Ids::Tools) return QStringLiteral("Install and update the Arcade apps.");
++    if (id == Ids::Shelf) return QStringLiteral("Collect, organize and transfer desktop content.");
++    if (id == Ids::Find) return QStringLiteral("Find files and folders instantly.");
+     return {};
+ }
+ 
+@@ -55,6 +59,8 @@ QString releasesUrl(const QString &id)
+     if (id == Ids::Look) return QStringLiteral("https://github.com/qa-p1/arcade-look/releases");
+     if (id == Ids::Wheel) return QStringLiteral("https://github.com/qa-p1/Arcade-wheel/releases");
+     if (id == Ids::Clipboard) return QStringLiteral("https://github.com/qa-p1/Arcade-clipboard/releases");
++    if (id == Ids::Shelf) return QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/releases");
++    if (id == Ids::Find) return QStringLiteral("https://github.com/qa-p1/Arcade-Find/releases");
+     return QStringLiteral("https://github.com/qa-p1/Arcade-tools/releases");
+ }
+ 
+diff --git a/qt/ArcadeLink.h b/qt/ArcadeLink.h
+index 8ed8ded..1eb549c 100644
+--- a/qt/ArcadeLink.h
++++ b/qt/ArcadeLink.h
+@@ -39,6 +39,8 @@ inline const QString Look = QStringLiteral("arcade.look");
+ inline const QString Wheel = QStringLiteral("arcade.wheel");
+ inline const QString Clipboard = QStringLiteral("arcade.clipboard");
+ inline const QString Tools = QStringLiteral("arcade.tools");
++inline const QString Shelf = QStringLiteral("arcade.shelf");
++inline const QString Find = QStringLiteral("arcade.find");
+ QStringList apps();
+ }
+ 
+diff --git a/qt/tests/tst_Vectors.cpp b/qt/tests/tst_Vectors.cpp
+index 67d8159..2d1aefa 100644
+--- a/qt/tests/tst_Vectors.cpp
++++ b/qt/tests/tst_Vectors.cpp
+@@ -22,6 +22,16 @@ static QJsonObject load(const QString &name)
+ class Vectors : public QObject {
+     Q_OBJECT
+ private slots:
++    void onboardingMetadata()
++    {
++        QVERIFY(Ids::apps().contains(Ids::Shelf));
++        QVERIFY(Ids::apps().contains(Ids::Find));
++        QCOMPARE(appName(Ids::Shelf), QStringLiteral("Arcade Shelf"));
++        QCOMPARE(appName(Ids::Find), QStringLiteral("Arcade Find"));
++        QCOMPARE(releasesUrl(Ids::Shelf), QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/releases"));
++        QVERIFY(!appPitch(Ids::Shelf).isEmpty());
++        QVERIFY(!appPitch(Ids::Find).isEmpty());
++    }
+     void wire()
+     {
+         const QJsonObject v = load(QStringLiteral("wire.json"));
+diff --git a/tools/e2e.py b/tools/e2e.py
+index e880bb2..85ec7e4 100644
+--- a/tools/e2e.py
++++ b/tools/e2e.py
+@@ -59,6 +59,12 @@ APPS = {
+         "args": ["--background"],
+         "build": ["cmake", "--build", "build"],
+     },
++    "arcade.shelf": {
++        "dir": Path(os.environ.get("ARCADE_SHELF_REPO", str(LINK.parent / "Arcade-Shelf"))),
++        "bin": "build/arcade-shelf",
++        "args": ["--background"],
++        "build": ["cmake", "--build", "build"],
++    },
+     "arcade.clipboard": {
+         "dir": CODING / "App dev/Arcade-clipboard",
+         "bin": "apps/flutter_app/build/linux/x64/release/bundle/clipboard",
+@@ -74,7 +80,7 @@ STRIP = ("WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "XDG_CURRENT_DESKTOP"
+ 
+ def isolated_env(root: Path) -> dict:
+     env = {k: v for k, v in os.environ.items() if k not in STRIP}
+-    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel"):
++    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel", "shelf"):
+         (root / d).mkdir(parents=True, exist_ok=True)
+     os.chmod(root / "runtime", 0o700)
+     env.update({
+@@ -88,6 +94,7 @@ def isolated_env(root: Path) -> dict:
+         "ARCADE_LENS_HOME": str(root / "lens"),
+         "ARCADE_DATA_DIR": str(root / "clipdata"),
+         "ARCADE_WHEEL_INSTANCE": str(root / "wheel"),
++        "ARCADE_SHELF_HOME": str(root / "shelf"),
+         "ARCADE_WHEEL_DISABLE_GLOBAL_SHORTCUT": "1",
+         "QT_QPA_PLATFORM": "xcb",
+         "GDK_BACKEND": "x11",
+diff --git a/tools/e2e_checks/shelf.py b/tools/e2e_checks/shelf.py
+new file mode 100644
+index 0000000..5098373
+--- /dev/null
++++ b/tools/e2e_checks/shelf.py
+@@ -0,0 +1,75 @@
++"""Shelf's real resident persistence, input encoding and picker cancellation.
++
++Find's consumer is not implemented at the inspected handoff commit, so this
++group sends its documented inputs directly and makes no real-Find assertion.
++"""
++import json
++import time
++
++
++@check("shelf")
++def shelf_resident_adds_mixed_references_and_reports_skips(s):
++    s.start("arcade.shelf")
++    manifest = json.loads((s.root / "arcade/apps/arcade.shelf.json").read_text())
++    assert manifest["launch"]["background"] == ["--background"], manifest
++    assert "invoke" not in manifest["launch"], manifest
++    first = s.root / "first.txt"
++    second = s.root / "second.png"
++    folder = s.root / "folder"
++    first.write_text("Original content")
++    second.write_bytes(b"Referenced, never decoded during add")
++    folder.mkdir()
++    code, reply = s.invoke("shelf", "shelf.add", "--file", str(first))
++    assert code == 0 and len(reply["data"]["added"]) == 1, reply
++    assert reply["data"]["shelf"]["name"] and reply["message"], reply
++    mixed = [{"type": "file/any[]", "paths": [str(first), str(second), str(s.root / "missing")]},
++             {"type": "folder/reference", "path": str(folder)}]
++    args = [value for item in mixed for value in ("--input-json", json.dumps(item))]
++    code, reply = s.invoke("shelf", "shelf.add", *args)
++    assert code == 0 and len(reply["data"]["added"]) == 2, reply
++    assert any(item["reason"] == "duplicate" for item in reply["data"]["skipped"]), reply
++    assert any(item["path"] == str(s.root / "missing") for item in reply["data"]["skipped"]), reply
++    assert first.read_text() == "Original content"
++    assert second.exists() and folder.exists()
++    code, reply = s.invoke("shelf", "shelf.add", "--input-json",
++                           json.dumps({"type": "folder/reference", "path": str(s.root / "missing")}))
++    assert code != 0, reply
++    return "Real Shelf; documented Find payload, duplicates and missing references"
++
++
++@check("shelf")
++def shelf_relaunch_uses_background_resident_and_recovers_references(s):
++    if "arcade.shelf" not in s.procs:
++        s.start("arcade.shelf")
++    original = s.root / "relaunch.txt"
++    original.write_text("Do not copy or delete")
++    code, reply = s.invoke("shelf", "shelf.add", "--file", str(original))
++    assert code == 0, reply
++    s.kill("arcade.shelf")
++    started = time.monotonic()
++    try:
++        code, reply = s.invoke("shelf", "shelf.add", "--file", str(original), timeout=5)
++        assert code == 0, reply
++        assert s.endpoint("arcade.shelf").exists(), reply
++        assert time.monotonic() - started < 3.5
++        assert len(reply["data"]["added"]) == 0, reply
++        assert reply["data"]["skipped"][0]["reason"] == "duplicate", reply
++        assert original.read_text() == "Do not copy or delete"
++    finally:
++        # invoke_action owns this detached launch; Session's Popen table does
++        # not. Shut down precisely this private-profile Link endpoint.
++        s.cli("quit", "shelf", "--force")
++    return "Stopped Shelf launched through launch.background; SQLite state recovered"
++
++
++@check("shelf")
++def shelf_picker_cancellation_returns_no_collection_contents(s):
++    s.start("arcade.shelf")
++    pending = s.invoke("shelf", "shelf.pick", background=True)
++    window = s.wait_window("Arcade Shelf")
++    s.xdotool("windowfocus", window, "key", "Escape")
++    out, err = pending.communicate(timeout=10)
++    assert pending.returncode != 0, out + err
++    assert "Cancelled" in out + err, out + err
++    assert '"outputs"' not in out, out
++    return "Interactive cancellation; no shelf contents returned"
+-- 
+2.52.0
+

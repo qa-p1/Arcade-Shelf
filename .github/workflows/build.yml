@@ -1,0 +1,83 @@
+name: Build, test and package
+on:
+  pull_request:
+  push:
+    branches: [main, 'feature/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            qt_arch: gcc_64
+          - os: windows-2022
+            qt_arch: win64_msvc2022_64
+          - os: macos-14
+            qt_arch: clang_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.qt_arch }}
+          modules: qtsvg qtimageformats
+          cache: true
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build xvfb libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+      - name: Windows build tools
+        if: runner.os == 'Windows'
+        run: choco install ninja nsis --no-progress -y
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Check immutable vendor source
+        run: python scripts/check-vendor.py
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: ctest --test-dir build --output-on-failure
+      - name: Release metadata generator tests
+        run: python scripts/test_arcade_release.py
+      - name: Linux X11 and package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run -a ctest --test-dir build --output-on-failure
+          python scripts/package-linux.py --build build --qt-prefix "$QT_ROOT_DIR" --version 0.1.0 --output dist
+          mkdir package-smoke
+          tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz -C package-smoke
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH QT_QPA_PLATFORM=offscreen python tests/process_smoke.py --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/arcade-shelf
+      - name: Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version 0.1.0 -Output dist
+      - name: macOS package
+        if: runner.os == 'macOS'
+        run: scripts/package-macos.sh build 0.1.0 dist
+      - name: Generate release manifests
+        run: python scripts/arcade-release.py --id arcade.shelf --version 0.1.0 --channel nightly --notes https://github.com/qa-p1/Arcade-Shelf/blob/main/CHANGELOG.md dist
+      - name: Upload development artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arcade-Shelf-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

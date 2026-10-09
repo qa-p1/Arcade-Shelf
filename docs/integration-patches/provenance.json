@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-10-09",
+  "changes": [
+    {
+      "repository": "https://github.com/qa-p1/Arcade-Link",
+      "branch": "feature/shelf-find-onboarding",
+      "base": "92aa03c1c062628757a48a1838cb54c3916a017c",
+      "candidate": "6997428a4dece7e1283e368cf755ed0b3a4f8efe",
+      "state": "local-only; not pushed, merged or released"
+    },
+    {
+      "repository": "https://github.com/qa-p1/Arcade-tools",
+      "branch": "feature/shelf-onboarding",
+      "base": "16b5bb0b69729f3eb95b1eed722933aba9e85bdb",
+      "candidate": "d2fab05620b25addb1d1ba07834b6696c60da940",
+      "state": "local-only; not pushed, merged or released"
+    },
+    {
+      "repository": "https://github.com/qa-p1/Arcade-wheel",
+      "branch": "feature/shelf-action-onboarding",
+      "base": "550efe1a56270ed85ad1bb1fe080b37005e65c84",
+      "candidate": "8f91423d3de87aefee109bc28e889fee3f2449cb",
+      "state": "local-only; not pushed, merged or released"
+    }
+  ]
+}

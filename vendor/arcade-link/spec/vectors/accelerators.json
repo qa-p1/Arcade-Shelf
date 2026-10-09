@@ -1,0 +1,15 @@
+{
+  "comment": "Shortcut clash detection compares normalized accelerators (SPEC §8.4).",
+  "same": [
+    ["Ctrl+Alt+Space", "alt+ctrl+space"],
+    ["Ctrl+Alt+Shift+L", "Shift+Control+Alt+l"],
+    ["Cmd+Shift+Space", "Super+Shift+Space"],
+    ["Ctrl+Option+Space", "Alt+Ctrl+Space"],
+    ["F8", "f8"]
+  ],
+  "different": [
+    ["Ctrl+Alt+Space", "Ctrl+Alt+Shift+Space"],
+    ["Ctrl+Shift+Space", "Ctrl+Alt+Space"],
+    ["Ctrl+Alt+V", "Ctrl+Alt+Space"]
+  ]
+}

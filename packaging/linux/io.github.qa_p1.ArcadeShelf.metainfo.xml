@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.qa_p1.ArcadeShelf</id>
+  <name>Arcade Shelf</name>
+  <summary>Collect, organize and transfer desktop content</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description><p>A floating workspace for file references, images, text and URLs. Collections stay local, and original files remain in place.</p></description>
+  <launchable type="desktop-id">arcade.shelf.desktop</launchable>
+  <url type="homepage">https://github.com/qa-p1/Arcade-Shelf</url>
+  <url type="bugtracker">https://github.com/qa-p1/Arcade-Shelf/issues</url>
+  <provides><binary>arcade-shelf</binary></provides>
+  <developer id="io.github.qa_p1"><name>Arcade contributors</name></developer>
+</component>

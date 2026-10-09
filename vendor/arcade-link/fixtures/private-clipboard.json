@@ -1,0 +1,9 @@
+{
+  "id": "arcade.clipboard",
+  "name": "Arcade Clipboard",
+  "version": "0.0.0-mock",
+  "actions": [
+    { "id": "clipboard.add", "title": "Send to my devices", "verb": "send", "accepts": ["text/*", "file/image", "file/any[]"],
+      "effects": ["sends-to-device"], "maxBytes": 16777216, "mock": { "error": "denied", "reason": "private_mode" } }
+  ]
+}
