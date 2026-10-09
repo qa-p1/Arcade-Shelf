@@ -24,7 +24,7 @@ QT_QPA_PLATFORM=offscreen python3 tests/process_smoke.py --binary build/arcade-s
 | LinkVectors / LinkServer | Unchanged upstream protocol vectors, auth, errors, jobs, registry and lifecycle |
 | Desktop | MIME URLs/text/HTML, path safety, monitor clamping, shortcut validation and isolated autostart refusal |
 | NativeDrag | Two OS processes, real X11 pointer events, delayed native MIME retrieval, copy-only file/folder transfer and original safety |
-| Ui | Actual QML/Controller surface, pointer and keyboard actions, collection persistence, filter/preferences, explicit picker and rendered views |
+| Ui | Actual QML/Controller surface, pointer and keyboard actions, collection persistence, filter/preferences, explicit picker, rendered views and a loopback probe confirming untrusted markup triggers no image requests |
 
 NativeDrag deliberately skips under the offscreen/Wayland plugins. A passing
 offscreen CTest target does not mean native drag was executed.

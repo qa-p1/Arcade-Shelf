@@ -1,7 +1,8 @@
 # Packaging and delivery
 
-Build with Qt 6.8.3 or later and CMake 3.24+. These scripts do not publish a
-release. Windows/macOS native package builds run on their respective OS.
+Build with Qt 6.8 or later and CMake 3.25+. Cloud checks used Qt 6.8.2;
+the CI matrix selects Qt 6.8.3. These scripts do not publish a release.
+Windows/macOS native package builds run on their respective OS.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
@@ -101,6 +102,15 @@ cross-application drag-out, Hyprland movement/docking, multi-monitor/DPI,
 Windows OLE drag-out and macOS pasteboard drag-out remain distinct platform
 validation tasks. No code signing, Windows signing or macOS notarization has
 been performed; no stable release or shared Link tag was published.
+
+The first GitHub [CI run](https://github.com/qa-p1/Arcade-Shelf/actions/runs/37986290672)
+for snapshot `a41a4ed` failed in Qt installation before compilation on all three
+OS jobs. The workflow has been corrected to use Linux's `linux_gcc_64` archive
+and request only the optional `qtimageformats` module; QtSvg is included in Qt
+essentials. It now installs `xdotool` and runs Linux native pointer-event drag
+tests under Xvfb with `QT_QUICK_BACKEND=software`. These corrections still need
+a successful subsequent CI run; the initial run produced no application
+build, test or package evidence.
 
 Shared Link/Tools/Wheel onboarding changes are reviewable patches under
 [`integration-patches/`](integration-patches/README.md). Their existence does

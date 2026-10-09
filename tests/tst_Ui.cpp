@@ -15,8 +15,10 @@
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTcpServer>
 #include <QTest>
 #include <QThread>
+#include <functional>
 #include <memory>
 
 using namespace Shelf;
@@ -41,8 +43,16 @@ private:
     QPoint point(QQuickItem *item, QPointF offset) {
         return item->mapToScene(offset).toPoint();
     }
-    QQuickItem *find(const char *name) {
-        return m_window->findChild<QQuickItem *>(QLatin1String(name));
+    QQuickItem *find(QString name) {
+        if(auto *item=m_window->findChild<QQuickItem *>(name)) return item;
+        // Repeater/GridView delegates and popup overlays have visual parents
+        // that differ from their QObject owner. Search the actual scene too.
+        std::function<QQuickItem *(QQuickItem *)> visit=[&](QQuickItem *parent) -> QQuickItem * {
+            if(parent->objectName() == name) return parent;
+            for(auto *child:parent->childItems()) if(auto *item=visit(child)) return item;
+            return nullptr;
+        };
+        return visit(m_window->contentItem());
     }
     void settle() {
         QVERIFY(QTest::qWaitForWindowExposed(m_window));
@@ -141,9 +151,10 @@ private slots:
         QApplication::sendEvent(m_window,&drop);
         QVERIFY(drop.isAccepted());
         QTRY_COMPARE(m_controller->count(),2);
+        settle();
         const QString first = m_controller->items()[0].toMap()["id"].toString();
         const QString second = m_controller->items()[1].toMap()["id"].toString();
-        QPointer<QObject> delegate=m_window->findChild<QObject *>("tile-"+first);
+        QPointer<QObject> delegate=find("tile-"+first);
         QVERIFY(delegate);
         clickItem(0); QVERIFY(m_controller->selected(first));
         QCoreApplication::processEvents();
@@ -175,6 +186,7 @@ private slots:
         QTRY_COMPARE(m_controller->items().size(),1);
         m_controller->showSettings();
         QTRY_VERIFY(m_controller->settingsOpen());
+        settle();
         auto *light = find("theme-light"); QVERIFY(light);
         QTest::mouseClick(m_window,Qt::LeftButton,{},point(light,QPointF(light->width()/2,light->height()/2)));
         QTRY_COMPARE(m_controller->theme(),QString("light"));
@@ -208,6 +220,32 @@ private slots:
             QVERIFY(value.toObject()["pinned"].toBool()); found=true;
         }
         QVERIFY(found);
+    }
+    void untrustedMarkupStaysLiteralWithoutImageRequests() {
+        QTcpServer receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost,0));
+        QSignalSpy requests(&receiver,&QTcpServer::newConnection);
+        const QString url=QStringLiteral("http://127.0.0.1:%1/probe.png").arg(receiver.serverPort());
+        const QString markup=QStringLiteral("<img src=\"%1\"><b>Keep this literal</b>").arg(url);
+        const QString name=QStringLiteral("<img src=\"%1\">").arg(url);
+        m_controller->renameShelf("quick",name);
+        QTRY_COMPARE(m_controller->activeName(),name);
+        m_controller->acceptDrop({},markup,"");
+        QTRY_COMPARE(m_controller->count(),1);
+        m_controller->show();
+        settle();
+        const QString id=m_controller->items()[0].toMap()["id"].toString();
+        auto *preview=find("previewText-"+id);
+        QVERIFY(preview); QVERIFY(preview->isVisible());
+        QCOMPARE(preview->property("text").toString(),markup);
+        QTest::qWait(400);
+        QCOMPARE(requests.count(),0);
+        // The collection name also appears in the capsule and its success
+        // tooltip. Hover through the tooltip delay to exercise that surface.
+        m_controller->collapse(); settle();
+        QTest::mouseMove(m_window,QPoint(m_window->width()/2,m_window->height()/2));
+        QTest::qWait(700);
+        QCOMPARE(requests.count(),0);
     }
     void pickerReturnsExplicitFilteredSelectionAndCancels() {
         m_controller->acceptDrop({},"Only chosen","");

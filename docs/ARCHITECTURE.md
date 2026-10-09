@@ -30,6 +30,16 @@ Selecting a tile keeps its MouseArea alive, preserving the pointer gesture that
 must initiate a native drag. Full text is prepared on a worker after explicit
 selection; list snapshots carry bounded previews.
 
+Qt Quick reference sequences may call a property getter again for each indexed
+read. Controller therefore caches the converted, filtered item list and
+invalidates it only for content, filter, or picker changes. Selection count is
+read directly from the selected ID set. Hidden grids and dynamic preference/menu
+models are deferred until their surface is used. This avoids rebuilding
+invisible controls and repeated JSON-to-variant conversion after rapid additions.
+
+Content names, plain text, URLs, and peer messages render as literal text.
+They cannot opt into Qt's automatic rich-text/image loading by containing markup.
+
 ## Data model and recovery
 
 SQLite schema version 1 contains `shelves`, `items`, and `meta`. Items record

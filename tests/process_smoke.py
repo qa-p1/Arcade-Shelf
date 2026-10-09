@@ -395,14 +395,20 @@ class ShelfProcessTests(unittest.TestCase):
         link.symlink_to(target)
         dangling = target.with_name("dangling.txt")
         dangling.symlink_to(target.with_name("absent.txt"))
+        folder = target.with_name("source-folder")
+        folder.mkdir()
+        folder_alias = target.with_name("folder-alias")
+        folder_alias.symlink_to(folder, target_is_directory=True)
         handoff = self.shelf.root / "arcade/handoff" / uuid.uuid4().hex
         handoff.mkdir(mode=0o700, parents=True)
         owned_link = handoff / "alias.txt"
         owned_link.symlink_to(target)
         with LinkClient(self.shelf.endpoint) as c:
-            self.assert_add(c.invoke("shelf.add", [{"type": "file/any[]", "paths": [str(target), str(link), str(dangling)]}]), 3)
+            self.assert_add(c.invoke("shelf.add", [{"type": "file/any[]", "paths": [str(target), str(link), str(dangling)]},
+                                                   {"type": "folder/reference", "path": str(folder_alias)}]), 4)
             self.assert_error("unsupported_input", lambda: c.invoke("shelf.add", [{"type": "file/text", "path": str(owned_link), "owner": "arcade.lens"}]))
-        self.assertEqual([r["path"] for r in self.shelf.rows()], [str(target), str(link), str(dangling)])
+        self.assertEqual([r["path"] for r in self.shelf.rows()], [str(target), str(link), str(dangling), str(folder_alias)])
+        self.assertTrue(folder_alias.is_symlink())
         self.assertTrue(link.is_symlink())
         self.assertTrue(dangling.is_symlink())
 

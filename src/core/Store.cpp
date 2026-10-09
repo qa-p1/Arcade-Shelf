@@ -338,7 +338,11 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
             if (!safeString(path) || !QDir::isAbsolutePath(path) || path.toUtf8().size() > 32768) { skip(c,QStringLiteral("invalid_path")); continue; }
             const auto info = inspect(path);
             if (!info.exists) { skip(c,QStringLiteral("missing")); continue; }
-            if ((folder && !info.directory) || (file && !info.regular && !info.symlink) || (file && type != QStringLiteral("file/any") && type.mid(5) != ArcadeLink::fileKindForPath(path))) {
+            // Qt's native URI conversion classifies a directory alias as a
+            // folder. Verify that claim using metadata only, while retaining
+            // the alias path itself for identity, persistence, and transfer.
+            const bool directoryTarget = info.directory || (info.symlink && QFileInfo(path).isDir());
+            if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && type != QStringLiteral("file/any") && type.mid(5) != ArcadeLink::fileKindForPath(path))) {
                 skip(c,QStringLiteral("type_mismatch")); continue;
             }
             if (file && type == QStringLiteral("file/any")) type = QStringLiteral("file/") + ArcadeLink::fileKindForPath(path);

@@ -28,6 +28,7 @@ class Controller : public QObject {
     Q_PROPERTY(QString platformStatus READ platformStatus NOTIFY changed)
     Q_PROPERTY(QString dockEdge READ dockEdge NOTIFY changed)
     Q_PROPERTY(int count READ count NOTIFY itemsChanged)
+    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY changed)
     Q_PROPERTY(int selectionRevision READ selectionRevision NOTIFY changed)
     Q_PROPERTY(bool expanded READ expanded WRITE setExpanded NOTIFY changed)
     Q_PROPERTY(bool visible READ visible NOTIFY changed)
@@ -62,6 +63,7 @@ public:
     QString platformStatus() const { return m_desktop.shortcutStatus(); }
     QString dockEdge() const { return m_dock; }
     int count() const { return m_items.size(); }
+    int selectedCount() const { return int(m_selected.size()); }
     int selectionRevision() const { return m_selectionRevision; }
     bool expanded() const { return m_expanded; }
     bool visible() const { return m_visible; }
@@ -145,6 +147,10 @@ private:
     QWindow *m_window = nullptr;
     QString m_root, m_active, m_filter, m_message, m_anchor, m_dock;
     QJsonArray m_items, m_shelves;
+    // Qt Quick reference sequences can call the getter for every indexed read.
+    // Keep the converted, filtered list shared until its actual inputs change.
+    mutable QVariantList m_itemsCache;
+    mutable bool m_itemsCacheValid = false;
     QJsonArray m_dragContent;
     QJsonObject m_settings, m_analysis;
     QSet<QString> m_selected;

@@ -44,12 +44,7 @@ Window {
     property bool dragHover: dropArea.containsDrag
     property bool previousExpanded: shelf.expanded
     property bool pulsing: false
-    property int selectedCount: {
-        const revision = shelf.selectionRevision;
-        let n = 0; const rows = shelf.items;
-        for (let i=0; i<rows.length; ++i) if (shelf.selected(rows[i].id)) ++n;
-        return n;
-    }
+    readonly property int selectedCount: shelf.selectedCount
 
     function iconFor(type) {
         if (type === "folder/reference") return "folder";
@@ -157,11 +152,11 @@ Window {
         id: entry
         implicitHeight: 34
         leftPadding: 11; rightPadding: 26
-        contentItem: Text { text: entry.text; color: entry.enabled ? window.ink : window.faint; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+        contentItem: Text { text: entry.text; textFormat: Text.PlainText; color: entry.enabled ? window.ink : window.faint; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
         background: Rectangle { radius: 7; color: entry.highlighted ? window.hoverSurface : "transparent" }
         indicator: ShelfIcon { visible: entry.checkable && entry.checked; name: "check"; width: 14; height: 14; color: window.accent; x: parent.width-22; anchors.verticalCenter: parent.verticalCenter }
     }
-    component Label: Text { color: window.ink; font.pixelSize: 12; font.family: "sans-serif" }
+    component Label: Text { textFormat: Text.PlainText; color: window.ink; font.pixelSize: 12; font.family: "sans-serif" }
     component PreferenceToggle: Switch {
         id: control
         property string description: ""
@@ -217,7 +212,9 @@ Window {
     Item {
         id: interaction
         anchors.fill: parent
-        focus: shelf.expanded
+        // Focus changes only when the surface opens. A binding to expanded
+        // would reassert focus on each controller notification while typing.
+        focus: true
         Keys.onPressed: function(event) {
             if (shelf.settingsOpen) return;
             const ctrl = !!(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier));
@@ -287,9 +284,27 @@ Window {
                         else if(!moved) shelf.toggle();
                     }
                     cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                    ToolTip.visible: containsMouse && shelf.message.length > 0
-                    ToolTip.delay: 500
-                    ToolTip.text: shelf.message
+                }
+                ToolTip {
+                    id: capsuleTip
+                    parent: capsule
+                    popupType: Popup.Window
+                    x: (capsule.width-width)/2
+                    y: -height-8
+                    visible: capsuleMouse.containsMouse && shelf.message.length > 0
+                    delay: 500
+                    padding: 9
+                    implicitWidth: Math.min(320,capsuleTipText.implicitWidth+18)
+                    text: shelf.message
+                    contentItem: Text {
+                        id: capsuleTipText
+                        text: capsuleTip.text
+                        textFormat: Text.PlainText
+                        color: window.ink
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    background: Rectangle { radius: 8; color: window.raised; border.color: window.outline }
                 }
                 Row {
                     visible: !window.dockEdge.length
@@ -317,7 +332,7 @@ Window {
                         x: window.verticalDock ? (parent.width-width)/2 : parent.width-24
                         y: window.verticalDock ? parent.height-24 : (parent.height-height)/2
                         color: window.accent
-                        Text { anchors.centerIn: parent; text: Math.min(99,shelf.count); font.pixelSize: 8; font.weight: Font.Bold; color: "#20162f" }
+                        Text { anchors.centerIn: parent; text: Math.min(99,shelf.count); textFormat: Text.PlainText; font.pixelSize: 8; font.weight: Font.Bold; color: "#20162f" }
                         visible: shelf.count > 0
                     }
                 }
@@ -391,9 +406,9 @@ Window {
                     id: grid
                     objectName: "shelfGrid"
                     x: 15; y: 122
-                    width: parent.width-30; height: parent.height-y-footer.height-14
+                    width: Math.max(0,parent.width-30); height: Math.max(0,parent.height-y-footer.height-14)
                     clip: true
-                    model: shelf.items
+                    model: shelf.expanded ? shelf.items : []
                     cellWidth: width / Math.max(2, Math.floor(width / 142))
                     cellHeight: 152
                     boundsBehavior: Flickable.StopAtBounds
@@ -439,6 +454,7 @@ Window {
                                     color: tile.missing ? window.faint : modelData.type === "folder/reference" ? "#c8ad80" : window.muted
                                 }
                                 Label {
+                                    objectName: "previewText-"+modelData.id
                                     visible: modelData.type === "text/plain" || modelData.type === "text/rich"
                                     anchors.fill: parent; anchors.margins: 5
                                     text: modelData.text || "Text"
@@ -490,7 +506,7 @@ Window {
 
                 Column {
                     id: emptyState
-                    visible: shelf.items.length === 0
+                    visible: shelf.expanded && shelf.items.length === 0
                     width: Math.min(380,parent.width-72)
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: grid.y+Math.max(5,(grid.height-implicitHeight)/2)
@@ -503,11 +519,12 @@ Window {
                     Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: shelf.filter.length ? "No matching items" : shelf.picking ? "This shelf is empty" : "A little space for what’s next"; font.pixelSize: 15; font.weight: Font.Medium }
                     Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: shelf.filter.length ? "Try a different filter." : shelf.picking ? "Choose another collection to continue." : "Drop files, links, or text here."; color: window.muted; font.pixelSize: 12 }
                     Flow {
+                        id: sourceFlow
                         visible: !shelf.filter.length && !shelf.picking && shelf.sources.length > 0 && grid.height > 220
                         width: parent.width
                         spacing: 6
                         Repeater {
-                            model: shelf.sources
+                            model: sourceFlow.visible && shelf.expanded ? shelf.sources : []
                             delegate: ShelfButton {
                                 required property var modelData
                                 text: modelData.title; foreground: window.ink; surface: window.tileSurface; hoverSurface: window.hoverSurface; accentColor: window.accent
@@ -532,7 +549,7 @@ Window {
                         anchors.right: parent.right; anchors.rightMargin: 18; y: 10; spacing: 5
                         IconButton { visible: !shelf.picking && window.selectedCount > 0; glyph: "copy"; tooltip: "Copy selection · Ctrl+C"; onClicked: shelf.copySelected("content") }
                         IconButton { visible: !shelf.picking && window.selectedCount > 0; glyph: "trash"; tooltip: "Remove from Shelf · Delete"; onClicked: shelf.removeSelected() }
-                        ShelfButton { visible: !shelf.picking && window.selectedCount > 0 && shelf.offers.length > 0; text: "Actions"; glyph: "down"; foreground: window.ink; hoverSurface: window.hoverSurface; surface: window.tileSurface; accentColor: window.accent; reduceMotion: shelf.reducedMotion; onClicked: peerMenu.popup() }
+                        ShelfButton { visible: !shelf.picking && window.selectedCount > 0 && shelf.offers.length > 0; text: "Actions"; glyph: "down"; foreground: window.ink; hoverSurface: window.hoverSurface; surface: window.tileSurface; accentColor: window.accent; reduceMotion: shelf.reducedMotion; onClicked: { peerMenu.populated=true;peerMenu.popup(); } }
                         ShelfButton { visible: shelf.picking; text: "Cancel"; foreground: window.ink; hoverSurface: window.hoverSurface; reduceMotion: shelf.reducedMotion; onClicked: shelf.cancelPick() }
                     ShelfButton { objectName: "pickerConfirm"; visible: shelf.picking; text: window.selectedCount ? "Use " + window.selectedCount + (window.selectedCount === 1 ? " item" : " items") : "Choose items"; accent: true; accentColor: window.accent; reduceMotion: shelf.reducedMotion; enabled: window.selectedCount > 0; onClicked: shelf.confirmPick() }
                     }
@@ -624,8 +641,10 @@ Window {
     }
     ActionMenu {
         id: peerMenu
+        property bool populated: false
+        onClosed: populated=false
         Instantiator {
-            model: shelf.offers
+            model: peerMenu.populated ? shelf.offers : []
             delegate: MenuEntry {
                 required property var modelData
                 text: modelData.title
@@ -653,7 +672,7 @@ Window {
             width: collectionsPopup.availableWidth
             spacing: 3
             Repeater {
-                model: shelf.shelves
+                model: collectionsPopup.visible ? shelf.shelves : []
                 delegate: Item {
                     id: collection
                     required property var modelData
@@ -754,6 +773,7 @@ Window {
                 TextArea {
                     readOnly: true; selectByMouse: true
                     text: shelf.analysisResult ? shelf.analysisResult.formatted || "" : ""
+                    textFormat: TextEdit.PlainText
                     color: window.ink; selectionColor: window.accent; selectedTextColor: "#20162f"
                     wrapMode: TextEdit.Wrap
                     font.pixelSize: 12
@@ -862,7 +882,7 @@ Window {
                         visible: window.settingsPage === 2; Layout.fillWidth: true; spacing: 15
                         PreferenceToggle { Layout.fillWidth: true; heading: "Arcade Link"; description: "Allow other Arcade apps to add content and open the picker."; checked: shelf.linkEnabled; onToggled: shelf.linkEnabled=checked }
                         Repeater {
-                            model: shelf.peers
+                            model: shelf.settingsOpen && window.settingsPage === 2 ? shelf.peers : []
                             delegate: Item {
                                 id: peerRow
                                 required property var modelData

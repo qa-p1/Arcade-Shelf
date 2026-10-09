@@ -77,7 +77,10 @@ bounded to the 1 MiB wire envelope. An exported owned image gets a durable
 Same-user IPC does not authenticate an application identity or genuine gesture.
 Shelf validates count, strings, absolute paths, actual filesystem types, byte
 sizes, and quotas. File kinds use Link's extension table. Non-UTF-8 Unix paths
-cannot be represented lossily. Symlinks remain unresolved references.
+cannot be represented lossily. Symlinks remain unresolved references. A
+directory alias is accepted as `folder/reference` after verifying its target's
+directory metadata; the alias is never replaced with its target path. A caller
+cannot label that alias as a file to bypass folder type validation.
 
 Only a valid owner-tagged file inside the actual Link handoff root is copied as
 temporary content. An owner field on a durable Box output is provenance and the

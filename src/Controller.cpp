@@ -35,7 +35,7 @@ Controller::Controller(QString root, bool background, QObject *parent)
         QSet<QString> existing;
         for (auto v : m_items) existing.insert(v.toObject()["id"].toString());
         m_selected.intersect(existing);
-        if (contentsChanged) { ++m_selectionRevision; if (!m_selected.isEmpty()) prepareSelection(); emit itemsChanged(); }
+        if (contentsChanged) { m_itemsCacheValid = false; ++m_selectionRevision; if (!m_selected.isEmpty()) prepareSelection(); emit itemsChanged(); }
         if (collectionsChanged) emit shelvesChanged();
         m_peers.setEnabled(linkEnabled());
         const auto peerSettings = settings["peers"].toObject();
@@ -53,8 +53,8 @@ Controller::Controller(QString root, bool background, QObject *parent)
     });
     connect(m_service, &Service::showRequested, this, [this](QString, bool settings) { if (settings) showSettings(); else show(); });
     connect(m_service, &Service::toggleRequested, this, &Controller::toggle);
-    connect(m_service, &Service::pickRequested, this, [this](bool multiple, QStringList types) { m_picking = true; m_pickMultiple = multiple; m_pickTypes = types; clearSelection(); emit itemsChanged(); show(); });
-    connect(m_service, &Service::pickEnded, this, [this] { m_picking = false; m_pickTypes.clear(); clearSelection(); emit itemsChanged(); collapse(); });
+    connect(m_service, &Service::pickRequested, this, [this](bool multiple, QStringList types) { m_picking = true; m_pickMultiple = multiple; m_pickTypes = types; m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); show(); });
+    connect(m_service, &Service::pickEnded, this, [this] { m_picking = false; m_pickTypes.clear(); m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); collapse(); });
     connect(m_service, &Service::quitRequested, qApp, &QCoreApplication::quit);
     connect(m_service, &Service::fatalError, this, [](QString error) { qCritical("Shelf startup failed: %s", qPrintable(error)); QCoreApplication::exit(1); });
     connect(&m_peers, &PeerHub::registryChanged, this, &Controller::changed);
@@ -163,15 +163,18 @@ bool Controller::eligible(const QJsonObject &o) const
 }
 QVariantList Controller::items() const
 {
-    QVariantList result;
+    if (m_itemsCacheValid) return m_itemsCache;
+    m_itemsCache.clear();
+    m_itemsCache.reserve(m_items.size());
     for (auto v : m_items) {
         auto o = v.toObject();
         if (!eligible(o)) continue;
         if (!m_filter.isEmpty() && !o["name"].toString().contains(m_filter, Qt::CaseInsensitive) && !o["text"].toString().contains(m_filter, Qt::CaseInsensitive) && !o["path"].toString().contains(m_filter, Qt::CaseInsensitive)) continue;
         if (o["type"] == "file/image" && o["available"].toBool()) o["thumbnail"] = "image://thumb/" + QString::fromLatin1(QUrl::toPercentEncoding(o["path"].toString()));
-        result << o.toVariantMap();
+        m_itemsCache << o.toVariantMap();
     }
-    return result;
+    m_itemsCacheValid = true;
+    return m_itemsCache;
 }
 QJsonObject Controller::item(QString id) const { for (auto v : m_items) if (v.toObject()["id"] == id) return v.toObject(); return {}; }
 QStringList Controller::selectedIds() const { QStringList ids; for (auto v : m_items) if (m_selected.contains(v.toObject()["id"].toString())) ids << v.toObject()["id"].toString(); return ids; }
@@ -213,7 +216,7 @@ QString Controller::shortcutWarning() const
 }
 void Controller::saveSetting(QString key, QJsonValue value) { if (m_settings[key] == value) return; m_settings[key] = value; auto settings = m_settings; QMetaObject::invokeMethod(m_service, [this, settings] { m_service->saveSettings(settings); }); emit changed(); }
 void Controller::feedback(QString message) { m_message = std::move(message); emit changed(); }
-void Controller::setFilter(QString value) { if (m_filter == value) return; m_filter = std::move(value); emit itemsChanged(); emit changed(); }
+void Controller::setFilter(QString value) { if (m_filter == value) return; m_filter = std::move(value); m_itemsCacheValid = false; emit itemsChanged(); emit changed(); }
 void Controller::setTheme(QString value) { if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value); }
 void Controller::setShortcut(QString value) { if (value.size() > 100) return; saveSetting("shortcut", value); if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(value, ArcadeLink::executablePath()); else feedback(shortcutWarning()); }
 void Controller::setExpanded(bool value) { if (value) show(); else collapse(); }

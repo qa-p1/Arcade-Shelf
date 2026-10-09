@@ -322,6 +322,31 @@ private slots:
     }
 
 #ifdef Q_OS_UNIX
+    void directorySymlinksAreReferencesAndDeduplicateByAlias()
+    {
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const auto target = d.path() + "/directory"; QVERIFY(QDir().mkpath(target));
+        const auto alias = d.path() + "/directory-alias";
+        QVERIFY(::symlink(QFile::encodeName(target).constData(),QFile::encodeName(alias).constData()) == 0);
+        QCOMPARE(store.add({file(alias,"file/any")}).error.code,QString("unsupported_input"));
+        const auto nativeContent = ArcadeLink::fileContent(alias); QCOMPARE(nativeContent["type"].toString(),QString("folder/reference"));
+        auto added = store.add({nativeContent}); QVERIFY(!added.error.isError()); QCOMPARE(added.addedIds.size(),1);
+        const auto id = added.addedIds.first(); const auto staged = store.items("quick").first().toObject();
+        QCOMPARE(staged["path"].toString(),alias); QCOMPARE(staged["type"].toString(),QString("folder/reference")); QVERIFY(!staged["owned"].toBool());
+        added = store.add({nativeContent}); QVERIFY(!added.error.isError()); QVERIFY(added.addedIds.isEmpty());
+        QCOMPARE(added.result["data"].toObject()["skipped"].toArray().first().toObject()["reason"].toString(),QString("duplicate"));
+        added = store.add({file(target,"folder/reference")}); QVERIFY(!added.error.isError()); QCOMPARE(added.addedIds.size(),1); QCOMPARE(store.items("quick").size(),2);
+        ArcadeLink::Error error; const auto picked = store.exportItems({id},{"folder/reference"},false,&error);
+        QVERIFY(!error.isError()); QCOMPARE(picked.first().toObject()["path"].toString(),alias);
+        const auto handoff = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(handoff)); const auto temporaryAlias = handoff + "/directory";
+        QVERIFY(::symlink(QFile::encodeName(target).constData(),QFile::encodeName(temporaryAlias).constData()) == 0);
+        auto temporary = file(temporaryAlias,"folder/reference"); temporary.insert("owner","arcade.lens");
+        QCOMPARE(store.add({temporary}).error.code,QString("unsupported_input")); QVERIFY(QFileInfo(temporaryAlias).isSymLink());
+        QVERIFY(QDir(handoff).removeRecursively()); QVERIFY(store.remove({id}));
+        QVERIFY(QFileInfo(alias).isSymLink()); QVERIFY(QDir(target).exists());
+    }
+
     void unresolvedSymlinksPreservedAndStoragePrivate()
     {
         QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());

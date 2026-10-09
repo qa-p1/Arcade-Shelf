@@ -16,7 +16,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            qt_arch: gcc_64
+            qt_arch: linux_gcc_64
           - os: windows-2022
             qt_arch: win64_msvc2022_64
           - os: macos-14
@@ -32,11 +32,12 @@ jobs:
         with:
           version: '6.8.3'
           arch: ${{ matrix.qt_arch }}
-          modules: qtsvg qtimageformats
+          # QtSvg ships in the essentials; it is not a selectable aqt addon.
+          modules: qtimageformats
           cache: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build xvfb libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+        run: sudo apt-get update && sudo apt-get install -y ninja-build xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Windows build tools
         if: runner.os == 'Windows'
         run: choco install ninja nsis --no-progress -y
@@ -52,13 +53,16 @@ jobs:
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
-          QSG_RHI_BACKEND: software
+          QT_QUICK_BACKEND: software
         run: ctest --test-dir build --output-on-failure
       - name: Release metadata generator tests
         run: python scripts/test_arcade_release.py
       - name: Linux X11 and package
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          QT_QPA_PLATFORM: xcb
+          QT_QUICK_BACKEND: software
         run: |
           xvfb-run -a ctest --test-dir build --output-on-failure
           python scripts/package-linux.py --build build --qt-prefix "$QT_ROOT_DIR" --version 0.1.0 --output dist

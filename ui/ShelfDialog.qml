@@ -17,6 +17,7 @@ Dialog {
     background: Rectangle { radius: 15; color: control.surface; border.color: control.outline; border.width: 1 }
     header: Text {
         text: control.title
+        textFormat: Text.PlainText
         padding: 20; bottomPadding: 8
         color: control.foreground
         font.pixelSize: 17

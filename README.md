@@ -8,6 +8,8 @@ installed Arcade tool.
 and Qt 6 software. It is under active verification; it is not a stable release.
 See [current status](docs/STATUS.md) for tested behavior and remaining work.
 
+![Arcade Shelf dark theme, captured from the running Qt application](docs/images/expanded.png)
+
 ## Use Shelf
 
 1. Start `arcade-shelf`. A compact capsule appears.

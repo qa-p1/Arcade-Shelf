@@ -19,12 +19,13 @@ Menu {
         leftPadding: 11; rightPadding: 11
         contentItem: Text {
             text: item.text
+            textFormat: Text.PlainText
             color: item.enabled ? control.foreground : control.mutedColor
             font.pixelSize: 12
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }
         background: Rectangle { radius: 7; color: item.highlighted ? control.hoverSurface : "transparent" }
-        indicator: Text { visible: item.checkable; text: item.checked ? "✓" : ""; color: control.accentColor; x: parent.width - 22; anchors.verticalCenter: parent.verticalCenter }
+        indicator: Text { visible: item.checkable; text: item.checked ? "✓" : ""; textFormat: Text.PlainText; color: control.accentColor; x: parent.width - 22; anchors.verticalCenter: parent.verticalCenter }
     }
 }

@@ -24,24 +24,51 @@ interactively verified.
 - Linux runtime-bundle generation, Windows NSIS/macOS DMG scripts, development CI,
   licensing/provenance checks and isolated shared onboarding patches.
 
-## Evidence available before the final milestone run
+## Verified development milestone
 
 | Check | Actual result | Limit |
 |---|---|---|
-| Linux C++/QML application build | Succeeded, Qt 6.8.2, GCC 14.2, CMake 3.31.6 | Latest GUI refinements require final rerun |
-| Core/service/peer/Link/Desktop CTest groups | 7 groups passed | NativeDrag skipped under offscreen |
-| Native two-process X11 drag | Passed with real injected pointer events and actual Desktop adapter | Not Nautilus or Wayland |
+| Linux C++/QML application build | Succeeded, Qt 6.8.2, GCC 14.2, CMake 3.31.6, RelWithDebInfo | Native Windows/macOS compilation is separate |
+| Full Xvfb/xcb CTest run | 8/8 groups passed, 0 failures, 7.54 seconds | Software rendering in an isolated X11 session |
+| Native two-process X11 drag | Passed with real OS pointer injection and actual Desktop adapter; file and folder MIME bytes received | Not Nautilus or Wayland |
 | Actual QML render captures | Passed under Xvfb, dark/light/capsule screenshots saved | Controlled fixture, software rendering |
-| Latest full GUI suite | 6 QtTest rows passed; 2 failures under investigation | MIME scene readiness and keyboard filtering |
+| Actual QML/Controller GUI suite | 9 QtTest rows passed, 0 failed, 0 skipped on both offscreen and xcb | In-process Qt input injection; OS cross-process drag is the separate test above |
+| Real executable process suite | 11/11 passed, including 1,000-reference transaction, restarts, partial batches, authentication, cancellation and owned handoffs | Isolated offscreen profile |
 | Frozen Rust Link CLI → real Shelf | 14/14 isolated checks passed | Offscreen; Find payload contract, not a real Find service |
 | Reference Rust Link tests | 42 passed, 1 intentionally ignored engine-download test | No downloaded engine |
 | Actual Find workspace | 64 tests passed | Its main remains a placeholder; Link/service not implemented |
 | Shared onboarding tests | Link Rust 36 + Qt 2; Tools 12; Wheel 2 targets; Shelf e2e 3 checks passed | Local patch candidates, not shipped shared releases |
 | Linux runtime package | Created; intermediate CLI/manifest smoke passed | Must rebuild from final milestone commit |
+| Initial GitHub three-platform CI | Failed during Qt download before compilation; corrected Qt architecture/addon names and test dependencies | Corrected run results must be checked separately |
 
-Final commands, measurements and commit IDs will replace this interim evidence
-when the milestone is committed. No fabricated desktop results or screenshots
-are used.
+The GUI run exposed and fixed search focus being reset while typing. The
+collapsed grid now keeps an empty model and defers thumbnails until expansion;
+the item list is cached to avoid repeated conversion during QML indexed reads.
+Untrusted markup in item text, collection names and capsule tooltips remains
+literal and makes no image requests, verified against an isolated loopback server.
+Native drag testing also caught premature destruction of Qt's drag source;
+the corrected adapter preserves delayed native MIME retrieval. No fabricated
+desktop results or screenshots are used. Commands are in [TESTING.md](TESTING.md).
+
+## Measured performance
+
+[Raw three-run evidence](../benchmarks/cloud-milestone.json) uses the final
+Linux RelWithDebInfo executable under offscreen/software rendering. Each run
+persists 101 references through 100 add/duplicate cycles, waits one second for
+feedback, and measures five seconds without IPC. All samples have the same
+binary SHA-256, `9dc2bce580dda7e9cdc0487e0c4fa1b4a1bc66da6975d1e918e0a25c6229c695`.
+
+- Public authenticated endpoint readiness: 41.7–52.1 ms; median 42.3 ms.
+- Per-run warm-add medians: 1.01–1.04 ms; p95 at most 1.87 ms, including commit.
+- Five-second idle target CPU: 0–0.01 seconds, or 0–0.2% of one core.
+- Resident RSS after repeated use and idle: 80,556–80,868 KiB (78.7–79.0 MiB).
+
+Endpoint readiness is not time to a visible GUI frame. Activation measurements
+also cover acknowledgement only. These are warm-filesystem cloud measurements,
+not real-desktop latency or Windows/macOS benchmarks. The earlier snapshot's
+high post-add CPU exposed repeated QML list conversion and led to the cache fix;
+the original evidence remains in Git history. Larger visible collections and
+native compositor/monitor performance still need profiling.
 
 ## Implemented but not interactively verified
 
@@ -68,7 +95,6 @@ No shared tags, stable releases, or main merges were performed.
 
 ## Remaining implementation/refinement work
 
-- Resolve the outstanding GUI checks before marking the milestone verified.
 - Automatic edge activation/snapping, platform blur and fullscreen-specific
   refinements need further native work; manual edge docking is implemented.
 - Native peer flows and platform packaging must be exercised, then address

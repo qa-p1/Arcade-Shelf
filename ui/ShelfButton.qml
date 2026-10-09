@@ -43,6 +43,7 @@ AbstractButton {
             Text {
                 visible: control.text !== ""
                 text: control.text
+                textFormat: Text.PlainText
                 color: control.accent ? "#20162f" : control.destructive ? "#eb8397" : control.foreground
                 font.pixelSize: 12
                 font.weight: Font.Medium
@@ -50,9 +51,31 @@ AbstractButton {
             }
         }
     }
-    ToolTip.visible: tooltip !== "" && hovered
-    ToolTip.delay: 550
-    ToolTip.text: tooltip
+    ToolTip {
+        id: tip
+        parent: control
+        popupType: Popup.Window
+        x: (control.width-width)/2
+        y: -height-8
+        visible: control.tooltip !== "" && control.hovered
+        delay: 550
+        padding: 9
+        implicitWidth: Math.min(320,tipText.implicitWidth+18)
+        text: control.tooltip
+        contentItem: Text {
+            id: tipText
+            text: tip.text
+            textFormat: Text.PlainText
+            color: control.foreground
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+        }
+        background: Rectangle {
+            radius: 8
+            color: control.hoverSurface
+            border.color: Qt.rgba(control.accentColor.r,control.accentColor.g,control.accentColor.b,0.28)
+        }
+    }
     Accessible.name: tooltip || text
     HoverHandler { cursorShape: Qt.PointingHandCursor }
 }

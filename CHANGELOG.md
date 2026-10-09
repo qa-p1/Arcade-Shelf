@@ -14,6 +14,8 @@
   capability-driven peer operations with progress and cancellation.
 - Isolated tests, cross-platform build/package workflows, dependency provenance,
   and reviewable shared ecosystem onboarding patches.
+- Corrected search focus, native drag-source lifetime, and rapid-add GUI overhead;
+  untrusted display strings remain literal text.
 
 This milestone is not a stable release. Platform interaction and ecosystem
 verification boundaries are recorded in [status](docs/STATUS.md).
