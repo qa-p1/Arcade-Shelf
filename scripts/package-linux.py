@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Build a relocatable Linux runtime bundle from a built Qt 6 Shelf.
+"""Build Shelf's Linux AppImage (or a relocatable tarball) from a built Qt 6 Shelf.
 
-No downloads, profile registrations or system modifications. Run on the oldest
-supported distribution: glibc and graphics driver libraries remain OS supplied.
+No profile registrations or system modifications. The only download is the
+pinned, SHA-256 checked appimagetool. Run on the oldest supported distribution.
+
+Libraries that integrate with the host (C++ runtime, graphics, fonts, display
+protocols, D-Bus) stay OS supplied, following the AppImage project's exclude
+list: a bundled older libstdc++ or libwayland-client breaks the host's GL
+driver, and Qt Quick then aborts without a graphics backend.
 """
 from __future__ import annotations
 import argparse
@@ -18,7 +23,15 @@ import tempfile
 import time
 from pathlib import Path
 
-BASE_LIBS = re.compile(r"^(linux-vdso|ld-linux|lib(c|m|pthread|dl|rt|resolv|nss_.*)\.so|lib(GL|EGL|GLX|OpenGL|GLdispatch|gbm|drm|vulkan)\.so)")
+BASE_LIBS = re.compile(
+    r"^(linux-vdso|ld-linux"
+    r"|lib(c|m|pthread|dl|rt|resolv|util|nss_.*)\.so"
+    r"|lib(stdc\+\+|gcc_s)\.so"
+    r"|lib(GL|EGL|GLX|GLESv2|OpenGL|GLdispatch|gbm|drm|vulkan)\.so"
+    r"|lib(fontconfig|freetype|harfbuzz|expat|z|uuid|dbus-1|asound|xkbcommon|xkbcommon-x11)\.so"
+    r"|libwayland-|libxcb|libX11|libXau|libXdmcp|libXext|libXrender|libXi|libXfixes|libSM|libICE)")
+APPIMAGETOOL_VERSION = "1.9.0"
+APPIMAGETOOL_SHA256 = {"x86_64": "46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1"}
 
 
 def run(*args: object) -> str:
@@ -49,6 +62,8 @@ def main() -> int:
     parser.add_argument("--qt-prefix", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("dist"))
     parser.add_argument("--version", required=True)
+    parser.add_argument("--format", choices=("appimage", "tarball"), default="appimage")
+    parser.add_argument("--tools", type=Path, default=Path("build/tools"), help="cache for the pinned appimagetool")
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
     build, qt_prefix, output = args.build.resolve(), args.qt_prefix.resolve(), args.output.resolve()
@@ -202,11 +217,64 @@ def main() -> int:
                         except subprocess.TimeoutExpired:
                             resident.kill()
                             resident.wait(timeout=3)
-        archive_path = output / f"{name}.tar.gz"
-        with tarfile.open(archive_path, "w:gz") as archive:
-            archive.add(bundle, arcname=name)
-        print(f"Created {archive_path} ({archive_path.stat().st_size} bytes); {len(inventory)} dynamic libraries")
+        if args.format == "tarball":
+            archive_path = output / f"{name}.tar.gz"
+            with tarfile.open(archive_path, "w:gz") as archive:
+                archive.add(bundle, arcname=name)
+            print(f"Created {archive_path} ({archive_path.stat().st_size} bytes); {len(inventory)} dynamic libraries")
+            return 0
+        appimage = build_appimage(source, bundle, output, args.version, args.tools.resolve())
+        print(f"Created {appimage} ({appimage.stat().st_size} bytes); {len(inventory)} dynamic libraries")
     return 0
+
+
+def build_appimage(source: Path, bundle: Path, output: Path, version: str, tools: Path) -> Path:
+    machine = platform.machine()
+    if machine not in APPIMAGETOOL_SHA256:
+        raise SystemExit(f"No pinned appimagetool for {machine}")
+    tool = tools / f"appimagetool-{APPIMAGETOOL_VERSION}-{machine}.AppImage"
+    if not tool.is_file():
+        tools.mkdir(parents=True, exist_ok=True)
+        partial = tool.with_suffix(".part")
+        url = f"https://github.com/AppImage/appimagetool/releases/download/{APPIMAGETOOL_VERSION}/appimagetool-{machine}.AppImage"
+        subprocess.check_call(["curl", "-fsSL", "-o", str(partial), url])
+        if hashlib.sha256(partial.read_bytes()).hexdigest() != APPIMAGETOOL_SHA256[machine]:
+            partial.unlink()
+            raise SystemExit("appimagetool checksum mismatch")
+        partial.chmod(0o755)
+        partial.rename(tool)
+    # The relocatable bundle becomes usr/: bin/qt.conf already resolves
+    # plugins, QML and libraries relative to the executable.
+    appdir = bundle.parent / "Arcade-Shelf.AppDir"
+    shutil.copytree(bundle, appdir / "usr", symlinks=True)
+    (appdir / "usr/arcade-shelf").unlink()
+    icon = "io.github.qa_p1.ArcadeShelf"
+    for directory in ("usr/share/applications", "usr/share/icons/hicolor/scalable/apps", "usr/share/metainfo"):
+        (appdir / directory).mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source / "packaging/linux/arcade.shelf.desktop", appdir / "usr/share/applications/arcade.shelf.desktop")
+    shutil.copy2(source / "packaging/linux/arcade.shelf.desktop", appdir / "arcade.shelf.desktop")
+    shutil.copy2(source / "assets/shelf.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
+    shutil.copy2(source / "assets/shelf.svg", appdir / f"{icon}.svg")
+    shutil.copy2(source / "packaging/linux/io.github.qa_p1.ArcadeShelf.metainfo.xml", appdir / "usr/share/metainfo/io.github.qa_p1.ArcadeShelf.metainfo.xml")
+    (appdir / ".DirIcon").symlink_to(f"{icon}.svg")
+    apprun = appdir / "AppRun"
+    apprun.write_text('#!/bin/sh\nHERE=$(dirname "$(readlink -f "$0")")\nexec "$HERE/usr/bin/arcade-shelf" "$@"\n')
+    apprun.chmod(0o755)
+    arch = {"x86_64": "x86_64", "aarch64": "aarch64"}[platform.machine()]
+    target = output / f"Arcade-Shelf-{version}-{arch}.AppImage"
+    env = dict(os.environ, ARCH=arch, APPIMAGE_EXTRACT_AND_RUN="1")
+    # --no-appstream: appstreamcli is not on every build host; the metainfo
+    # file still ships for software centers that read it.
+    subprocess.check_call([str(tool), "--no-appstream", str(appdir), str(target)], env=env)
+    with tempfile.TemporaryDirectory(prefix="arcade-shelf-appimage-smoke-") as profile:
+        smoke = dict(env, QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software",
+                     ARCADE_HOME=f"{profile}/arcade", ARCADE_SHELF_HOME=f"{profile}/shelf")
+        for key in ("LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"):
+            smoke.pop(key, None)
+        reported = subprocess.check_output([str(target), "--version"], env=smoke, text=True).strip()
+        if reported != f"Arcade Shelf {version}":
+            raise SystemExit(f"AppImage reports {reported!r}, expected version {version}")
+    return target
 
 
 if __name__ == "__main__":

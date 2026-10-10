@@ -7,7 +7,7 @@
 
 namespace Shelf {
 inline const QString AppId = QStringLiteral("arcade.shelf");
-inline const QString Version = QStringLiteral("0.1.0");
+inline const QString Version = QStringLiteral(SHELF_VERSION);
 QJsonArray publicActions();
 QJsonObject manifest(bool enabled = true, QString shortcut = QStringLiteral("Ctrl+Alt+S"));
 QString dataRoot();

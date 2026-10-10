@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QKeySequence>
+#include <QLoggingCategory>
 #include <QLocalSocket>
 #include <QMimeData>
 #include <QPointer>
@@ -25,7 +26,9 @@
 #include <QUuid>
 #include <QWindow>
 #include <QXmlStreamWriter>
+#include <array>
 #include <functional>
+#include <optional>
 #include <utility>
 
 #ifdef ARCADE_SHELF_HAVE_DBUS
@@ -51,6 +54,8 @@
 #define ARCADE_SHELF_NATIVE_XCB_EVENTS 1
 #include <xcb/xcb.h>
 #endif
+
+Q_LOGGING_CATEGORY(lcPlacement, "arcade.shelf.placement", QtWarningMsg)
 
 namespace {
 
@@ -318,6 +323,10 @@ private slots:
 
 namespace Shelf {
 
+static void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QStringList &prefix,
+                              QWindow *window, std::function<void(const QJsonObject &)> callback,
+                              std::function<void(const QString &)> failed);
+
 struct Desktop::Native {
     QString error;
     QString shortcutStatus = QStringLiteral("No global shortcut");
@@ -339,6 +348,31 @@ struct Desktop::Native {
     quint64 moveGeneration = 0;
     WId movingNativeId = 0;
     bool moveLeftSurface = false;
+    // Hyprland reports neither the end of an interactive move nor the button
+    // state. While (and only while) a move runs, sample the cursor and window:
+    // the window follows the cursor at a fixed offset until the button lifts.
+    QTimer *movePoll = nullptr;
+    int movePolls = 0;
+    bool moveSampling = false;
+    std::optional<QPoint> moveOffset;
+    // Hyprland 0.55+ reads `hyprctl dispatch` as Lua; older releases use the
+    // classic dispatcher names. Learned from the first accepted dispatch.
+    enum class HyprSyntax { Unknown, Lua, Legacy };
+    HyprSyntax hyprSyntax = HyprSyntax::Unknown;
+    int hyprRounding = -1;
+    QPointer<QWindow> placedWindow;
+    Placement placement;
+    bool placementValid = false;
+    quint64 placementSerial = 0;
+    QRect lastGeometry;
+    // The rect Shelf changed size from, so collapsing returns exactly there
+    // instead of re-anchoring (which would walk a tab along its edge).
+    QRect returnTo;
+    QHash<QString, QRect> usableAreas;
+    std::optional<bool> tabStyled; // What the mapped window currently carries.
+    bool pinned = false;
+    bool reconciling = false;
+    bool reconcileAgain = false;
 #ifdef ARCADE_SHELF_HAVE_DBUS
     QString portalSession;
     bool portalRegistered = false;
@@ -400,15 +434,52 @@ Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>(
             while ((newline = d->hyprEventBuffer.indexOf('\n')) >= 0) {
                 const QByteArray event = d->hyprEventBuffer.left(newline);
                 d->hyprEventBuffer.remove(0, newline + 1);
-                if (event.startsWith("configreloaded>>") && !d->accelerator.isEmpty()) {
-                    d->hyprBound = false;
-                    installHyprlandShortcut(d->generation);
+                if (event.startsWith("configreloaded>>")) {
+                    queryHyprlandRounding();
+                    if (!d->accelerator.isEmpty()) { d->hyprBound = false; installHyprlandShortcut(d->generation); }
+                } else if (event.startsWith("openwindow>>") && d->placementValid) {
+                    // ADDRESS,WORKSPACE,CLASS,TITLE. Every map (first show, or
+                    // after hiding for a fullscreen app) lands wherever the
+                    // compositor chose, so put Shelf back where it was.
+                    const QList<QByteArray> fields = event.mid(12).split(',');
+                    if (fields.size() >= 4 && QString::fromUtf8(fields[2]) == QGuiApplication::desktopFileName()) {
+                        qCDebug(lcPlacement) << "mapped; restoring" << d->lastGeometry;
+                        d->placement.restore = true;
+                        d->tabStyled.reset(); // A new mapping starts with compositor defaults.
+                        if (d->lastGeometry.isValid()) d->placement.saved = d->lastGeometry;
+                        ++d->placementSerial;
+                        reconcileHyprland();
+                    }
                 }
             }
         });
         d->hyprEvents->connectToServer(socket);
+        queryHyprlandRounding();
     }
 }
+
+void Desktop::queryHyprlandRounding()
+{
+    runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("getoption"), QStringLiteral("decoration:rounding")}),
+        [this](bool ok, const QByteArray &output) {
+            const QJsonValue value = QJsonDocument::fromJson(output).object().value(QStringLiteral("int"));
+            const int rounding = ok && value.isDouble() ? qBound(0, value.toInt(), 64) : -1;
+            if (rounding == d->hyprRounding) return;
+            d->hyprRounding = rounding;
+            emit compositorChanged();
+        });
+}
+
+QRect Desktop::availableGeometry(const QString &screenName) const
+{
+    // Qt's Wayland screens report the whole output; Hyprland knows the bars.
+    if (d->hyprland() && d->usableAreas.value(screenName).isValid()) return d->usableAreas.value(screenName);
+    for (QScreen *screen : QGuiApplication::screens())
+        if (screen->name() == screenName) return screen->availableGeometry();
+    return {};
+}
+
+int Desktop::compositorRadius() const { return d->hyprland() ? d->hyprRounding : -1; }
 
 Desktop::~Desktop()
 {
@@ -451,6 +522,14 @@ bool Desktop::move(QWindow *window)
     if (!moved) {
         if (generation == d->moveGeneration) clearMove();
         setError(QStringLiteral("The desktop did not accept moving this window"));
+    } else if (isWayland() && d->hyprland()) {
+        if (!d->movePoll) {
+            d->movePoll = new QTimer(this);
+            d->movePoll->setInterval(150);
+            QObject::connect(d->movePoll, &QTimer::timeout, this, [this] { sampleMove(d->moveGeneration); });
+        }
+        d->movePolls = 0;
+        d->movePoll->start();
     }
 #ifdef Q_OS_MACOS
     // Cocoa's performWindowDragWithEvent runs the native gesture synchronously.
@@ -471,6 +550,33 @@ void Desktop::clearMove()
     d->movingWindow.clear();
     d->movingNativeId = 0;
     d->moveLeftSurface = false;
+    if (d->movePoll) d->movePoll->stop();
+    d->moveOffset.reset();
+}
+
+void Desktop::sampleMove(quint64 generation)
+{
+    if (generation != d->moveGeneration || !d->movingWindow) { clearMove(); return; }
+    if (++d->movePolls > 200) { clearMove(); return; } // 30 s: give up quietly.
+    if (d->moveSampling) return;
+    d->moveSampling = true;
+    const QPointer<QWindow> guard = d->movingWindow;
+    runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("cursorpos")}),
+        [this, guard, generation](bool ok, const QByteArray &output) {
+            const QJsonObject cursor = QJsonDocument::fromJson(output).object();
+            if (!ok || !guard || generation != d->moveGeneration || !cursor.contains("x")) { d->moveSampling = false; return; }
+            const QPoint pointer(cursor.value("x").toInt(), cursor.value("y").toInt());
+            ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard,
+                [this, generation, pointer](const QJsonObject &client) {
+                    d->moveSampling = false;
+                    if (generation != d->moveGeneration) return;
+                    const auto at = client.value("at").toArray();
+                    if (at.size() != 2) return;
+                    const QPoint offset = pointer - QPoint(at[0].toInt(), at[1].toInt());
+                    if (!d->moveOffset) { d->moveOffset = offset; return; }
+                    if ((offset - *d->moveOffset).manhattanLength() > 2) completeMove(generation);
+                }, [this](const QString &) { d->moveSampling = false; });
+        });
 }
 
 bool Desktop::eventFilter(QObject *watched, QEvent *event)
@@ -532,11 +638,15 @@ QRect Desktop::clampGeometry(const QRect &geometry, const QRect &available, cons
 QString Desktop::nearestEdge(const QRect &geometry, const QRect &available, int distance)
 {
     if (!geometry.isValid() || !available.isValid() || distance < 0) return {};
+    // A window dragged past an edge while still on the monitor counts as
+    // touching it: floating windows on Wayland may hang off-screen.
+    const bool onMonitor = geometry.intersects(available);
+    const auto gap = [onMonitor](qint64 inward) { return onMonitor ? qMax<qint64>(0, inward) : qAbs(inward); };
     const std::pair<QString, qint64> candidates[] = {
-        {QStringLiteral("left"), qAbs(qint64(geometry.left()) - available.left())},
-        {QStringLiteral("right"), qAbs(qint64(geometry.right()) - available.right())},
-        {QStringLiteral("top"), qAbs(qint64(geometry.top()) - available.top())},
-        {QStringLiteral("bottom"), qAbs(qint64(geometry.bottom()) - available.bottom())}};
+        {QStringLiteral("left"), gap(qint64(geometry.left()) - available.left())},
+        {QStringLiteral("right"), gap(qint64(available.right()) - geometry.right())},
+        {QStringLiteral("top"), gap(qint64(geometry.top()) - available.top())},
+        {QStringLiteral("bottom"), gap(qint64(available.bottom()) - geometry.bottom())}};
     QString edge;
     qint64 closest = qint64(distance) + 1;
     for (const auto &candidate : candidates) {
@@ -575,7 +685,7 @@ static void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QS
     const QPointer<QWindow> guard(window);
     runProgram(context, hyprctl, prefix + QStringList{QStringLiteral("-j"), QStringLiteral("clients")},
         [guard, callback = std::move(callback), failed = std::move(failed)](bool ok, const QByteArray &output) {
-            if (!guard) return;
+            if (!guard) { failed(QStringLiteral("Shelf's window closed")); return; }
             QJsonObject found;
             int matches = 0;
             if (ok) for (const auto &value : QJsonDocument::fromJson(output).array()) {
@@ -613,6 +723,7 @@ void Desktop::completeMove(quint64 generation)
                                  size[0].toInt(), size[1].toInt());
             QScreen *screen = screenFor(guard, {}, geometry);
             clearMove();
+            if (geometry.isValid()) { d->lastGeometry = geometry; d->returnTo = {}; }
             if (geometry.isValid())
                 emit moveFinished(geometry, screen ? screen->name() : QString());
         }, [this, generation](const QString &) {
@@ -631,27 +742,7 @@ void Desktop::restoreGeometry(QWindow *window, const QRect &geometry, const QStr
     window->resize(bounded.size());
     if (!isWayland()) { window->setPosition(bounded.topLeft()); return; }
     if (!d->hyprland()) return; // xdg-shell delegates placement to compositor.
-    const QPointer<QWindow> guard(window);
-    const auto apply = [this, guard, bounded] {
-        if (!guard) return;
-        ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard,
-            [this, guard, bounded](const QJsonObject &client) {
-                if (!guard) return;
-                const QString address = client.value("address").toString();
-                const QString batch = QStringLiteral("dispatch setfloating address:%1;dispatch resizewindowpixel exact %2 %3,address:%1;dispatch movewindowpixel exact %4 %5,address:%1")
-                    .arg(address).arg(bounded.width()).arg(bounded.height()).arg(bounded.x()).arg(bounded.y());
-                runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("--batch"), batch}),
-                    [this](bool ok, const QByteArray &) { if (!ok) setError(QStringLiteral("Hyprland did not restore Shelf's position")); });
-            }, [this](const QString &error) { setError(error); });
-    };
-    if (window->isVisible()) { QTimer::singleShot(90, this, apply); return; }
-    auto connection = std::make_shared<QMetaObject::Connection>();
-    *connection = QObject::connect(window, &QWindow::visibleChanged, this,
-        [this, connection, apply](bool visible) {
-            if (!visible) return;
-            QObject::disconnect(*connection);
-            QTimer::singleShot(90, this, apply);
-        });
+    arrange(window, Placement{bounded.size(), {}, true, bounded, screen->name()});
 }
 
 void Desktop::dock(QWindow *window, const QString &edge)
@@ -670,6 +761,9 @@ void Desktop::dock(QWindow *window, const QString &edge)
         setError(QStringLiteral("This Wayland desktop manages window positions; use its native move command to place Shelf at an edge"));
         return;
     }
+    // Qt does not know a Wayland window's position; Hyprland snaps from the
+    // compositor's own geometry instead.
+    if (d->hyprland()) { arrange(window, Placement{window->size(), edge, false, {}, {}}); return; }
     restoreGeometry(window, geometry, screen->name());
 }
 
@@ -690,6 +784,9 @@ void Desktop::captureGeometry(QWindow *window)
             if (position.size() != 2 || size.size() != 2) return;
             const QRect geometry(position[0].toInt(), position[1].toInt(), size[0].toInt(), size[1].toInt());
             if (!geometry.isValid()) return;
+            // Moved some other way (e.g. the compositor's own drag binding).
+            if (geometry.topLeft() != d->lastGeometry.topLeft()) d->returnTo = {};
+            d->lastGeometry = geometry;
             QScreen *screen = screenFor(guard, {}, geometry);
             emit geometryObserved(geometry, screen ? screen->name() : QString());
         }, [](const QString &) { /* Window may have unmapped while observation was pending. */ });
@@ -704,27 +801,195 @@ void Desktop::setAlwaysOnTop(QWindow *window, bool enabled)
         if (enabled) setError(QStringLiteral("This Wayland desktop decides window stacking; always on top is a compositor preference"));
         return;
     }
-    const QPointer<QWindow> guard(window);
-    const auto apply = [this, guard, enabled] {
-        if (!guard) return;
-        ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard,
-            [this, enabled](const QJsonObject &client) {
-                if (client.value("pinned").toBool() == enabled) return;
-                const QString address = client.value("address").toString();
-                const QString batch = QStringLiteral("dispatch setfloating address:%1;dispatch pin address:%1").arg(address);
-                runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("--batch"), batch}),
-                    [this](bool ok, const QByteArray &) { if (!ok) setError(QStringLiteral("Hyprland did not change Shelf's pin state")); });
-            }, [this](const QString &error) { setError(error); });
-    };
-    if (window->isVisible()) QTimer::singleShot(90, this, apply);
-    else {
-        auto connection = std::make_shared<QMetaObject::Connection>();
-        *connection = QObject::connect(window, &QWindow::visibleChanged, this,
-            [this, connection, apply](bool visible) {
-                if (!visible) return;
-                QObject::disconnect(*connection); QTimer::singleShot(90, this, apply);
-            });
+    d->placedWindow = window;
+    d->pinned = enabled;
+    reconcileHyprland();
+}
+
+QRect Desktop::arrangedGeometry(const QRect &current, const QRect &usable, const QSize &size,
+                                const QString &edge, bool restore, const QRect &saved)
+{
+    if (!usable.isValid() || !size.isValid()) return current;
+    QRect result(QPoint(), size);
+    const QRect reference = restore ? saved : current;
+    if (reference.isValid()) {
+        // Resize toward the middle of the monitor: a capsule resting near the
+        // right or bottom edge opens its panel inward instead of off-screen.
+        const QPoint middle = usable.center();
+        result.moveLeft(reference.center().x() > middle.x() ? reference.right() + 1 - size.width() : reference.left());
+        result.moveTop(reference.center().y() > middle.y() ? reference.bottom() + 1 - size.height() : reference.top());
+    } else {
+        // First run: near the right edge, vertically centred.
+        result.moveTopLeft(QPoint(usable.right() + 1 - size.width() - 12,
+                                  usable.top() + (usable.height() - size.height()) / 2));
     }
+    result = clampGeometry(result, usable, QSize(1, 1));
+    return edge.isEmpty() ? result : snappedGeometry(result, usable, edge);
+}
+
+void Desktop::arrange(QWindow *window, const Placement &placement)
+{
+    if (!window || !placement.size.isValid()) return;
+    if (!d->hyprland()) {
+        // Other desktops honour Qt's own resize; only positions need help.
+        if (placement.restore && placement.saved.isValid())
+            restoreGeometry(window, QRect(placement.saved.topLeft(), window->size()), placement.screen);
+        if (!placement.edge.isEmpty()) dock(window, placement.edge);
+        else if (!placement.restore) restoreGeometry(window, window->geometry());
+        return;
+    }
+    d->placedWindow = window;
+    d->placement = placement;
+    d->placementValid = true;
+    ++d->placementSerial;
+    reconcileHyprland();
+}
+
+// One query/dispatch round at a time. A request that arrives meanwhile reruns
+// against the latest placement, so concurrent callers cannot interleave
+// stale geometry or toggle the pin twice.
+void Desktop::reconcileHyprland()
+{
+    const QPointer<QWindow> window = d->placedWindow;
+    if (!window || !d->hyprland()) return;
+    if (d->reconciling) { d->reconcileAgain = true; return; }
+    if (!window->isVisible()) return; // The next openwindow event applies it.
+    d->reconciling = true;
+    d->reconcileAgain = false;
+    const Placement placement = d->placement;
+    const bool placed = d->placementValid;
+    const quint64 serial = d->placementSerial;
+    const bool pinned = d->pinned;
+    const auto finish = [this] {
+        d->reconciling = false;
+        if (std::exchange(d->reconcileAgain, false)) reconcileHyprland();
+    };
+    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), window,
+        [this, window, placement, placed, serial, pinned, finish](const QJsonObject &client) {
+            runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("monitors")}),
+                [this, window, placement, placed, serial, pinned, finish, client](bool ok, const QByteArray &output) {
+                    if (!window) { finish(); return; }
+                    const QString address = client.value("address").toString();
+                    const auto at = client.value("at").toArray();
+                    const auto size = client.value("size").toArray();
+                    const QRect current = at.size() == 2 && size.size() == 2
+                        ? QRect(at[0].toInt(), at[1].toInt(), size[0].toInt(), size[1].toInt()) : QRect();
+                    // Hyprland reports monitor size in pixels, positions and
+                    // reservations (bars, gaps) in layout coordinates.
+                    const auto usableArea = [](const QJsonObject &monitor) {
+                        const double scale = monitor.value("scale").toDouble(1) > 0 ? monitor.value("scale").toDouble(1) : 1;
+                        int width = qRound(monitor.value("width").toDouble() / scale);
+                        int height = qRound(monitor.value("height").toDouble() / scale);
+                        if (monitor.value("transform").toInt() % 2) std::swap(width, height);
+                        const auto reserved = monitor.value("reserved").toArray();
+                        const int left = reserved.size() == 4 ? reserved[0].toInt() : 0, top = reserved.size() == 4 ? reserved[1].toInt() : 0;
+                        const int right = reserved.size() == 4 ? reserved[2].toInt() : 0, bottom = reserved.size() == 4 ? reserved[3].toInt() : 0;
+                        return QRect(monitor.value("x").toInt() + left, monitor.value("y").toInt() + top,
+                                     width - left - right, height - top - bottom);
+                    };
+                    QRect usable;
+                    const QJsonArray monitors = ok ? QJsonDocument::fromJson(output).array() : QJsonArray();
+                    for (const auto &value : monitors)
+                        d->usableAreas.insert(value.toObject().value("name").toString(), usableArea(value.toObject()));
+                    if (placement.restore && !placement.screen.isEmpty())
+                        for (const auto &value : monitors)
+                            if (value.toObject().value("name").toString() == placement.screen) usable = usableArea(value.toObject());
+                    if (!usable.isValid())
+                        for (const auto &value : monitors)
+                            if (value.toObject().value("id").toInt(-1) == client.value("monitor").toInt(-2)) usable = usableArea(value.toObject());
+                    QList<std::pair<QString, QString>> commands;
+                    if (!client.value("floating").toBool())
+                        commands.append({QStringLiteral("hl.dsp.window.float({action='on', window='address:%1'})").arg(address),
+                                         QStringLiteral("setfloating address:%1").arg(address)});
+                    if (placed && usable.isValid()) {
+                        // A new minimum size makes Hyprland grow the window
+                        // before this query runs. Anchor on the last settled
+                        // geometry unless only its position changed (a move
+                        // through the compositor's own bindings).
+                        const QRect anchor = d->lastGeometry.isValid() && current.size() != d->lastGeometry.size()
+                            ? d->lastGeometry : current;
+                        const bool returning = !placement.restore && d->returnTo.size() == placement.size
+                            && anchor == d->lastGeometry && usable.contains(d->returnTo);
+                        const QRect target = returning
+                            ? (placement.edge.isEmpty() ? d->returnTo : snappedGeometry(d->returnTo, usable, placement.edge))
+                            : arrangedGeometry(anchor, usable, placement.size, placement.edge,
+                                               placement.restore, placement.saved);
+                        d->returnTo = placement.restore || returning || anchor.size() == target.size() ? QRect() : anchor;
+                        if (target.size() != current.size())
+                            commands.append({QStringLiteral("hl.dsp.window.resize({x=%2, y=%3, relative=false, window='address:%1'})").arg(address).arg(target.width()).arg(target.height()),
+                                             QStringLiteral("resizewindowpixel exact %2 %3,address:%1").arg(address).arg(target.width()).arg(target.height())});
+                        if (target.topLeft() != current.topLeft())
+                            commands.append({QStringLiteral("hl.dsp.window.move({x=%2, y=%3, relative=false, window='address:%1'})").arg(address).arg(target.x()).arg(target.y()),
+                                             QStringLiteral("movewindowpixel exact %2 %3,address:%1").arg(address).arg(target.x()).arg(target.y())});
+                        qCDebug(lcPlacement) << "current" << current << "anchor" << anchor << "usable" << usable
+                                             << "size" << placement.size << "edge" << placement.edge
+                                             << "restore" << placement.restore << placement.saved << "->" << target;
+                        d->lastGeometry = target;
+                        // Later rounds keep the window where it now is.
+                        if (serial == d->placementSerial) d->placement.restore = false;
+                    } else if (placed) qWarning("Arcade Shelf: Hyprland did not report the monitor showing Shelf");
+                    if (placed && d->tabStyled != placement.tab) {
+                        // Window properties for Shelf's own window only, reset when it leaves the edge.
+                        static const std::array<std::array<const char *, 3>, 4> properties{{
+                            {"rounding", "rounding", "0"}, {"border_size", "bordersize", "0"},
+                            {"no_shadow", "noshadow", "1"}, {"no_blur", "noblur", "1"}}};
+                        for (const auto &[lua, legacy, on] : properties) {
+                            const QString value = placement.tab ? QString::fromLatin1(on) : QStringLiteral("unset");
+                            commands.append({QStringLiteral("hl.dsp.window.set_prop({prop='%2', value='%3', window='address:%1'})").arg(address, QLatin1String(lua), value),
+                                             QStringLiteral("setprop address:%1 %2 %3").arg(address, QLatin1String(legacy), value)});
+                        }
+                        d->tabStyled = placement.tab;
+                    }
+                    // The legacy dispatcher toggles, so only send it on a change.
+                    if (client.value("pinned").toBool() != pinned)
+                        commands.append({QStringLiteral("hl.dsp.window.pin({action='%2', window='address:%1'})").arg(address, pinned ? QStringLiteral("on") : QStringLiteral("off")),
+                                         QStringLiteral("pin address:%1").arg(address)});
+                    if (commands.isEmpty()) { finish(); return; }
+                    dispatchHyprland(commands, [this, finish](bool done) {
+                        if (!done) setError(QStringLiteral("Hyprland did not accept Shelf's window placement"));
+                        finish();
+                    });
+                });
+        },
+        [finish](const QString &error) {
+            // Expected while the surface is still mapping; openwindow retries.
+            qCDebug(lcPlacement) << error;
+            finish();
+        });
+}
+
+void Desktop::dispatchHyprland(const QList<std::pair<QString, QString>> &commands, std::function<void(bool)> done)
+{
+    const auto batch = [&commands](bool lua) {
+        QStringList parts;
+        for (const auto &command : commands) parts << QStringLiteral("dispatch ") + (lua ? command.first : command.second);
+        return parts.join(QStringLiteral(" ; "));
+    };
+    // Every dispatch in a batch replies "ok" or an error line.
+    const auto accepted = [](bool ok, const QByteArray &reply) {
+        if (!ok) return false;
+        for (const QByteArray &line : reply.split('\n'))
+            if (!line.trimmed().isEmpty() && line.trimmed() != QByteArrayLiteral("ok")) return false;
+        return true;
+    };
+    const QString lua = batch(true), legacy = batch(false);
+    const auto tryLegacy = [this, legacy, accepted, done] {
+        runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("--batch"), legacy}),
+            [this, accepted, done](bool ok, const QByteArray &reply) {
+                const bool good = accepted(ok, reply);
+                if (good) d->hyprSyntax = Native::HyprSyntax::Legacy;
+                else qWarning("Arcade Shelf: hyprctl rejected placement: %s", reply.trimmed().constData());
+                done(good);
+            });
+    };
+    if (d->hyprSyntax == Native::HyprSyntax::Legacy) { tryLegacy(); return; }
+    runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("--batch"), lua}),
+        [this, accepted, done, tryLegacy](bool ok, const QByteArray &reply) {
+            if (accepted(ok, reply)) { d->hyprSyntax = Native::HyprSyntax::Lua; done(true); return; }
+            if (d->hyprSyntax == Native::HyprSyntax::Unknown) { tryLegacy(); return; }
+            qWarning("Arcade Shelf: hyprctl rejected placement: %s", reply.trimmed().constData());
+            done(false);
+        });
 }
 
 bool Desktop::open(const QString &pathOrUrl)

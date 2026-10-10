@@ -30,6 +30,7 @@ class Controller : public QObject {
     Q_PROPERTY(QString shortcutWarning READ shortcutWarning NOTIFY changed)
     Q_PROPERTY(QString platformStatus READ platformStatus NOTIFY changed)
     Q_PROPERTY(QString dockEdge READ dockEdge NOTIFY changed)
+    Q_PROPERTY(int compositorRadius READ compositorRadius NOTIFY changed)
     Q_PROPERTY(int count READ count NOTIFY itemsChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY changed)
     Q_PROPERTY(int selectionRevision READ selectionRevision NOTIFY changed)
@@ -70,6 +71,9 @@ public:
     // Preserve the user's edge while the panel is open; only the compact tab
     // exposes it to QML. Closing the panel returns to the same edge.
     QString dockEdge() const { return m_expanded ? QString() : m_dock; }
+    // When the compositor rounds and blurs Shelf's whole window itself, the
+    // surface fills the window and matches its corners.
+    int compositorRadius() const { return m_desktop.compositorRadius(); }
     int count() const { return m_items.size(); }
     int selectedCount() const { return int(m_selected.size()); }
     int selectionRevision() const { return m_selectionRevision; }
@@ -146,7 +150,7 @@ private:
     void prepareSelection();
     void saveSetting(QString key, QJsonValue value);
     void applyWindowPreferences();
-    void alignWindow();
+    void alignWindow(bool restore = false);
     void setNativeDragHover(bool hovering);
     void updateFullscreenPolicy();
     void feedback(QString message);

@@ -88,11 +88,19 @@ layer-shell overlay. Wheel's fullscreen, anchored, keyboard-unfocused layer-shel
 surface is appropriate to Wheel but provides no verified movable drag precedent.
 
 Ordinary Wayland does not let clients force arbitrary global coordinates or
-topmost stacking. On Hyprland, the adapter uses bounded asynchronous `hyprctl`
-calls restricted to a client whose PID and exact title identify this Shelf
-window. It floats, places, sizes, and pins that client, and explicitly observes
-its real coordinates for persistence. No compositor configuration file is
-edited. Pinning on Hyprland also spans workspaces; fullscreen behavior remains
+topmost stacking. The capsule and tab declare a fixed size (minimum = maximum),
+which tiling compositors such as Hyprland and Sway map floating from the first
+frame. On Hyprland, the adapter then uses bounded asynchronous `hyprctl` calls
+restricted to a client whose PID and exact title identify this Shelf window.
+Hyprland ignores client-side resizes of floating windows, so the adapter floats,
+sizes, places and pins that client on every map (the `openwindow` event) and every
+capsule/panel/tab change. It speaks the Lua dispatchers of Hyprland 0.55+ and falls
+back to the classic dispatchers, one reconciliation round at a time. While docked
+it sets runtime window properties (rounding, border, shadow, blur) on its own
+window only, and unsets them when undocked. Hyprland reports no end of an
+interactive move, so while (and only while) a move runs Shelf samples the cursor
+and window every 150 ms, for at most 30 s. It observes its real coordinates for
+persistence. No compositor configuration file is edited. Pinning on Hyprland also spans workspaces; fullscreen behavior remains
 part of the real-desktop validation checklist.
 
 On other Wayland compositors, native movement and MIME transfer remain available;

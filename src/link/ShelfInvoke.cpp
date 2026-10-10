@@ -147,7 +147,7 @@ bool connectPeer(QLocalSocket &socket, const Locations &locations, const QString
     socket.connectToServer(endpoint.address);
     if (!socket.waitForConnected(HelloTimeoutMs)) return false;
     socket.write(requestLine(1, "hello", {{"token", endpoint.token}, {"protocol", QJsonArray{1}},
-                                         {"client", QJsonObject{{"id", QStringLiteral("arcade.shelf")}, {"version", "0.1.0"}}}}));
+                                         {"client", QJsonObject{{"id", QStringLiteral("arcade.shelf")}, {"version", QStringLiteral(SHELF_VERSION)}}}}));
     socket.waitForBytesWritten(HelloTimeoutMs);
     QByteArray buffer;
     QJsonObject response;

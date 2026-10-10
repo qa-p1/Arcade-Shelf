@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.1.1 — 2026-10-11
+
+First release checked on a real desktop (Hyprland 0.56.2, Arch Linux, NVIDIA/Mesa
+drivers from the host). 0.1.0 had only been tested headless.
+
+- Linux ships as a single-file AppImage, `Arcade-Shelf-<version>-x86_64.AppImage`,
+  instead of a tarball. It leaves the C++ runtime, graphics, fonts, Wayland/X11
+  and D-Bus libraries to the host, which stops the `EGL not available` abort and
+  the Fontconfig warning flood from the 0.1.0 bundle.
+- Never aborts on a broken GL driver: Shelf probes OpenGL and falls back to
+  software rendering unless `QT_QUICK_BACKEND` or `QSG_RHI_BACKEND` is set.
+- Hyprland: the capsule and tab map floating at their own size from the first
+  frame instead of as a tile (which showed a large blurred rectangle). Placement
+  uses Hyprland 0.55+ Lua dispatchers, with the classic dispatchers as a fallback,
+  and is reapplied after every map and every capsule/panel/tab change.
+- Hyprland: expanding no longer maximizes the panel (a redundant `show()` sent
+  `unset_maximized`, which Hyprland answers by maximizing).
+- Panels open inward from screen edges and return exactly to the capsule or tab
+  they came from; the first launch places the capsule at the right edge.
+- Dragging the capsule onto or past a screen edge docks it, measured against
+  the compositor's usable area (bars excluded).
+- Docked Shelf is a slim handle flush with the screen edge, in the style of a
+  stashed picture-in-picture: a chevron toward the screen and a dot when items
+  are held. Escape and the minimize button return to it without an immediate
+  re-peek; clicking it gives the panel keyboard focus.
+- On Hyprland the capsule and panel fill the window and match the compositor's
+  corner rounding, so its blur no longer shows square margins.
+- Text items show only their first line under the tile instead of spilling
+  across the panel.
+- The version is written once, in `CMakeLists.txt`.
+
 ## 0.1.0 — 2026-10-10
 
 - Floating capsule and expanded native Qt Quick surface with dark/light themes,

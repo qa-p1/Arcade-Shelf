@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(ArcadeShelf VERSION 0.1.0 LANGUAGES CXX)
+project(ArcadeShelf VERSION 0.1.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -14,6 +14,8 @@ target_include_directories(shelf_core PUBLIC src)
 target_link_libraries(shelf_core PUBLIC arcade_link Qt6::Sql)
 add_library(shelf_services STATIC src/link/Service.cpp src/link/Service.h src/link/PeerHub.cpp src/link/PeerHub.h src/link/ShelfInvoke.cpp src/link/ShelfInvoke.h)
 target_link_libraries(shelf_services PUBLIC shelf_core)
+# The one place the version is written; C++, QML and CI read it from here.
+target_compile_definitions(shelf_services PUBLIC SHELF_VERSION="${PROJECT_VERSION}")
 add_library(shelf_desktop STATIC src/platform/Desktop.cpp src/platform/Desktop.h
   src/platform/Backdrop.cpp src/platform/Backdrop.h src/platform/Backdrop_p.h
   src/platform/FullscreenGuard.cpp src/platform/FullscreenGuard.h)
@@ -41,7 +43,6 @@ elseif(APPLE)
 endif()
 qt_add_executable(arcade-shelf src/main.cpp src/Controller.cpp src/Controller.h src/ThumbnailProvider.cpp src/ThumbnailProvider.h)
 target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
-target_compile_definitions(arcade-shelf PRIVATE SHELF_VERSION="${PROJECT_VERSION}")
 qt_add_qml_module(arcade-shelf URI ArcadeShelf VERSION 1.0
   QML_FILES ui/Main.qml ui/ShelfIcon.qml ui/ShelfButton.qml ui/ShelfField.qml ui/ShelfMenu.qml ui/ShelfDialog.qml
   RESOURCES assets/shelf.svg)

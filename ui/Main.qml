@@ -10,11 +10,22 @@ Window {
     visible: shelf.visible
     title: "Arcade Shelf"
     color: "transparent"
-    flags: Qt.Window | Qt.FramelessWindowHint | (shelf.alwaysOnTop ? Qt.WindowStaysOnTopHint : 0) | (!shelf.focusPanel ? Qt.WindowDoesNotAcceptFocus : 0)
-    minimumWidth: shelf.expanded ? 440 : dockEdge.length ? (verticalDock ? 38 : 112) : 216
-    minimumHeight: shelf.expanded ? 350 : dockEdge.length ? (verticalDock ? 112 : 38) : 76
-    readonly property int targetWidth: shelf.expanded ? panelWidth : dockEdge.length ? (verticalDock ? 38 : 112) : 216
-    readonly property int targetHeight: shelf.expanded ? panelHeight : dockEdge.length ? (verticalDock ? 112 : 38) : 76
+    // On Wayland the compositor decides focus (Hyprland focuses on click or
+    // hover). The flag would only make Qt drop that keyboard focus, leaving a
+    // clicked-open tab deaf to Escape, so it applies to other platforms only.
+    flags: Qt.Window | Qt.FramelessWindowHint | (shelf.alwaysOnTop ? Qt.WindowStaysOnTopHint : 0) | (!shelf.focusPanel && Qt.platform.pluginName !== "wayland" ? Qt.WindowDoesNotAcceptFocus : 0)
+    minimumWidth: shelf.expanded ? 440 : dockEdge.length ? (verticalDock ? tabThickness : tabLength) : 216
+    minimumHeight: shelf.expanded ? 350 : dockEdge.length ? (verticalDock ? tabLength : tabThickness) : 76
+    // The capsule and tab have one fixed size. Saying so lets tiling
+    // compositors (Hyprland, Sway) map them floating rather than as a tile.
+    maximumWidth: shelf.expanded ? 16777215 : targetWidth
+    maximumHeight: shelf.expanded ? 16777215 : targetHeight
+    // A docked Shelf is a slim handle on the screen edge, like a stashed
+    // picture-in-picture: flat against the edge, rounded toward the screen.
+    readonly property int tabThickness: 30
+    readonly property int tabLength: 92
+    readonly property int targetWidth: shelf.expanded ? panelWidth : dockEdge.length ? (verticalDock ? tabThickness : tabLength) : 216
+    readonly property int targetHeight: shelf.expanded ? panelHeight : dockEdge.length ? (verticalDock ? tabLength : tabThickness) : 76
     width: targetWidth
     height: targetHeight
     // Collapsing updates the size and minimum-size bindings in no fixed order.
@@ -65,8 +76,10 @@ Window {
     function subtitleFor(item) {
         if (item.available === false) return "Original unavailable";
         if (item.type === "folder/reference") return "Folder";
-        if (item.type === "text/url") return item.text || "Link";
-        if (item.type.indexOf("text/") === 0) return item.text || "Text";
+        // One line only: a snippet's full text belongs to the preview above.
+        const firstLine = (item.text || "").split("\n").map(line => line.trim()).find(line => line.length) || "";
+        if (item.type === "text/url") return firstLine || "Link";
+        if (item.type.indexOf("text/") === 0) return firstLine || "Text";
         let size = Number(item.size || 0);
         const kind = item.type.replace("file/", "");
         return size < 1024 ? kind + " · " + size + " B" : size < 1048576 ? kind + " · " + (size/1024).toFixed(0) + " KB" : kind + " · " + (size/1048576).toFixed(1) + " MB";
@@ -88,6 +101,14 @@ Window {
         collectionToEdit = id; collectionMode = mode; collectionName.text = name;
         collectionDialog.open();
         collectionName.forceActiveFocus();
+    }
+    // A deliberate close (Escape, the minus button) leaves the pointer on the
+    // edge tab; without a pause, hovering would peek the panel straight back.
+    property double peekHeldUntil: 0
+    function closePanel() {
+        peekHeldUntil = Date.now() + 900;
+        edgeHoverTimer.stop();
+        shelf.collapse();
     }
     function dockTo(edge) {
         shelf.collapse();
@@ -153,7 +174,8 @@ Window {
     Timer {
         id: edgeHoverTimer
         interval: 260
-        onTriggered: if (window.dockEdge.length && !shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)) shelf.peek()
+        onTriggered: if (window.dockEdge.length && !shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)
+                         && (window.dragHover || Date.now() >= window.peekHeldUntil)) shelf.peek()
     }
     Timer {
         id: peekDismissTimer
@@ -248,7 +270,7 @@ Window {
             if (shelf.settingsOpen) return;
             const ctrl = !!(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier));
             if (event.key === Qt.Key_Escape) {
-                if (shelf.picking) shelf.cancelPick(); else if (shelf.filter.length) shelf.filter = ""; else shelf.collapse();
+                if (shelf.picking) shelf.cancelPick(); else if (shelf.filter.length) shelf.filter = ""; else window.closePanel();
             } else if (ctrl && event.key === Qt.Key_A) shelf.selectAll();
             else if (ctrl && event.key === Qt.Key_C) shelf.copySelected("content");
             else if (ctrl && event.key === Qt.Key_V) shelf.paste();
@@ -282,10 +304,17 @@ Window {
             onHeightChanged: updateBackdrop()
             onRadiusChanged: updateBackdrop()
             anchors.fill: parent
-            anchors.margins: window.dockEdge.length ? 0 : 6
-            radius: shelf.expanded ? 19 : window.dockEdge.length ? 11 : 24
-            color: window.paper
-            border.width: 1
+            // A compositor that rounds and blurs the whole window (Hyprland)
+            // gets a surface that fills it, or its blur shows square margins.
+            anchors.margins: window.dockEdge.length || shelf.compositorRadius >= 0 ? 0 : 6
+            radius: window.dockEdge.length ? window.tabThickness / 2 : shelf.compositorRadius >= 0 ? shelf.compositorRadius : shelf.expanded ? 19 : 24
+            // The tab's edge side sits flat against the screen edge.
+            topLeftRadius: window.dockEdge === "left" || window.dockEdge === "top" ? 0 : radius
+            topRightRadius: window.dockEdge === "right" || window.dockEdge === "top" ? 0 : radius
+            bottomLeftRadius: window.dockEdge === "left" || window.dockEdge === "bottom" ? 0 : radius
+            bottomRightRadius: window.dockEdge === "right" || window.dockEdge === "bottom" ? 0 : radius
+            color: window.dockEdge.length ? (window.dark ? "#2e2b36" : "#f2f1f6") : window.paper
+            border.width: window.dockEdge.length && !window.dragHover ? 0 : 1
             border.color: window.dragHover || window.pulsing ? window.accent : window.outline
             clip: true
             Behavior on radius { NumberAnimation { duration: window.motion } }
@@ -303,6 +332,8 @@ Window {
                 color: window.accent
                 opacity: window.dragHover ? 0.11 : window.pulsing ? 0.08 : 0
                 radius: parent.radius
+                topLeftRadius: parent.topLeftRadius; topRightRadius: parent.topRightRadius
+                bottomLeftRadius: parent.bottomLeftRadius; bottomRightRadius: parent.bottomRightRadius
                 Behavior on opacity { NumberAnimation { duration: window.motion } }
             }
 
@@ -374,14 +405,22 @@ Window {
                 Item {
                     visible: window.dockEdge.length > 0
                     anchors.fill: parent
-                    ShelfIcon { anchors.centerIn: parent; width: 21; height: 21; name: window.dragHover ? "plus" : "shelf"; color: window.accent }
+                    ShelfIcon {
+                        anchors.centerIn: parent
+                        width: window.dragHover ? 18 : 20; height: width
+                        name: window.dragHover ? "plus" : "chevron"
+                        // Point back toward the screen, the way the panel opens.
+                        rotation: window.dragHover ? 0 : window.dockEdge === "right" ? 180 : window.dockEdge === "top" ? 90 : window.dockEdge === "bottom" ? -90 : 0
+                        color: window.dragHover ? window.accent : window.ink
+                        opacity: window.dragHover || capsuleMouse.containsMouse ? 1 : 0.72
+                        Behavior on opacity { NumberAnimation { duration: window.motion } }
+                    }
+                    // A small dot says the shelf is holding something.
                     Rectangle {
-                        width: window.verticalDock ? 14 : 18; height: 14; radius: 7
-                        x: window.verticalDock ? (parent.width-width)/2 : parent.width-24
-                        y: window.verticalDock ? parent.height-24 : (parent.height-height)/2
-                        color: window.accent
-                        Text { anchors.centerIn: parent; text: Math.min(99,shelf.count); textFormat: Text.PlainText; font.pixelSize: 8; font.weight: Font.Bold; color: "#20162f" }
-                        visible: shelf.count > 0
+                        visible: shelf.count > 0 && !window.dragHover
+                        width: 5; height: 5; radius: 2.5; color: window.accent
+                        x: window.verticalDock ? (parent.width-width)/2 : parent.width-14
+                        y: window.verticalDock ? parent.height-14 : (parent.height-height)/2
                     }
                 }
             }
@@ -416,7 +455,7 @@ Window {
                         anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 3
                         IconButton { glyph: "paste"; tooltip: "Collect from clipboard · Ctrl+V"; visible: !shelf.picking; onClicked: shelf.paste() }
                         IconButton { glyph: "more"; tooltip: "Shelf options"; onClicked: surfaceMenu.popup() }
-                        IconButton { glyph: "minus"; tooltip: shelf.picking ? "Cancel selection" : "Collapse · Esc"; onClicked: shelf.picking ? shelf.cancelPick() : shelf.collapse() }
+                        IconButton { glyph: "minus"; tooltip: shelf.picking ? "Cancel selection" : "Collapse · Esc"; onClicked: shelf.picking ? shelf.cancelPick() : window.closePanel() }
                     }
                 }
 
@@ -516,8 +555,8 @@ Window {
                                     Label { text: (modelData.text || "").replace(/^https?:\/\//, "").split("/")[0]; color: window.muted; font.pixelSize: 10; width: parent.width; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
                                 }
                             }
-                            Label { x: 11; y: 99; width: parent.width-22; text: modelData.name; font.weight: Font.Medium; font.pixelSize: 11; elide: Text.ElideMiddle }
-                            Label { x: 11; y: 117; width: parent.width-22; text: window.subtitleFor(modelData); color: tile.missing ? "#df8d9b" : window.muted; font.pixelSize: 9; elide: Text.ElideRight }
+                            Label { x: 11; y: 99; width: parent.width-22; text: modelData.name; font.weight: Font.Medium; font.pixelSize: 11; elide: Text.ElideMiddle; maximumLineCount: 1 }
+                            Label { x: 11; y: 117; width: parent.width-22; text: window.subtitleFor(modelData); color: tile.missing ? "#df8d9b" : window.muted; font.pixelSize: 9; elide: Text.ElideRight; maximumLineCount: 1 }
                             Rectangle {
                                 visible: tile.chosen
                                 x: parent.width-22; y: 7; width: 16; height: 16; radius: 8; color: window.accent
@@ -992,7 +1031,7 @@ Window {
                             ShelfIcon { anchors.centerIn: parent; name: "shelf"; color: window.accent; width: 30; height: 30 }
                         }
                         Label { Layout.alignment: Qt.AlignHCenter; text: "Arcade Shelf"; font.pixelSize: 20; font.weight: Font.DemiBold }
-                        Label { Layout.alignment: Qt.AlignHCenter; text: "0.1.0 · Collect. Hold. Continue."; color: window.muted }
+                        Label { Layout.alignment: Qt.AlignHCenter; text: (shelf.preferences.version || "") + " · Collect. Hold. Continue."; color: window.muted }
                         Label { Layout.fillWidth: true; text: "Built with Qt 6, SQLite, and Arcade Link. Your collections stay on this device."; color: window.muted; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
                         ShelfButton { Layout.alignment: Qt.AlignHCenter; text: "Project on GitHub"; glyph: "external"; foreground: window.accent; hoverSurface: window.hoverSurface; onClicked: Qt.openUrlExternally("https://github.com/qa-p1/Arcade-Shelf") }
                     }

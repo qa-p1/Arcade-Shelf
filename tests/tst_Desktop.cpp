@@ -150,6 +150,35 @@ private slots:
         QVERIFY(Desktop::nearestEdge(QRect(0, 0, 320, 160), scaledMonitor, -1).isEmpty());
     }
 
+    void arrangementOpensInwardAndPlacesFirstRunAtTheRightEdge()
+    {
+        const QRect usable(60, 10, 2490, 1420); // A left bar and 10 px frames.
+        // First run: near the right edge, vertically centred.
+        QCOMPARE(Desktop::arrangedGeometry({}, usable, QSize(216, 76), {}, true, {}), QRect(2322, 682, 216, 76));
+        // A capsule on the right half opens its panel leftward, keeping its right edge.
+        QCOMPARE(Desktop::arrangedGeometry(QRect(2322, 300, 216, 76), usable, QSize(640, 490), {}, false, {}),
+                 QRect(1898, 300, 640, 490));
+        // On the bottom half it opens upward, keeping its bottom edge.
+        QCOMPARE(Desktop::arrangedGeometry(QRect(200, 1200, 216, 76), usable, QSize(640, 490), {}, false, {}),
+                 QRect(200, 786, 640, 490));
+        // Restoring anchors on the saved frame the same way.
+        QCOMPARE(Desktop::arrangedGeometry(QRect(1, 1, 30, 92), usable, QSize(216, 76), {}, true, QRect(1910, 479, 640, 490)),
+                 QRect(2334, 893, 216, 76));
+        // A docked tab stays flush with its edge and inside the usable area.
+        QCOMPARE(Desktop::arrangedGeometry(QRect(2322, 1400, 216, 76), usable, QSize(30, 92), QStringLiteral("right"), false, {}),
+                 QRect(2520, 1338, 30, 92));
+        QCOMPARE(Desktop::arrangedGeometry(QRect(0, 500, 216, 76), usable, QSize(30, 92), QStringLiteral("left"), false, {}),
+                 QRect(60, 500, 30, 92));
+    }
+
+    void draggingPastAnEdgeStillDocks()
+    {
+        const QRect monitor(0, 0, 2560, 1440);
+        QCOMPARE(Desktop::nearestEdge(QRect(2428, 545, 216, 76), monitor), QStringLiteral("right"));
+        QCOMPARE(Desktop::nearestEdge(QRect(-90, 545, 216, 76), monitor), QStringLiteral("left"));
+        QVERIFY(Desktop::nearestEdge(QRect(2022, 545, 216, 76), monitor).isEmpty());
+    }
+
     void snappingPreservesTabsAndClampsAvailableBounds()
     {
         const QRect available(-1920, -200, 1920, 1080);

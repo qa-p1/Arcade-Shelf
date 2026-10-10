@@ -11,17 +11,32 @@ ctest --test-dir build --output-on-failure
 python3 scripts/check-vendor.py
 ```
 
-Linux portable bundle (the Qt prefix contains `bin/qtpaths6`, `plugins/`
+Linux AppImage (the Qt prefix contains `bin/qtpaths6`, `plugins/`
 and `qml/`; its original installation may instead use distribution paths).
-Install `patchelf` on the build machine; it is not a runtime dependency:
+Install `patchelf` and `curl` on the build machine; neither is a runtime
+dependency:
 
 ```sh
-python3 scripts/package-linux.py --build build --qt-prefix /path/to/Qt/6.8.3/gcc_64 --version 0.1.0 --output dist
-tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz
-./Arcade-Shelf-0.1.0-linux-x64/arcade-shelf
+python3 scripts/package-linux.py --build build --qt-prefix /path/to/Qt/6.8.3/gcc_64 --version 0.1.1 --output dist
+./dist/Arcade-Shelf-0.1.1-x86_64.AppImage
 ```
 
-The launcher resolves its bundle directory and forwards all command arguments.
+The script downloads appimagetool once (a pinned release, SHA-256 checked) into
+`build/tools`, builds an AppDir whose `usr/` is the relocatable bundle described
+below, and runs the AppImage's `--version` as a smoke check. `--format tarball`
+writes the plain bundle as `Arcade-Shelf-<version>-linux-x64.tar.gz` instead.
+
+Host-integration libraries are never bundled: the C++ runtime (`libstdc++`,
+`libgcc_s`), GL/EGL/Vulkan, Fontconfig/FreeType/HarfBuzz, Wayland, XCB/X11,
+xkbcommon and D-Bus come from the OS, following the AppImage project's exclude
+list. 0.1.0 bundled Ubuntu copies of these; a host GL driver then failed to
+load next to the older `libstdc++`/`libwayland-client` and Qt Quick aborted.
+Shelf also probes OpenGL at startup and falls back to software rendering.
+
+Inside an AppImage, Arcade Link registers the `.AppImage` file itself (from
+`$APPIMAGE`), so peers can launch a stopped Shelf after the mount is gone.
+
+In the plain bundle, the launcher resolves its bundle directory and forwards all command arguments.
 The packaged ELF also has inheritable `$ORIGIN:$ORIGIN/../lib` `DT_RPATH`, so
 Arcade Link can launch its registered executable directly without development
 Qt variables or the launcher. Qt plugins, including QSQLITE, are collected from
@@ -38,7 +53,7 @@ requiring a system Qt installation, with no claim of runtime bundling.
 Windows: install NSIS and run from PowerShell:
 
 ```powershell
-scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version 0.1.0 -Output dist
+scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version 0.1.1 -Output dist
 ```
 
 This runs `windeployqt`, smokes the staged executable, and builds a per-user
@@ -50,7 +65,7 @@ program files, and preserves collections. CPack ZIP is a developer artifact.
 macOS:
 
 ```sh
-QT_ROOT_DIR=/path/to/Qt/6.8.3/macos scripts/package-macos.sh build 0.1.0 dist
+QT_ROOT_DIR=/path/to/Qt/6.8.3/macos scripts/package-macos.sh build 0.1.1 dist
 ```
 
 This deploys Qt into `Arcade Shelf.app` and creates a DMG. The app is copied to
