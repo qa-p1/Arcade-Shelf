@@ -17,6 +17,9 @@
 #include <QSvgRenderer>
 #include <QPainter>
 #include <QImageReader>
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
+#include <QSGRendererInterface>
 
 int main(int argc, char **argv)
 {
@@ -79,6 +82,20 @@ int main(int argc, char **argv)
     // A stopped app must accept Link requests promptly, even while QML imports.
     // A foreground launch still starts integration after creating its first surface.
     if (parser.isSet("background")) controller.start();
+#ifdef Q_OS_LINUX
+    // A host whose GL driver cannot start (missing EGL, mismatched libraries)
+    // would make Qt Quick abort. Probe first and fall back to software
+    // rendering unless the user already chose a backend.
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND") && qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")
+        && QGuiApplication::platformName() != QStringLiteral("offscreen")) {
+        QOffscreenSurface surface; surface.create();
+        QOpenGLContext context;
+        if (!context.create() || !context.makeCurrent(&surface)) {
+            qWarning("OpenGL is unavailable; Arcade Shelf is using software rendering.");
+            QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+        } else context.doneCurrent();
+    }
+#endif
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("shelf",&controller);
     auto *thumbnails = new Shelf::ThumbnailProvider;

@@ -4,9 +4,9 @@ A floating workspace for files, folders, images, text, and links. Collect what
 you need, keep working, then drag it into another application or send it to an
 installed Arcade tool.
 
-**Version 0.1.0**, the first release. Working C++20 and Qt 6 software; some
-desktop behavior (real Hyprland, Windows and macOS sessions) is still being
-verified. See [current status](docs/STATUS.md) for what is tested and what
+**Version 0.1.1.** Working C++20 and Qt 6 software, checked on a real Hyprland
+desktop; Windows, macOS and other Linux desktops are still being verified.
+On Linux, download the `.AppImage`, make it executable and run it. See [current status](docs/STATUS.md) for what is tested and what
 remains. Install it with Arcade Tools or from
 [Releases](https://github.com/qa-p1/Arcade-Shelf/releases).
 

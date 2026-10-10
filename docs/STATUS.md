@@ -1,8 +1,28 @@
-# Status — 2026-10-10
+# Status — 2026-10-11
 
-Version 0.1.0, the first release. It is not a claim that every original
-product requirement has been interactively verified: the limits below say
-what still needs a real desktop.
+Version 0.1.1. Everything listed under "Verified for 0.1.0" was verified
+**headless only** (offscreen, Xvfb and headless Weston/Sway with software
+rendering). 0.1.0 had never run on a real desktop, and on Hyprland it was
+unusable. 0.1.1 is the first release checked on one; the table below says which.
+
+## Checked on a real desktop for 0.1.1
+
+Hyprland 0.56.2 (Lua configuration) on Arch Linux, 2560×1440, with the user's
+own shell, gaps and window rules, using the AppImage and a local build.
+
+| Check | Result |
+|---|---|
+| AppImage started from the desktop, no environment variables | Starts with hardware GL; no crash, no Fontconfig or EGL warnings |
+| First map | Floating 216×76 capsule near the right edge; never tiled |
+| Expand / collapse, repeated | 640×490 panel opens inward; returns to the same capsule spot; never maximized |
+| Drag capsule to the right edge (real pointer input) | Docks into the 30×92 edge handle |
+| Hover handle / click / Escape | Peeks the panel; click focuses it; Escape returns to the handle |
+| Drop a file and text on Shelf | Added; grid shows them with thumbnails (images up to the 64 MB decode cap) |
+| `--show`, `--toggle`, `--add`, `--status`, `--quit` against the running app | Work |
+
+Not yet checked on a real desktop: drag-out into another app, Arcade Find
+drag-onto-Shelf, fullscreen hiding, the global shortcut, multi-monitor/DPI,
+GNOME/KDE/Sway, Windows and macOS.
 
 ## Implemented
 
@@ -23,7 +43,7 @@ what still needs a real desktop.
 - Linux runtime-bundle generation, Windows NSIS/macOS DMG scripts, development CI,
   licensing/provenance checks and isolated shared onboarding patches.
 
-## Verified for 0.1.0
+## Verified for 0.1.0 (headless only)
 
 | Check | Actual result | Limit |
 |---|---|---|
@@ -76,8 +96,9 @@ native compositor/monitor performance still need profiling.
 
 ## Implemented but not interactively verified
 
-- Hyprland/Nautilus native drag in/out, docking/pinning, nonfocus capsule feedback,
-  fullscreen behavior, portal shortcut/reload and multi-monitor/DPI transitions.
+- Native drag out to Nautilus and other apps, fullscreen behavior, portal
+  shortcut/reload and multi-monitor/DPI transitions (Hyprland placement and
+  docking were checked for 0.1.1, above).
 - Windows and macOS native drag, shortcut, geometry, tray and login adapters.
 - Actual Look/Lens/Clipboard/Wheel desktop workflows and Box engine conversions.
 - Final native installers, Tools update/removal and signing/notarization.

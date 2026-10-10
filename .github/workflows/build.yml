@@ -40,13 +40,18 @@ jobs:
           cache: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build patchelf xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+        run: sudo apt-get update && sudo apt-get install -y ninja-build patchelf desktop-file-utils xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Windows build tools
         if: runner.os == 'Windows'
         run: choco install ninja nsis --no-progress -y
       - name: MSVC environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+      - name: Version
+        id: version
+        shell: bash
+        # CMakeLists.txt is the one place the version is written.
+        run: echo "value=$(sed -nE 's/^project\(ArcadeShelf VERSION ([^ ]+).*/\1/p' CMakeLists.txt)" >> "$GITHUB_OUTPUT"
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
       - name: Build
@@ -60,27 +65,36 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Release metadata generator tests
         run: python scripts/test_arcade_release.py
-      - name: Linux X11 and package
+      - name: Linux X11 and AppImage
         if: runner.os == 'Linux'
         shell: bash
         env:
           QT_QPA_PLATFORM: xcb
           QT_QUICK_BACKEND: software
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           xvfb-run -a ctest --test-dir build --output-on-failure
-          python scripts/package-linux.py --build build --qt-prefix "$QT_ROOT_DIR" --version 0.1.0 --output dist
-          mkdir package-smoke
-          tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz -C package-smoke
-          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH QT_QPA_PLATFORM=offscreen python tests/process_smoke.py --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/bin/arcade-shelf
+          python scripts/package-linux.py --build build --qt-prefix "$QT_ROOT_DIR" --version "$VERSION" --output dist
+          # The AppImage runtime is a parent process, so the Link process
+          # tests drive the exact payload it carries.
+          mkdir package-smoke && cd package-smoke
+          APPIMAGE_EXTRACT_AND_RUN=1 "../dist/Arcade-Shelf-$VERSION-x86_64.AppImage" --appimage-extract >/dev/null
+          cd ..
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH QT_QPA_PLATFORM=offscreen python tests/process_smoke.py --binary package-smoke/squashfs-root/usr/bin/arcade-shelf
+          # And the real GL path: show the window under Xvfb (Mesa llvmpipe)
+          # with no backend override; it must still be running, then quit.
+          export APP="$PWD/dist/Arcade-Shelf-$VERSION-x86_64.AppImage" APPIMAGE_EXTRACT_AND_RUN=1 \
+            ARCADE_SHELF_HOME="$RUNNER_TEMP/gl-profile" ARCADE_HOME="$RUNNER_TEMP/gl-arcade" ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS=1
+          env -u QT_QUICK_BACKEND -u LD_LIBRARY_PATH xvfb-run -a sh -c '"$APP" --show & pid=$!; sleep 4; kill -0 $pid && "$APP" --quit && wait $pid'
       - name: Windows package
         if: runner.os == 'Windows'
         shell: pwsh
-        run: scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version 0.1.0 -Output dist
+        run: scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version ${{ steps.version.outputs.value }} -Output dist
       - name: macOS package
         if: runner.os == 'macOS'
-        run: scripts/package-macos.sh build 0.1.0 dist
+        run: scripts/package-macos.sh build ${{ steps.version.outputs.value }} dist
       - name: Generate release manifests
-        run: python scripts/arcade-release.py --id arcade.shelf --version 0.1.0 --channel nightly --notes https://github.com/qa-p1/Arcade-Shelf/blob/${{ github.event.pull_request.head.sha || github.sha }}/CHANGELOG.md dist
+        run: python scripts/arcade-release.py --id arcade.shelf --version ${{ steps.version.outputs.value }} --channel nightly --notes https://github.com/qa-p1/Arcade-Shelf/blob/${{ github.event.pull_request.head.sha || github.sha }}/CHANGELOG.md dist
       - name: Report bounded failure diagnostics
         if: failure()
         run: python scripts/ci-diagnostics.py --build build
@@ -91,7 +105,8 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
-  # A version tag publishes the three packages as a GitHub release with one
+  # A version tag publishes the three packages (Linux AppImage, Windows
+  # installer, macOS disk image) as a GitHub release with one
   # stable arcade-release.json and SHA256SUMS.txt, which Arcade Tools installs.
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -117,5 +132,5 @@ jobs:
             --notes "https://github.com/qa-p1/Arcade-Shelf/blob/$GITHUB_REF_NAME/CHANGELOG.md" dist
           python3 scripts/release-notes.py CHANGELOG.md "$v" > notes.md
           ls -l dist
-          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.exe dist/*.dmg dist/arcade-release.json dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag \
+          gh release create "$GITHUB_REF_NAME" dist/*.AppImage dist/*.exe dist/*.dmg dist/arcade-release.json dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Arcade Shelf $v" --notes-file notes.md

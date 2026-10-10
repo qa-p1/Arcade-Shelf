@@ -297,8 +297,8 @@ private slots:
             m_controller->collapse(); m_controller->dock(edge); settle();
             QTRY_COMPARE(m_controller->dockEdge(),edge);
             const bool vertical=edge=="left"||edge=="right";
-            QTRY_COMPARE(m_window->width(),vertical ? 38 : 112);
-            QTRY_COMPARE(m_window->height(),vertical ? 112 : 38);
+            QTRY_COMPARE(m_window->width(),vertical ? 30 : 92);
+            QTRY_COMPARE(m_window->height(),vertical ? 92 : 30);
             const QRect available=m_window->screen()->availableGeometry();
             auto aligned=[&] {
                 const auto geometry=m_window->geometry();
@@ -315,8 +315,8 @@ private slots:
             QTest::keyClick(m_window,Qt::Key_Escape);
             QTRY_VERIFY(!m_controller->expanded());
             QTRY_COMPARE(m_controller->dockEdge(),edge);
-            QTRY_COMPARE(m_window->width(),vertical ? 38 : 112);
-            QTRY_COMPARE(m_window->height(),vertical ? 112 : 38);
+            QTRY_COMPARE(m_window->width(),vertical ? 30 : 92);
+            QTRY_COMPARE(m_window->height(),vertical ? 92 : 30);
             QTRY_VERIFY(aligned());
         }
         m_controller->dock(""); settle();

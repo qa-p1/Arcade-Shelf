@@ -92,9 +92,11 @@ Controller::Controller(QString root, bool background, QObject *parent)
     connect(&m_desktop, &Desktop::shortcutStatusChanged, this, &Controller::changed);
     connect(&m_fullscreen, &FullscreenGuard::changed, this, &Controller::changed);
     connect(&m_desktop, &Desktop::errorOccurred, this, &Controller::feedback);
+    connect(&m_desktop, &Desktop::compositorChanged, this, &Controller::changed);
     connect(&m_desktop, &Desktop::geometryObserved, this, [this](QRect actual,QString screen) {
         auto geometry = m_settings["geometry"].toObject();
         geometry["x"] = actual.x(); geometry["y"] = actual.y(); geometry["screen"] = screen;
+        geometry["frameWidth"] = actual.width(); geometry["frameHeight"] = actual.height();
         if (m_expanded) { geometry["width"] = actual.width(); geometry["height"] = actual.height(); }
         saveSetting("geometry",geometry);
     });
@@ -102,14 +104,11 @@ Controller::Controller(QString root, bool background, QObject *parent)
         if (!m_window || !actual.isValid()) return;
         auto geometry = m_settings["geometry"].toObject();
         geometry["x"] = actual.x(); geometry["y"] = actual.y(); geometry["screen"] = screenName;
+        geometry["frameWidth"] = actual.width(); geometry["frameHeight"] = actual.height();
         if (m_expanded) { geometry["width"] = actual.width(); geometry["height"] = actual.height(); }
         saveSetting("geometry", geometry);
-        for (QScreen *screen : QGuiApplication::screens()) {
-            if (screen->name() != screenName) continue;
-            const QString edge = Desktop::nearestEdge(actual, screen->availableGeometry());
-            if (!edge.isEmpty()) dock(edge);
-            break;
-        }
+        const QString edge = Desktop::nearestEdge(actual, m_desktop.availableGeometry(screenName));
+        if (!edge.isEmpty()) dock(edge);
     });
 }
 Controller::~Controller()
@@ -136,9 +135,8 @@ void Controller::applyWindowPreferences()
     const auto g = m_settings["geometry"].toObject();
     m_window->setProperty("panelWidth",qBound(440,g["width"].toInt(640),2000));
     m_window->setProperty("panelHeight",qBound(350,g["height"].toInt(490),1600));
-    if (g.contains("x")) m_desktop.restoreGeometry(m_window,QRect(g["x"].toInt(),g["y"].toInt(),m_window->width(),m_window->height()),g["screen"].toString());
     m_desktop.setAlwaysOnTop(m_window,alwaysOnTop());
-    if (!m_dock.isEmpty()) QTimer::singleShot(0,this,[this] { m_desktop.dock(m_window,m_dock); });
+    alignWindow(true);
 }
 QVariantMap Controller::preferences() const
 {
@@ -267,14 +265,24 @@ void Controller::setLinkEnabled(bool value) { saveSetting("linkEnabled", value);
 void Controller::setAlwaysOnTop(bool value) { saveSetting("alwaysOnTop", value); if (m_window) m_desktop.setAlwaysOnTop(m_window, value); }
 void Controller::setReducedMotion(bool value) { saveSetting("reducedMotion", value); }
 void Controller::toggle() { if (m_expanded) collapse(); else show(); }
-void Controller::alignWindow()
+void Controller::alignWindow(bool restore)
 {
     // QML must apply the new panel/tab size before the native adapter aligns
     // it. In particular, expanding a right/bottom tab must grow inward.
-    QTimer::singleShot(0, this, [this] {
+    QTimer::singleShot(0, this, [this, restore] {
         if (!m_window) return;
-        if (!m_dock.isEmpty()) m_desktop.dock(m_window, m_dock);
-        else m_desktop.restoreGeometry(m_window, m_window->geometry());
+        const QVariant width = m_window->property("targetWidth"), height = m_window->property("targetHeight");
+        Desktop::Placement placement;
+        placement.size = width.isValid() && height.isValid() ? QSize(width.toInt(), height.toInt()) : m_window->size();
+        placement.edge = m_dock;
+        placement.tab = !m_dock.isEmpty() && !m_expanded;
+        placement.restore = restore;
+        const auto g = m_settings["geometry"].toObject();
+        // The saved frame is whatever Shelf last showed (capsule, tab or panel).
+        if (restore && g.contains("x"))
+            placement.saved = QRect(g["x"].toInt(), g["y"].toInt(), g["frameWidth"].toInt(m_window->width()), g["frameHeight"].toInt(m_window->height()));
+        placement.screen = g["screen"].toString();
+        m_desktop.arrange(m_window, placement);
     });
 }
 void Controller::setNativeDragHover(bool hovering)
@@ -293,7 +301,9 @@ void Controller::show()
     m_visible = true; m_expanded = true; m_focusPanel = true;
     updateFullscreenPolicy();
     emit changed();
-    if (m_window) { m_window->show(); m_window->raise(); m_window->requestActivate(); }
+    // QWindow::show() on a mapped Wayland window sends unset_maximized, which
+    // Hyprland answers by maximizing it. QML already maps it from `visible`.
+    if (m_window) { if (!m_window->isVisible()) m_window->show(); m_window->raise(); m_window->requestActivate(); }
     if (opening) alignWindow();
     QMetaObject::invokeMethod(m_service, &Service::refresh);
 }
@@ -303,7 +313,7 @@ void Controller::peek()
     m_visible = true; m_expanded = true; m_focusPanel = false;
     updateFullscreenPolicy();
     emit changed();
-    if (m_window) m_window->show();
+    if (m_window && !m_window->isVisible()) m_window->show();
     alignWindow();
     QMetaObject::invokeMethod(m_service, &Service::refresh);
 }
