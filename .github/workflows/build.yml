@@ -3,6 +3,7 @@ on:
   pull_request:
   push:
     branches: [main, 'feature/**']
+    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -90,3 +91,31 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+  # A version tag publishes the three packages as a GitHub release with one
+  # stable arcade-release.json and SHA256SUMS.txt, which Arcade Tools installs.
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Arcade-Shelf-*
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(sed -nE 's/^project\(ArcadeShelf VERSION ([^ ]+).*/\1/p' CMakeLists.txt)
+          test "$GITHUB_REF_NAME" = "v$v" || { echo "tag $GITHUB_REF_NAME does not match version $v"; exit 1; }
+          rm -f dist/arcade-release.json dist/SHA256SUMS.txt
+          python scripts/arcade-release.py --id arcade.shelf --version "$v" --channel stable \
+            --notes "https://github.com/qa-p1/Arcade-Shelf/blob/$GITHUB_REF_NAME/CHANGELOG.md" dist
+          python3 scripts/release-notes.py CHANGELOG.md "$v" > notes.md
+          ls -l dist
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.exe dist/*.dmg dist/arcade-release.json dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Arcade Shelf $v" --notes-file notes.md
