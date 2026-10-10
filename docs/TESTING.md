@@ -152,5 +152,6 @@ ARCADE_SHELF_REPO=$PWD python3 /path/to/Arcade-Link/tools/e2e.py --only find
 ```
 
 `tst_PeerHub::findManifestOffersShowAndSearch` checks Shelf's offers against
-Find's real manifest; refresh `tests/fixtures/arcade.find.manifest.json` with
+Find's real manifest, and `tst_Ui::actionsMenuDrivesFind` clicks Shelf's
+Actions menu into a peer serving that manifest; refresh `tests/fixtures/arcade.find.manifest.json` with
 `arcade-find --arcade-manifest` when Find's actions change.

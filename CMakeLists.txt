@@ -85,6 +85,7 @@ if(BUILD_TESTING)
   qt_add_qml_module(tst_Ui URI ShelfUITest VERSION 1.0
     QML_FILES ui/Main.qml ui/ShelfIcon.qml ui/ShelfButton.qml ui/ShelfField.qml ui/ShelfMenu.qml ui/ShelfDialog.qml
     RESOURCES assets/shelf.svg)
+  target_compile_definitions(tst_Ui PRIVATE SHELF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
   add_test(NAME Ui COMMAND tst_Ui)
 endif()
 install(TARGETS arcade-shelf RUNTIME DESTINATION bin BUNDLE DESTINATION .)

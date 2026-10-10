@@ -132,9 +132,17 @@ isolated profile:
   `arcade-find --arcade-manifest`), Shelf offers `find.show` for one file,
   folder or text item and `find.search` for a text item, neither for a
   multi-selection, and its `find.show` payload passes pre-flight validation.
+- **`tst_Ui::actionsMenuDrivesFind`** (this repository): the real QML window,
+  clicked like a user, against a Link peer serving Find's real manifest.
+  Selecting a file, Actions → "Search in Find" sends `find.show` v1 with that
+  file (`context.source` `arcade.shelf`) and shows Find's reply; on a text
+  item, Actions → "Find matching files" sends `find.search` with the text and
+  the returned file is added to the shelf by reference. Offscreen and xcb.
+- Find's file kinds and Link's (Rust and the Qt module Shelf validates with)
+  were compared entry by entry: all 142 extensions agree, so Shelf never
+  rejects a Find result as `type_mismatch`.
 
-Not covered: Shelf's GUI menu clicking "Search in Find" (the request it sends
-is covered above), drag and drop between the two, and real desktops.
+Not covered: drag and drop between the two, and real desktops.
 
 ## Actual native Box CLI
 

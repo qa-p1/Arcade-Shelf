@@ -29,7 +29,8 @@
   invalid age for every export and deleted them (Qt 6.8.3).
 - Collapsing to a docked tab no longer stays clamped to the panel's height.
 - Works with Arcade Find both ways, verified with both real apps; contract
-  test against Find's real manifest. CI green on Linux, Windows and macOS.
+  test against Find's real manifest, and a UI test that clicks Shelf's own
+  Actions menu into Find. CI green on Linux, Windows and macOS.
 
 This milestone is not a stable release. Platform interaction and ecosystem
 verification boundaries are recorded in [status](docs/STATUS.md).

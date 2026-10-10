@@ -7,6 +7,8 @@
 #include <QDropEvent>
 #include <QFile>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QMimeData>
 #include <QPointer>
 #include <QQmlApplicationEngine>
@@ -14,6 +16,7 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -70,6 +73,25 @@ private:
         const int columns = qMax(2,int(grid->width()/grid->property("cellWidth").toReal()));
         QTest::mouseClick(m_window,Qt::LeftButton,modifiers,
             point(grid,QPointF((index%columns)*grid->property("cellWidth").toReal()+40,(index/columns)*152+40)));
+    }
+    // Visible item showing exactly this text, including popup menus, which
+    // live in the window's overlay rather than under contentItem.
+    QQuickItem *findText(QString text) {
+        std::function<QQuickItem *(QQuickItem *)> visit=[&](QQuickItem *parent) -> QQuickItem * {
+            if(parent->isVisible() && parent->property("text").toString() == text && parent->width() > 0) return parent;
+            for(auto *child:parent->childItems()) if(auto *item=visit(child)) return item;
+            return nullptr;
+        };
+        auto *root=m_window->contentItem();
+        while(root->parentItem()) root=root->parentItem();
+        return visit(root);
+    }
+    void clickText(QString text) {
+        QQuickItem *item=nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((item=findText(text)) && item->isEnabled(),3000);
+        // Let the menu's open transition finish before clicking.
+        QTest::qWait(200);
+        QTest::mouseClick(m_window,Qt::LeftButton,{},point(item,QPointF(item->width()/2,item->height()/2)));
     }
     void capture(QString name) {
         const QString dir = qEnvironmentVariable("ARCADE_SHELF_CAPTURE_DIR");
@@ -464,6 +486,63 @@ private slots:
         QTest::keyClick(m_window,Qt::Key_Escape);
         QTRY_VERIFY_WITH_TIMEOUT(thread->isFinished(),5000); delete thread;
         QCOMPARE(error.code,QString("denied")); QCOMPARE(error.reason,QString("user_cancelled"));
+    }
+    // Shelf's own menu, not only the request it builds: pick an item, open
+    // Actions, click Find's entry, and check what a Find-shaped peer
+    // (Find's real manifest) receives and what lands back on the shelf.
+    void actionsMenuDrivesFind() {
+        const auto locations=ArcadeLink::Locations::discover();
+        QFile fixture(QStringLiteral(SHELF_FIXTURES "/arcade.find.manifest.json"));
+        QVERIFY(fixture.open(QIODevice::ReadOnly));
+        auto manifest=QJsonDocument::fromJson(fixture.readAll()).object();
+        manifest.insert("executable",QCoreApplication::applicationFilePath());
+        const QString match=writeFile("invoice-2024.pdf","pdf");
+        QList<QJsonObject> received;
+        ArcadeLink::Server find("arcade.find","0.1.0",locations);
+        find.describe=[manifest] { return manifest.value("actions").toArray(); };
+        find.invoke=[&](const QJsonObject &request,const ArcadeLink::Responder &responder) {
+            received.append(request);
+            if(request.value("action").toString() == "find.search")
+                responder.done({{"outputs",QJsonArray{QJsonObject{{"type","file/pdf"},{"path",match},{"size",3}}}},
+                                {"message","Found 1 file."}});
+            else responder.done({{"message","Arcade Find is showing it."}});
+        };
+        QVERIFY(find.start());
+        QVERIFY(ArcadeLink::writeManifest(locations,manifest));
+        const auto stopFind=qScopeGuard([&] { find.stop(); QFile::remove(locations.manifestPath("arcade.find")); });
+
+        const QString brief=writeFile("brief.pdf","pdf");
+        m_controller->acceptDrop(QVariantList{QUrl::fromLocalFile(brief)},"","");
+        QTRY_COMPARE(m_controller->count(),1);
+        m_controller->show(); QTRY_VERIFY(m_window->width() >= 440);
+        clickItem(0);
+        QTRY_VERIFY_WITH_TIMEOUT(!m_controller->offers().isEmpty(),5000);
+        clickText("Actions");
+        clickText("Search in Find");
+        QTRY_COMPARE_WITH_TIMEOUT(received.size(),1,5000);
+        const auto show=received.first();
+        QCOMPARE(show.value("action").toString(),QString("find.show"));
+        QCOMPARE(show.value("version").toInt(),1);
+        const auto inputs=show.value("inputs").toArray();
+        QCOMPARE(inputs.size(),1);
+        QCOMPARE(inputs.first().toObject().value("path").toString(),brief);
+        QVERIFY(inputs.first().toObject().value("type").toString().startsWith("file/"));
+        QCOMPARE(show.value("context").toObject().value("source").toString(),QString("arcade.shelf"));
+        QTRY_COMPARE(m_controller->message(),QString("Arcade Find is showing it."));
+
+        // A text note offers "Find matching files"; the matches come back by reference.
+        m_controller->removeSelected();
+        QTRY_COMPARE(m_controller->count(),0);
+        m_controller->acceptDrop({},"invoice 2024","");
+        QTRY_COMPARE(m_controller->count(),1);
+        clickItem(0);
+        clickText("Actions");
+        clickText("Find matching files");
+        QTRY_COMPARE_WITH_TIMEOUT(received.size(),2,5000);
+        QCOMPARE(received.last().value("action").toString(),QString("find.search"));
+        QCOMPARE(received.last().value("inputs").toArray().first().toObject().value("text").toString(),QString("invoice 2024"));
+        QTRY_VERIFY2_WITH_TIMEOUT(m_controller->count() == 2,qPrintable(m_controller->message()),5000);
+        QVERIFY(QFile::exists(match));
     }
     void renderedViews() {
         const QString brief=writeFile("Design brief.md","# Arcade Shelf\nA floating workspace.");
