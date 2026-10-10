@@ -1,0 +1,43 @@
+{
+  "comment": "Manifests (SPEC §3). Readers ignore unknown fields and fill defaults.",
+  "valid": [
+    {
+      "name": "full example",
+      "manifest": {
+        "schema": 1, "id": "arcade.look", "name": "Arcade Look", "version": "0.4.0",
+        "link": { "protocol": [1] },
+        "executable": "/home/u/Applications/Arcade-Look.AppImage",
+        "launch": { "background": ["--background"], "invoke": ["--arcade-invoke"] },
+        "shortcuts": [{ "id": "preview-selection", "accelerator": "Ctrl+Alt+Space" }],
+        "settings": { "linkEnabled": true },
+        "actions": [{
+          "id": "look.preview", "version": 1, "title": "Quick Look", "verb": "preview",
+          "accepts": ["file/*", "file/*[]", "folder/reference", "text/url"], "produces": [],
+          "effects": ["opens-ui"], "interactive": true, "privacy": "local",
+          "platforms": ["linux", "windows", "macos"], "available": true
+        }],
+        "writtenAt": "2026-10-05T10:00:00Z"
+      },
+      "expect": { "id": "arcade.look", "actions": 1, "linkEnabled": true, "invoke": true, "firstActionAvailable": true, "firstActionVersion": 1 }
+    },
+    {
+      "name": "defaults and unknown fields",
+      "manifest": {
+        "schema": 1, "id": "arcade.box", "name": "Arcade Box", "executable": "/x", "future": { "a": 1 },
+        "actions": [{ "id": "box.open", "title": "Open in Arcade Box", "futureField": 3 }]
+      },
+      "expect": { "id": "arcade.box", "actions": 1, "linkEnabled": true, "invoke": false, "firstActionAvailable": true, "firstActionVersion": 1 }
+    },
+    {
+      "name": "newer schema is read",
+      "manifest": { "schema": 2, "id": "arcade.wheel", "name": "Arcade Wheel", "executable": "/x", "settings": { "linkEnabled": false } },
+      "expect": { "id": "arcade.wheel", "actions": 0, "linkEnabled": false, "invoke": false }
+    }
+  ],
+  "invalid": [
+    { "name": "no id", "manifest": { "schema": 1, "name": "x" } },
+    { "name": "empty id", "manifest": { "schema": 1, "id": "", "name": "x" } },
+    { "name": "schema 0", "manifest": { "schema": 0, "id": "arcade.x", "name": "x" } },
+    { "name": "no schema", "manifest": { "id": "arcade.x", "name": "x" } }
+  ]
+}

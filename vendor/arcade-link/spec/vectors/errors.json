@@ -1,0 +1,34 @@
+{
+  "comment": "Standard user-facing messages (SPEC §6). Every app shows these verbatim.",
+  "messages": [
+    { "code": "not_installed", "app": "Arcade Look", "message": "Arcade Look isn't installed." },
+    { "code": "not_running", "app": "Arcade Look", "message": "Arcade Look isn't running." },
+    { "code": "launch_failed", "app": "Arcade Lens", "message": "Arcade Lens didn't start." },
+    { "code": "timeout", "app": "Arcade Box", "message": "Arcade Box didn't respond in time." },
+    { "code": "unsupported_input", "app": "Arcade Look", "message": "Arcade Look can't open this kind of content." },
+    { "code": "unavailable", "app": "Arcade Box", "reason": "FFmpeg isn't installed", "message": "Arcade Box can't do this yet: FFmpeg isn't installed." },
+    { "code": "unavailable", "app": "Arcade Box", "reason": "FFmpeg isn't installed.", "message": "Arcade Box can't do this yet: FFmpeg isn't installed." },
+    { "code": "unavailable", "app": "Arcade Box", "message": "Arcade Box can't do this right now." },
+    { "code": "too_large", "app": "Arcade Clipboard", "limit": 16777216, "message": "Too large to send to your devices (limit 16 MB)." },
+    { "code": "too_large", "app": "Arcade Clipboard", "limit": 32768, "message": "Too large to send to your devices (limit 32 KB)." },
+    { "code": "too_large", "app": "Arcade Box", "limit": 1048576, "message": "Too large for Arcade Box (limit 1 MB)." },
+    { "code": "too_large", "app": "Arcade Box", "message": "Too large for Arcade Box." },
+    { "code": "denied", "app": "Arcade Clipboard", "reason": "private_mode", "message": "Arcade Clipboard is in Private mode." },
+    { "code": "denied", "app": "Arcade Lens", "reason": "secret", "message": "Not sent: this looks like a password or key." },
+    { "code": "denied", "app": "Arcade Wheel", "reason": "user_cancelled", "message": "Cancelled." },
+    { "code": "denied", "app": "Arcade Box", "reason": "disabled", "message": "Arcade Box has connections to other Arcade apps turned off." },
+    { "code": "denied", "app": "Arcade Box", "message": "Arcade Box declined this request." },
+    { "code": "busy", "app": "Arcade Box", "message": "Arcade Box is busy. Try again when its current job finishes." },
+    { "code": "cancelled", "app": "Arcade Box", "message": "Cancelled." },
+    { "code": "version_mismatch", "app": "Arcade Wheel", "message": "Arcade Wheel needs an update to work with this app." },
+    { "code": "internal", "app": "Arcade Look", "message": "Arcade Look ran into a problem." },
+    { "code": "internal", "app": "Arcade Look", "reason": "disk full", "message": "Arcade Look ran into a problem: disk full." },
+    { "code": "from_the_future", "app": "Arcade Look", "message": "Arcade Look ran into a problem." }
+  ],
+  "limits": [
+    { "bytes": 16777216, "text": "16 MB" },
+    { "bytes": 1572864, "text": "1.5 MB" },
+    { "bytes": 32768, "text": "32 KB" },
+    { "bytes": 512, "text": "512 bytes" }
+  ]
+}

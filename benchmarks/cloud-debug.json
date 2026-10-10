@@ -1,0 +1,99 @@
+{
+  "measured_at": "2026-10-09T20:02:01.086153+00:00",
+  "binary": "/workspace/Arcade-Shelf/build/arcade-shelf",
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "python": "3.12.14",
+  "qt_platform": "offscreen",
+  "render_backend": "software",
+  "filesystem_caches_flushed": false,
+  "startup_definition": "process spawn to authenticated app.status on public Link endpoint",
+  "warm_add_definition": "same-connection invoke to synchronous SQLite committed response",
+  "cpu_definition": "target process utime+stime delta; threads included, children excluded",
+  "samples": [
+    {
+      "startup_to_authenticated_status_ms": 1568.3772410000074,
+      "warm_add_ms": {
+        "count": 100,
+        "min": 0.468541,
+        "median": 1.3664275,
+        "p95": 12.90405,
+        "max": 46.703661
+      },
+      "duplicate_add_ms": {
+        "count": 100,
+        "min": 0.360312,
+        "median": 1.210492,
+        "p95": 13.482304,
+        "max": 41.906759
+      },
+      "rss_kib_after_warmup": 62552,
+      "rss_kib_after_repeated_use": 94280,
+      "rss_kib_after_idle": 101956,
+      "threads_after_idle": 5,
+      "idle_wall_seconds": 5.005998881000096,
+      "idle_cpu_seconds": 1.31,
+      "idle_cpu_percent_one_core": 26.168603532294217,
+      "persisted_items": 101,
+      "repeated_add_duplicate_cycles": 100
+    },
+    {
+      "startup_to_authenticated_status_ms": 2122.81549599993,
+      "warm_add_ms": {
+        "count": 100,
+        "min": 0.570522,
+        "median": 4.0621325,
+        "p95": 17.358127,
+        "max": 55.66504
+      },
+      "duplicate_add_ms": {
+        "count": 100,
+        "min": 0.40651,
+        "median": 5.270947,
+        "p95": 44.435382,
+        "max": 51.852722
+      },
+      "rss_kib_after_warmup": 62420,
+      "rss_kib_after_repeated_use": 97208,
+      "rss_kib_after_idle": 99660,
+      "threads_after_idle": 5,
+      "idle_wall_seconds": 5.001979774999882,
+      "idle_cpu_seconds": 1.03,
+      "idle_cpu_percent_one_core": 20.591846555397648,
+      "persisted_items": 101,
+      "repeated_add_duplicate_cycles": 100
+    },
+    {
+      "startup_to_authenticated_status_ms": 1708.096975999979,
+      "warm_add_ms": {
+        "count": 100,
+        "min": 0.477315,
+        "median": 3.7043795,
+        "p95": 11.753001,
+        "max": 44.556931
+      },
+      "duplicate_add_ms": {
+        "count": 100,
+        "min": 0.475452,
+        "median": 3.8424375,
+        "p95": 42.598941,
+        "max": 46.351501
+      },
+      "rss_kib_after_warmup": 62464,
+      "rss_kib_after_repeated_use": 99196,
+      "rss_kib_after_idle": 101980,
+      "threads_after_idle": 5,
+      "idle_wall_seconds": 5.0347052939998775,
+      "idle_cpu_seconds": 1.48,
+      "idle_cpu_percent_one_core": 29.395960906863678,
+      "persisted_items": 101,
+      "repeated_add_duplicate_cycles": 100
+    }
+  ],
+  "startup_ms": {
+    "count": 3,
+    "min": 1568.3772410000074,
+    "median": 1708.096975999979,
+    "p95": 2122.81549599993,
+    "max": 2122.81549599993
+  }
+}

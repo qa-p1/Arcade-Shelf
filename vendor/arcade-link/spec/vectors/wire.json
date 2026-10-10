@@ -1,0 +1,27 @@
+{
+  "comment": "Wire messages (SPEC §4). Every implementation must classify each line as shown, or reject it.",
+  "messages": [
+    { "name": "hello request", "line": "{\"v\":1,\"id\":1,\"method\":\"hello\",\"params\":{\"token\":\"t\",\"client\":{\"id\":\"arcade.lens\",\"version\":\"0.2.0\"},\"protocol\":[1]}}", "valid": true, "kind": "request" },
+    { "name": "hello response", "line": "{\"v\":1,\"id\":1,\"result\":{\"server\":{\"id\":\"arcade.box\",\"version\":\"0.2.0\"},\"protocol\":1}}", "valid": true, "kind": "response" },
+    { "name": "job progress", "line": "{\"v\":1,\"method\":\"job.progress\",\"params\":{\"job\":\"j-41\",\"fraction\":0.4,\"message\":\"Encoding\"}}", "valid": true, "kind": "notification" },
+    { "name": "error response", "line": "{\"v\":1,\"id\":7,\"error\":{\"code\":\"unavailable\",\"message\":\"x\",\"reason\":\"FFmpeg isn't installed\"}}", "valid": true, "kind": "response" },
+    { "name": "unknown fields are ignored", "line": "{\"v\":1,\"id\":2,\"method\":\"describe\",\"params\":{},\"future\":true}", "valid": true, "kind": "request" },
+    { "name": "newer v is still parsed", "line": "{\"v\":2,\"id\":2,\"method\":\"describe\",\"params\":{}}", "valid": true, "kind": "request" },
+    { "name": "missing v", "line": "{\"id\":3,\"result\":{}}", "valid": false },
+    { "name": "v zero", "line": "{\"v\":0,\"id\":3,\"result\":{}}", "valid": false },
+    { "name": "response with both result and error", "line": "{\"v\":1,\"id\":3,\"result\":{},\"error\":{\"code\":\"internal\"}}", "valid": false },
+    { "name": "response with neither", "line": "{\"v\":1,\"id\":3}", "valid": false },
+    { "name": "request with a result", "line": "{\"v\":1,\"id\":3,\"method\":\"describe\",\"result\":{}}", "valid": false },
+    { "name": "empty method", "line": "{\"v\":1,\"method\":\"\"}", "valid": false },
+    { "name": "not JSON", "line": "hello", "valid": false },
+    { "name": "not an object", "line": "[1,2]", "valid": false }
+  ],
+  "negotiate": [
+    { "client": [1], "server": [1], "result": 1 },
+    { "client": [1, 2], "server": [1], "result": 1 },
+    { "client": [1, 2], "server": [1, 2], "result": 2 },
+    { "client": [2], "server": [1], "result": null },
+    { "client": [], "server": [1], "result": null }
+  ],
+  "maxLineBytes": 1048576
+}

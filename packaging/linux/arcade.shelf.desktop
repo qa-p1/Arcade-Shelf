@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Arcade Shelf
+Comment=Collect, organize and transfer desktop content
+Exec=arcade-shelf
+Icon=io.github.qa_p1.ArcadeShelf
+Terminal=false
+Categories=Utility;Qt;
+StartupWMClass=arcade.shelf
+Keywords=shelf;drop;files;staging;arcade;
