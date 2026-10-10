@@ -21,7 +21,7 @@
 
 namespace Shelf {
 Controller::Controller(QString root, bool background, QObject *parent)
-    : QObject(parent), m_service(new Service(root,nullptr,background)), m_peers(this), m_desktop(this), m_root(std::move(root)), m_visible(!background)
+    : QObject(parent), m_service(new Service(root,nullptr,background)), m_peers(this), m_desktop(this), m_backdrop(this), m_fullscreen(this), m_root(std::move(root)), m_visible(!background)
 {
     m_service->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_service, &QObject::deleteLater);
@@ -31,6 +31,11 @@ Controller::Controller(QString root, bool background, QObject *parent)
         const bool contentsChanged = m_items != content || m_active != active;
         const bool collectionsChanged = m_shelves != collections;
         m_shelves = collections; m_items = content; m_active = active; m_settings = settings; m_undoAvailable = undo;
+        // An earlier worker snapshot must not roll back an edit that is still
+        // queued. Send per-key patches so intervening edits cannot overwrite
+        // other preferences when acknowledgements arrive asynchronously.
+        for (auto it = m_pendingSettings.begin(); it != m_pendingSettings.end(); ++it)
+            m_settings[it.key()] = it.value();
         if (oldActive != active) { m_selected.clear(); m_anchor.clear(); }
         QSet<QString> existing;
         for (auto v : m_items) existing.insert(v.toObject()["id"].toString());
@@ -38,7 +43,7 @@ Controller::Controller(QString root, bool background, QObject *parent)
         if (contentsChanged) { m_itemsCacheValid = false; ++m_selectionRevision; if (!m_selected.isEmpty()) prepareSelection(); emit itemsChanged(); }
         if (collectionsChanged) emit shelvesChanged();
         m_peers.setEnabled(linkEnabled());
-        const auto peerSettings = settings["peers"].toObject();
+        const auto peerSettings = m_settings["peers"].toObject();
         for (auto it = peerSettings.begin(); it != peerSettings.end(); ++it) m_peers.setPeerEnabled(it.key(), it.value().toBool(true));
         if (first) {
             m_dock = settings["dockEdge"].toString();
@@ -47,13 +52,17 @@ Controller::Controller(QString root, bool background, QObject *parent)
         }
         emit changed();
     });
+    connect(m_service, &Service::settingsSaved, this, [this](QJsonObject changes) {
+        for (auto it = changes.begin(); it != changes.end(); ++it)
+            if (m_pendingSettings.value(it.key()) == it.value()) m_pendingSettings.remove(it.key());
+    });
     connect(m_service, &Service::feedback, this, [this](QString message, bool reveal) {
         feedback(message);
-        if (reveal) { m_visible = true; emit changed(); emit pulse(); } // No requestActivate on noninteractive add.
+        if (reveal) { m_visible = true; updateFullscreenPolicy(); emit changed(); emit pulse(); } // No requestActivate on noninteractive add.
     });
     connect(m_service, &Service::showRequested, this, [this](QString, bool settings) { if (settings) showSettings(); else show(); });
     connect(m_service, &Service::toggleRequested, this, &Controller::toggle);
-    connect(m_service, &Service::pickRequested, this, [this](bool multiple, QStringList types) { m_picking = true; m_pickMultiple = multiple; m_pickTypes = types; m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); show(); });
+    connect(m_service, &Service::pickRequested, this, [this](bool multiple, QStringList types) { m_picking = true; setNativeDragHover(false); m_pickMultiple = multiple; m_pickTypes = types; m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); show(); });
     connect(m_service, &Service::pickEnded, this, [this] { m_picking = false; m_pickTypes.clear(); m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); collapse(); });
     connect(m_service, &Service::quitRequested, qApp, &QCoreApplication::quit);
     connect(m_service, &Service::fatalError, this, [](QString error) { qCritical("Shelf startup failed: %s", qPrintable(error)); QCoreApplication::exit(1); });
@@ -81,12 +90,26 @@ Controller::Controller(QString root, bool background, QObject *parent)
     });
     connect(&m_desktop, &Desktop::activated, this, &Controller::toggle);
     connect(&m_desktop, &Desktop::shortcutStatusChanged, this, &Controller::changed);
+    connect(&m_fullscreen, &FullscreenGuard::changed, this, &Controller::changed);
     connect(&m_desktop, &Desktop::errorOccurred, this, &Controller::feedback);
     connect(&m_desktop, &Desktop::geometryObserved, this, [this](QRect actual,QString screen) {
         auto geometry = m_settings["geometry"].toObject();
         geometry["x"] = actual.x(); geometry["y"] = actual.y(); geometry["screen"] = screen;
         if (m_expanded) { geometry["width"] = actual.width(); geometry["height"] = actual.height(); }
         saveSetting("geometry",geometry);
+    });
+    connect(&m_desktop, &Desktop::moveFinished, this, [this](QRect actual, QString screenName) {
+        if (!m_window || !actual.isValid()) return;
+        auto geometry = m_settings["geometry"].toObject();
+        geometry["x"] = actual.x(); geometry["y"] = actual.y(); geometry["screen"] = screenName;
+        if (m_expanded) { geometry["width"] = actual.width(); geometry["height"] = actual.height(); }
+        saveSetting("geometry", geometry);
+        for (QScreen *screen : QGuiApplication::screens()) {
+            if (screen->name() != screenName) continue;
+            const QString edge = Desktop::nearestEdge(actual, screen->availableGeometry());
+            if (!edge.isEmpty()) dock(edge);
+            break;
+        }
     });
 }
 Controller::~Controller()
@@ -97,7 +120,11 @@ Controller::~Controller()
 void Controller::start() { m_thread.start(); QMetaObject::invokeMethod(m_service, &Service::start); m_peers.start(); }
 void Controller::attachWindow(QWindow *window)
 {
+    if (m_window) m_window->removeEventFilter(this);
     m_window = window;
+    m_backdrop.attachWindow(window);
+    m_fullscreen.attachWindow(window);
+    updateFullscreenPolicy();
     if (!window) return;
     window->installEventFilter(this);
     m_desktop.setAlwaysOnTop(window, alwaysOnTop());
@@ -128,10 +155,18 @@ QVariantMap Controller::preferences() const
 bool Controller::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched != m_window || m_picking) return QObject::eventFilter(watched,event);
+    // Hover/drag edge reveals stay noninteractive. A deliberate press promotes
+    // the panel before normal QML dispatch, preserving the same click's action.
+    if (event->type() == QEvent::MouseButtonPress && m_expanded && !m_focusPanel) show();
     if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
         auto *drag = static_cast<QDragMoveEvent *>(event);
-        if (drag->mimeData()->hasImage() && !drag->mimeData()->hasUrls()) { drag->acceptProposedAction(); return true; }
+        const bool image = drag->mimeData()->hasImage() && !drag->mimeData()->hasUrls();
+        setNativeDragHover(image);
+        if (image) { drag->acceptProposedAction(); return true; }
+    } else if (event->type() == QEvent::DragLeave) {
+        setNativeDragHover(false);
     } else if (event->type() == QEvent::Drop) {
+        setNativeDragHover(false);
         auto *drop = static_cast<QDropEvent *>(event);
         const auto *mime = drop->mimeData();
         if (mime->hasFormat("application/x-arcade-shelf-items")) {
@@ -214,7 +249,14 @@ QString Controller::shortcutWarning() const
     for (auto v : m_peers.manifests()) { auto app = v.toObject(); if (app["id"] == AppId) continue; for (auto s : app["shortcuts"].toArray()) if (!normalized.isEmpty() && ArcadeLink::normalizeAccelerator(s.toObject()["accelerator"].toString()) == normalized) return "Used by " + app["name"].toString(); }
     return {};
 }
-void Controller::saveSetting(QString key, QJsonValue value) { if (m_settings[key] == value) return; m_settings[key] = value; auto settings = m_settings; QMetaObject::invokeMethod(m_service, [this, settings] { m_service->saveSettings(settings); }); emit changed(); }
+void Controller::saveSetting(QString key, QJsonValue value)
+{
+    if (m_settings[key] == value) return;
+    m_settings[key] = value; m_pendingSettings[key] = value;
+    const QJsonObject patch{{key,value}};
+    QMetaObject::invokeMethod(m_service, [this, patch] { m_service->saveSettings(patch); });
+    emit changed();
+}
 void Controller::feedback(QString message) { m_message = std::move(message); emit changed(); }
 void Controller::setFilter(QString value) { if (m_filter == value) return; m_filter = std::move(value); m_itemsCacheValid = false; emit itemsChanged(); emit changed(); }
 void Controller::setTheme(QString value) { if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value); }
@@ -225,8 +267,55 @@ void Controller::setLinkEnabled(bool value) { saveSetting("linkEnabled", value);
 void Controller::setAlwaysOnTop(bool value) { saveSetting("alwaysOnTop", value); if (m_window) m_desktop.setAlwaysOnTop(m_window, value); }
 void Controller::setReducedMotion(bool value) { saveSetting("reducedMotion", value); }
 void Controller::toggle() { if (m_expanded) collapse(); else show(); }
-void Controller::show() { m_visible = true; m_expanded = true; m_dock.clear(); emit changed(); if (m_window) { m_window->show(); m_window->raise(); m_window->requestActivate(); } QMetaObject::invokeMethod(m_service, &Service::refresh); }
-void Controller::collapse() { if (m_picking) { cancelPick(); return; } m_expanded = false; m_settingsOpen = false; emit changed(); }
+void Controller::alignWindow()
+{
+    // QML must apply the new panel/tab size before the native adapter aligns
+    // it. In particular, expanding a right/bottom tab must grow inward.
+    QTimer::singleShot(0, this, [this] {
+        if (!m_window) return;
+        if (!m_dock.isEmpty()) m_desktop.dock(m_window, m_dock);
+        else m_desktop.restoreGeometry(m_window, m_window->geometry());
+    });
+}
+void Controller::setNativeDragHover(bool hovering)
+{
+    if (m_nativeDragHover == hovering) return;
+    m_nativeDragHover = hovering; emit nativeDragHoverChanged();
+}
+void Controller::updateFullscreenPolicy()
+{
+    m_fullscreen.setCollapsed(!m_expanded);
+    m_fullscreen.setRequestedVisible(m_visible);
+}
+void Controller::show()
+{
+    const bool opening = !m_expanded;
+    m_visible = true; m_expanded = true; m_focusPanel = true;
+    updateFullscreenPolicy();
+    emit changed();
+    if (m_window) { m_window->show(); m_window->raise(); m_window->requestActivate(); }
+    if (opening) alignWindow();
+    QMetaObject::invokeMethod(m_service, &Service::refresh);
+}
+void Controller::peek()
+{
+    if (m_expanded || m_dock.isEmpty() || m_picking) return;
+    m_visible = true; m_expanded = true; m_focusPanel = false;
+    updateFullscreenPolicy();
+    emit changed();
+    if (m_window) m_window->show();
+    alignWindow();
+    QMetaObject::invokeMethod(m_service, &Service::refresh);
+}
+void Controller::collapse()
+{
+    if (m_picking) { cancelPick(); return; }
+    const bool closing = m_expanded;
+    m_expanded = false; m_focusPanel = false; m_settingsOpen = false;
+    updateFullscreenPolicy();
+    emit changed();
+    if (closing) alignWindow();
+}
 void Controller::acceptDrop(QVariant urls, QString text, QString html)
 {
     QJsonArray inputs;
@@ -384,9 +473,25 @@ void Controller::cancelJob() { m_peers.cancel(); }
 void Controller::confirmPick() { auto ids = selectedIds(); QMetaObject::invokeMethod(m_service,[this,ids] { m_service->completePick(ids); }); }
 void Controller::cancelPick() { QMetaObject::invokeMethod(m_service,&Service::cancelPick); }
 void Controller::showSettings() { m_settingsOpen = true; show(); }
-void Controller::nativeMove() { if (m_window) m_desktop.move(m_window); }
+void Controller::nativeMove()
+{
+    if (!m_window) return;
+    if (!m_dock.isEmpty()) {
+        m_dock.clear(); saveSetting("dockEdge",QString()); emit changed();
+        // Let the compositor own the ensuing gesture. A deferred restore here
+        // would reposition the surface while its native move is in progress.
+    }
+    m_desktop.move(m_window);
+}
 void Controller::nativeResize(int edges) { if (m_window) m_desktop.resize(m_window,edges); }
-void Controller::dock(QString edge) { if (!QStringList{"","left","right","top","bottom"}.contains(edge)) return; m_dock = edge; saveSetting("dockEdge",edge); m_desktop.dock(m_window,edge); }
+void Controller::dock(QString edge)
+{
+    if (!QStringList{"","left","right","top","bottom"}.contains(edge)) return;
+    m_dock = edge;
+    saveSetting("dockEdge",edge);
+    emit changed();
+    alignWindow();
+}
 void Controller::saveGeometry(int x,int y,int w,int h) {
     QJsonObject geometry{{"x",x},{"y",y},{"width",m_expanded ? w : m_settings["geometry"].toObject()["width"].toInt(640)},{"height",m_expanded ? h : m_settings["geometry"].toObject()["height"].toInt(490)}};
     if (m_window && m_window->screen()) geometry["screen"] = m_window->screen()->name();

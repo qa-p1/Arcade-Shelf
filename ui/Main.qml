@@ -10,7 +10,7 @@ Window {
     visible: shelf.visible
     title: "Arcade Shelf"
     color: "transparent"
-    flags: Qt.Window | Qt.FramelessWindowHint | (shelf.alwaysOnTop ? Qt.WindowStaysOnTopHint : 0) | (!shelf.expanded ? Qt.WindowDoesNotAcceptFocus : 0)
+    flags: Qt.Window | Qt.FramelessWindowHint | (shelf.alwaysOnTop ? Qt.WindowStaysOnTopHint : 0) | (!shelf.focusPanel ? Qt.WindowDoesNotAcceptFocus : 0)
     minimumWidth: shelf.expanded ? 440 : dockEdge.length ? (verticalDock ? 38 : 112) : 216
     minimumHeight: shelf.expanded ? 350 : dockEdge.length ? (verticalDock ? 112 : 38) : 76
     width: shelf.expanded ? panelWidth : dockEdge.length ? (verticalDock ? 38 : 112) : 216
@@ -22,7 +22,7 @@ Window {
     readonly property bool verticalDock: dockEdge === "left" || dockEdge === "right"
     SystemPalette { id: systemPalette; colorGroup: SystemPalette.Active }
     readonly property bool dark: shelf.theme === "dark" || (shelf.theme === "system" && systemPalette.window.hslLightness < 0.5)
-    readonly property color paper: dark ? "#f5181720" : "#f5f8f7fb"
+    readonly property color paper: shelf.backdrop.active ? (dark ? "#de181720" : "#def8f7fb") : (dark ? "#f5181720" : "#f5f8f7fb")
     readonly property color raised: dark ? "#25222e" : "#ffffff"
     readonly property color tileSurface: dark ? "#211e29" : "#eeedf3"
     readonly property color hoverSurface: dark ? "#302b3c" : "#e9e5f4"
@@ -41,8 +41,8 @@ Window {
     property int settingsPage: 0
     property bool restoring: true
     property bool resizing: false
-    property bool dragHover: dropArea.containsDrag
-    property bool previousExpanded: shelf.expanded
+    property bool dragHover: dropArea.containsDrag || shelf.nativeDragHover
+    property bool previousFocusPanel: shelf.focusPanel
     property bool pulsing: false
     readonly property int selectedCount: shelf.selectedCount
 
@@ -107,6 +107,8 @@ Window {
     onWidthChanged: if (!restoring && shelf.expanded) { panelWidth = width; geometryTimer.restart(); }
     onHeightChanged: if (!restoring && shelf.expanded) { panelHeight = height; geometryTimer.restart(); }
     onClosing: function(close) { close.accepted = false; shelf.collapse(); }
+    onDockEdgeChanged: if (!dockEdge.length) edgeHoverTimer.stop()
+    onDarkChanged: if (shelf.backdrop) shelf.backdrop.setDark(dark)
     Component.onCompleted: {
         const geometry = shelf.restoreGeometry();
         panelWidth = Math.max(440, Number(geometry.width || 640));
@@ -114,23 +116,43 @@ Window {
         if (geometry.x !== undefined) x = Number(geometry.x);
         if (geometry.y !== undefined) y = Number(geometry.y);
         restoring = false;
+        if (shelf.backdrop) shelf.backdrop.setDark(dark);
     }
     Timer { id: geometryTimer; interval: 250; onTriggered: window.savePosition() }
     Connections {
         target: shelf
         function onChanged() {
-            const opened = shelf.expanded && !window.previousExpanded;
-            window.previousExpanded = shelf.expanded;
-            if (opened) {
-                if (window.dockEdge.length) shelf.dock("");
+            const focusing = shelf.focusPanel && !window.previousFocusPanel;
+            window.previousFocusPanel = shelf.focusPanel;
+            if (focusing) {
                 window.requestActivate(); interaction.forceActiveFocus();
             }
+            if (shelf.focusPanel || !shelf.expanded) peekDismissTimer.stop();
             window.cursorIndex = Math.min(window.cursorIndex, shelf.items.length - 1);
             if (shelf.analysisResult && Object.keys(shelf.analysisResult).length > 0 && !analysisDialog.visible) analysisDialog.open();
         }
         function onPulse() { window.pulsing=true; pulseTimer.restart(); }
+        function onNativeDragHoverChanged() {
+            if (shelf.nativeDragHover) {
+                peekDismissTimer.stop();
+                if (window.dockEdge.length && !shelf.expanded) edgeHoverTimer.restart();
+            } else {
+                edgeHoverTimer.stop();
+                if (shelf.expanded && !shelf.focusPanel && !surfaceHover.hovered && !dropArea.containsDrag) peekDismissTimer.restart();
+            }
+        }
     }
     Timer { id: pulseTimer; interval: shelf.reducedMotion ? 900 : 650; onTriggered: window.pulsing=false }
+    Timer {
+        id: edgeHoverTimer
+        interval: 260
+        onTriggered: if (window.dockEdge.length && !shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)) shelf.peek()
+    }
+    Timer {
+        id: peekDismissTimer
+        interval: 320
+        onTriggered: if (shelf.expanded && !shelf.focusPanel && !surfaceHover.hovered && !window.dragHover) shelf.collapse()
+    }
 
     component IconButton: ShelfButton {
         foreground: window.ink; hoverSurface: window.hoverSurface; accentColor: window.accent
@@ -242,6 +264,16 @@ Window {
         // initiate ordinary file-manager drag transfers reliably on Wayland.
         Rectangle {
             id: shell
+            function updateBackdrop() {
+                if (!shelf.backdrop) return;
+                shelf.backdrop.setRegion(Qt.rect(x,y,width,height),radius);
+            }
+            Component.onCompleted: updateBackdrop()
+            onXChanged: updateBackdrop()
+            onYChanged: updateBackdrop()
+            onWidthChanged: updateBackdrop()
+            onHeightChanged: updateBackdrop()
+            onRadiusChanged: updateBackdrop()
             anchors.fill: parent
             anchors.margins: window.dockEdge.length ? 0 : 6
             radius: shelf.expanded ? 19 : window.dockEdge.length ? 11 : 24
@@ -251,6 +283,13 @@ Window {
             clip: true
             Behavior on radius { NumberAnimation { duration: window.motion } }
             Behavior on border.color { ColorAnimation { duration: window.motion } }
+            HoverHandler {
+                id: surfaceHover
+                onHoveredChanged: {
+                    if (!hovered && shelf.expanded && !shelf.focusPanel && !window.dragHover) peekDismissTimer.restart();
+                    else peekDismissTimer.stop();
+                }
+            }
 
             Rectangle {
                 anchors.fill: parent
@@ -273,7 +312,9 @@ Window {
                     property real startY: 0
                     property bool moved: false
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onPressed: function(event) { startX=event.x; startY=event.y; moved=false; }
+                    onEntered: if (window.dockEdge.length && !shelf.expanded) edgeHoverTimer.restart()
+                    onExited: edgeHoverTimer.stop()
+                    onPressed: function(event) { edgeHoverTimer.stop();startX=event.x; startY=event.y; moved=false; }
                     onPositionChanged: function(event) {
                         if(pressed && !moved && Math.abs(event.x-startX)+Math.abs(event.y-startY)>7) {
                             moved=true; shelf.nativeMove();
@@ -571,8 +612,17 @@ Window {
                 objectName: "shelfDropArea"
                 anchors.fill: parent
                 enabled: !shelf.picking
-                onEntered: function(drag) { drag.accepted = drag.hasUrls || drag.hasText || drag.hasHtml; }
+                onEntered: function(drag) {
+                    drag.accepted = drag.hasUrls || drag.hasText || drag.hasHtml;
+                    peekDismissTimer.stop();
+                    if (drag.accepted && window.dockEdge.length && !shelf.expanded) edgeHoverTimer.restart();
+                }
+                onExited: {
+                    edgeHoverTimer.stop();
+                    if (shelf.expanded && !shelf.focusPanel && !surfaceHover.hovered && !shelf.nativeDragHover) peekDismissTimer.restart();
+                }
                 onDropped: function(drop) {
+                    edgeHoverTimer.stop();
                     if (!(drop.hasUrls || drop.hasText || drop.hasHtml)) return;
                     shelf.acceptDrop(drop.urls, drop.hasText ? drop.text : "", drop.hasHtml ? drop.html : "");
                     drop.acceptProposedAction();
@@ -821,6 +871,7 @@ Window {
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: window.outline; opacity: 0.6 }
             ScrollView {
+                objectName: "preferencesScroll"
                 Layout.fillWidth: true; Layout.fillHeight: true
                 contentWidth: availableWidth
                 clip: true
@@ -853,10 +904,23 @@ Window {
                         Label { text: "SHORTCUT"; font.pixelSize: 9; font.letterSpacing: 1.3; color: window.muted }
                         Field {
                             id: shortcutField
+                            objectName: "shortcutField"
+                            property bool draftDirty: false
                             Layout.fillWidth: true
-                            text: shelf.shortcut
                             placeholderText: "Ctrl+Alt+S"
-                            onEditingFinished: if(text !== shelf.shortcut) shelf.shortcut=text
+                            onTextEdited: draftDirty=true
+                            onEditingFinished: {
+                                const draft=text;
+                                if (draftDirty && draft !== shelf.shortcut) shelf.shortcut=draft;
+                                draftDirty=false;
+                            }
+                            Binding {
+                                target: shortcutField
+                                property: "text"
+                                value: shelf.shortcut
+                                when: !shortcutField.draftDirty
+                                restoreMode: Binding.RestoreNone
+                            }
                         }
                         Label { Layout.fillWidth: true; visible: shelf.shortcutWarning.length > 0; text: shelf.shortcutWarning; color: "#df8d9b"; wrapMode: Text.WordWrap; font.pixelSize: 11 }
                         Label { Layout.fillWidth: true; text: shelf.platformStatus; color: window.muted; wrapMode: Text.WordWrap; font.pixelSize: 11 }

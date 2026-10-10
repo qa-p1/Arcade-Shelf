@@ -2,6 +2,8 @@
 #include "link/Service.h"
 #include "link/PeerHub.h"
 #include "platform/Desktop.h"
+#include "platform/Backdrop.h"
+#include "platform/FullscreenGuard.h"
 #include <QObject>
 #include <QSet>
 #include <QThread>
@@ -18,6 +20,7 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantList peers READ peers NOTIFY changed)
     Q_PROPERTY(QVariantMap preferences READ preferences NOTIFY changed)
     Q_PROPERTY(QVariantMap analysisResult READ analysisResult NOTIFY changed)
+    Q_PROPERTY(QObject* backdrop READ backdrop CONSTANT)
     Q_PROPERTY(QString activeShelf READ activeShelf NOTIFY changed)
     Q_PROPERTY(QString activeName READ activeName NOTIFY changed)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY changed)
@@ -31,6 +34,8 @@ class Controller : public QObject {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY changed)
     Q_PROPERTY(int selectionRevision READ selectionRevision NOTIFY changed)
     Q_PROPERTY(bool expanded READ expanded WRITE setExpanded NOTIFY changed)
+    Q_PROPERTY(bool focusPanel READ focusPanel NOTIFY changed)
+    Q_PROPERTY(bool nativeDragHover READ nativeDragHover NOTIFY nativeDragHoverChanged)
     Q_PROPERTY(bool visible READ visible NOTIFY changed)
     Q_PROPERTY(bool settingsOpen READ settingsOpen WRITE setSettingsOpen NOTIFY changed)
     Q_PROPERTY(bool picking READ picking NOTIFY changed)
@@ -52,6 +57,7 @@ public:
     QVariantList sources() const { return m_peers.sources().toVariantList(); }
     QVariantList peers() const;
     QVariantMap preferences() const;
+    QObject *backdrop() { return &m_backdrop; }
     QVariantMap analysisResult() const { return m_analysis.toVariantMap(); }
     QString activeShelf() const { return m_active; }
     QString activeName() const;
@@ -61,12 +67,16 @@ public:
     QString shortcut() const { return m_settings["shortcut"].toString("Ctrl+Alt+S"); }
     QString shortcutWarning() const;
     QString platformStatus() const { return m_desktop.shortcutStatus(); }
-    QString dockEdge() const { return m_dock; }
+    // Preserve the user's edge while the panel is open; only the compact tab
+    // exposes it to QML. Closing the panel returns to the same edge.
+    QString dockEdge() const { return m_expanded ? QString() : m_dock; }
     int count() const { return m_items.size(); }
     int selectedCount() const { return int(m_selected.size()); }
     int selectionRevision() const { return m_selectionRevision; }
     bool expanded() const { return m_expanded; }
-    bool visible() const { return m_visible; }
+    bool focusPanel() const { return m_focusPanel; }
+    bool visible() const { return m_visible && !m_fullscreen.suppressed(); }
+    bool nativeDragHover() const { return m_nativeDragHover; }
     bool settingsOpen() const { return m_settingsOpen; }
     bool picking() const { return m_picking; }
     bool pickMultiple() const { return m_pickMultiple; }
@@ -86,6 +96,7 @@ public:
     void setReducedMotion(bool value);
     Q_INVOKABLE void toggle();
     Q_INVOKABLE void show();
+    Q_INVOKABLE void peek();
     Q_INVOKABLE void collapse();
     Q_INVOKABLE void acceptDrop(QVariant urls, QString text, QString html);
     Q_INVOKABLE void paste();
@@ -128,12 +139,16 @@ signals:
     void itemsChanged();
     void shelvesChanged();
     void pulse();
+    void nativeDragHoverChanged();
 private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void stageImage(QImage image);
     void prepareSelection();
     void saveSetting(QString key, QJsonValue value);
     void applyWindowPreferences();
+    void alignWindow();
+    void setNativeDragHover(bool hovering);
+    void updateFullscreenPolicy();
     void feedback(QString message);
     QStringList selectedIds() const;
     QJsonArray cachedContents() const;
@@ -144,6 +159,8 @@ private:
     Service *m_service;
     PeerHub m_peers;
     Desktop m_desktop;
+    Backdrop m_backdrop;
+    FullscreenGuard m_fullscreen;
     QWindow *m_window = nullptr;
     QString m_root, m_active, m_filter, m_message, m_anchor, m_dock;
     QJsonArray m_items, m_shelves;
@@ -152,10 +169,11 @@ private:
     mutable QVariantList m_itemsCache;
     mutable bool m_itemsCacheValid = false;
     QJsonArray m_dragContent;
-    QJsonObject m_settings, m_analysis;
+    QJsonObject m_settings, m_pendingSettings, m_analysis;
     QSet<QString> m_selected;
     QStringList m_pickTypes;
-    bool m_expanded = false, m_visible = true, m_settingsOpen = false, m_picking = false, m_pickMultiple = false, m_undoAvailable = false;
+    bool m_expanded = false, m_focusPanel = false, m_visible = true, m_settingsOpen = false, m_picking = false, m_pickMultiple = false, m_undoAvailable = false;
+    bool m_nativeDragHover = false;
     int m_selectionRevision = 0;
     int m_dragRevision = -1;
     double m_progress = -1;

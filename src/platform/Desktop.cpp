@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLocalSocket>
 #include <QMimeData>
@@ -45,6 +46,10 @@
 #endif
 #ifdef Q_OS_MACOS
 #include <Carbon/Carbon.h>
+#endif
+#if defined(ARCADE_SHELF_HAVE_X11) && __has_include(<xcb/xcb.h>)
+#define ARCADE_SHELF_NATIVE_XCB_EVENTS 1
+#include <xcb/xcb.h>
 #endif
 
 namespace {
@@ -329,6 +334,11 @@ struct Desktop::Native {
     QString boundTarget;
     QLocalSocket *hyprEvents = nullptr;
     QByteArray hyprEventBuffer;
+    QPointer<QWindow> movingWindow;
+    QMetaObject::Connection movingDestroyed;
+    quint64 moveGeneration = 0;
+    WId movingNativeId = 0;
+    bool moveLeftSurface = false;
 #ifdef ARCADE_SHELF_HAVE_DBUS
     QString portalSession;
     bool portalRegistered = false;
@@ -402,6 +412,7 @@ Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>(
 
 Desktop::~Desktop()
 {
+    clearMove();
     clearShortcut();
     if (qGuiApp) qGuiApp->removeNativeEventFilter(this);
 #ifdef Q_OS_MACOS
@@ -428,10 +439,72 @@ void Desktop::setShortcutStatus(const QString &message)
 bool Desktop::move(QWindow *window)
 {
     if (!window) return false;
+    clearMove();
+    d->movingWindow = window;
+    d->movingNativeId = window->winId();
+    const quint64 generation = d->moveGeneration;
+    window->installEventFilter(this);
+    d->movingDestroyed = QObject::connect(window, &QObject::destroyed, this,
+                                          [this] { clearMove(); });
     // Call from the original pointer press/move; Wayland requires its serial.
     const bool moved = window->startSystemMove();
-    if (!moved) setError(QStringLiteral("The desktop did not accept moving this window"));
+    if (!moved) {
+        if (generation == d->moveGeneration) clearMove();
+        setError(QStringLiteral("The desktop did not accept moving this window"));
+    }
+#ifdef Q_OS_MACOS
+    // Cocoa's performWindowDragWithEvent runs the native gesture synchronously.
+    // Observe the final frame on the next event turn, after Qt synchronizes it.
+    else QTimer::singleShot(0, this, [this, generation] { completeMove(generation); });
+#else
+    Q_UNUSED(generation)
+#endif
     return moved;
+}
+
+void Desktop::clearMove()
+{
+    ++d->moveGeneration;
+    if (d->movingWindow) d->movingWindow->removeEventFilter(this);
+    QObject::disconnect(d->movingDestroyed);
+    d->movingDestroyed = {};
+    d->movingWindow.clear();
+    d->movingNativeId = 0;
+    d->moveLeftSurface = false;
+}
+
+bool Desktop::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched != d->movingWindow || !event) return false;
+    switch (event->type()) {
+    case QEvent::Hide:
+    case QEvent::Close:
+        clearMove();
+        break;
+    case QEvent::KeyPress:
+        if (static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) clearMove();
+        break;
+    case QEvent::MouseButtonPress:
+        // A new gesture means any old compositor query can no longer describe
+        // the original release. Never snap from a stale or canceled move.
+        clearMove();
+        break;
+    case QEvent::Leave:
+        if (isWayland() && d->hyprland()) d->moveLeftSurface = true;
+        break;
+    case QEvent::Enter:
+        if (isWayland() && d->hyprland() && d->moveLeftSurface) {
+            const quint64 generation = d->moveGeneration;
+            d->moveLeftSurface = false;
+            QTimer::singleShot(0, this, [this, generation] { completeMove(generation); });
+        }
+        break;
+    default:
+        break;
+    }
+    // QtWayland synthesizes MouseButtonRelease immediately when xdg move
+    // starts. Do not use it as evidence that the native gesture has ended.
+    return false;
 }
 
 bool Desktop::resize(QWindow *window, int edges)
@@ -440,6 +513,7 @@ bool Desktop::resize(QWindow *window, int edges)
     if (!window || flags == Qt::Edges() || (edges & ~int(Qt::TopEdge | Qt::BottomEdge | Qt::LeftEdge | Qt::RightEdge))
         || (flags.testFlag(Qt::TopEdge) && flags.testFlag(Qt::BottomEdge))
         || (flags.testFlag(Qt::LeftEdge) && flags.testFlag(Qt::RightEdge))) return false;
+    clearMove();
     const bool resized = window->startSystemResize(flags);
     if (!resized) setError(QStringLiteral("The desktop did not accept resizing this window"));
     return resized;
@@ -453,6 +527,43 @@ QRect Desktop::clampGeometry(const QRect &geometry, const QRect &available, cons
     const QPoint position(qBound(available.left(), geometry.x(), available.right() - size.width() + 1),
                           qBound(available.top(), geometry.y(), available.bottom() - size.height() + 1));
     return QRect(position, size);
+}
+
+QString Desktop::nearestEdge(const QRect &geometry, const QRect &available, int distance)
+{
+    if (!geometry.isValid() || !available.isValid() || distance < 0) return {};
+    const std::pair<QString, qint64> candidates[] = {
+        {QStringLiteral("left"), qAbs(qint64(geometry.left()) - available.left())},
+        {QStringLiteral("right"), qAbs(qint64(geometry.right()) - available.right())},
+        {QStringLiteral("top"), qAbs(qint64(geometry.top()) - available.top())},
+        {QStringLiteral("bottom"), qAbs(qint64(geometry.bottom()) - available.bottom())}};
+    QString edge;
+    qint64 closest = qint64(distance) + 1;
+    for (const auto &candidate : candidates) {
+        const bool vertical = candidate.first == QStringLiteral("left") || candidate.first == QStringLiteral("right");
+        const bool overlaps = vertical
+            ? qint64(geometry.bottom()) >= qint64(available.top()) - distance
+                && qint64(geometry.top()) <= qint64(available.bottom()) + distance
+            : qint64(geometry.right()) >= qint64(available.left()) - distance
+                && qint64(geometry.left()) <= qint64(available.right()) + distance;
+        if (!overlaps) continue;
+        if (candidate.second < closest) { edge = candidate.first; closest = candidate.second; }
+    }
+    return edge;
+}
+
+QRect Desktop::snappedGeometry(const QRect &geometry, const QRect &available, const QString &edge)
+{
+    if (!geometry.isValid() || !available.isValid()) return geometry;
+    if (edge != QStringLiteral("left") && edge != QStringLiteral("right")
+        && edge != QStringLiteral("top") && edge != QStringLiteral("bottom")) return geometry;
+    // Edge tabs can be smaller than the expanded panel's minimum dimensions.
+    QRect result = clampGeometry(geometry, available, QSize(1, 1));
+    if (edge == QStringLiteral("left")) result.moveLeft(available.left());
+    else if (edge == QStringLiteral("right")) result.moveRight(available.right());
+    else if (edge == QStringLiteral("top")) result.moveTop(available.top());
+    else result.moveBottom(available.bottom());
+    return result;
 }
 
 // Hyprland's clients query supplies the actual compositor address. Select only
@@ -479,9 +590,40 @@ static void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QS
         });
 }
 
+void Desktop::completeMove(quint64 generation)
+{
+    if (generation != d->moveGeneration || !d->movingWindow) return;
+    const QPointer<QWindow> guard = d->movingWindow;
+    if (!guard->isVisible()) { clearMove(); return; }
+    if (!isWayland()) {
+        const QRect geometry = guard->geometry();
+        QScreen *screen = screenFor(guard, {}, geometry);
+        clearMove();
+        if (geometry.isValid()) emit moveFinished(geometry, screen ? screen->name() : QString());
+        return;
+    }
+    if (!d->hyprland()) { clearMove(); return; }
+    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard,
+        [this, guard, generation](const QJsonObject &client) {
+            if (!guard || generation != d->moveGeneration || guard != d->movingWindow) return;
+            const auto position = client.value("at").toArray();
+            const auto size = client.value("size").toArray();
+            if (position.size() != 2 || size.size() != 2) { clearMove(); return; }
+            const QRect geometry(position[0].toInt(), position[1].toInt(),
+                                 size[0].toInt(), size[1].toInt());
+            QScreen *screen = screenFor(guard, {}, geometry);
+            clearMove();
+            if (geometry.isValid())
+                emit moveFinished(geometry, screen ? screen->name() : QString());
+        }, [this, generation](const QString &) {
+            if (generation == d->moveGeneration) clearMove();
+        });
+}
+
 void Desktop::restoreGeometry(QWindow *window, const QRect &geometry, const QString &screenName)
 {
     if (!window || !geometry.isValid()) return;
+    if (d->movingWindow == window) clearMove();
     QScreen *screen = screenFor(window, screenName, geometry);
     if (!screen) return;
     window->setScreen(screen);
@@ -820,8 +962,26 @@ bool Desktop::nativeEventFilter(const QByteArray &eventType, void *message, qint
     Q_UNUSED(eventType) Q_UNUSED(result)
 #ifdef Q_OS_WIN
     const auto *event = static_cast<MSG *>(message);
+    if (event && d->movingWindow && event->hwnd == reinterpret_cast<HWND>(d->movingNativeId)) {
+        if (event->message == WM_KEYDOWN && event->wParam == VK_ESCAPE) clearMove();
+        else if (event->message == WM_EXITSIZEMOVE) {
+            const quint64 generation = d->moveGeneration;
+            QTimer::singleShot(0, this, [this, generation] { completeMove(generation); });
+        }
+    }
     if (event && event->message == WM_HOTKEY && event->wParam == WPARAM(d->hotkeyId)) {
         emit activated(); return true;
+    }
+#elif defined(ARCADE_SHELF_NATIVE_XCB_EVENTS)
+    if (eventType == QByteArrayLiteral("xcb_generic_event_t") && message && d->movingWindow) {
+        const auto *event = static_cast<xcb_generic_event_t *>(message);
+        if ((event->response_type & 0x7f) == XCB_ENTER_NOTIFY) {
+            const auto *crossing = reinterpret_cast<const xcb_enter_notify_event_t *>(event);
+            if (crossing->event == d->movingNativeId && crossing->mode == XCB_NOTIFY_MODE_UNGRAB) {
+                const quint64 generation = d->moveGeneration;
+                QTimer::singleShot(0, this, [this, generation] { completeMove(generation); });
+            }
+        }
     }
 #else
     Q_UNUSED(message)

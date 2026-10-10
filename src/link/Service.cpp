@@ -153,7 +153,14 @@ void Service::deleteShelf(QString id) {
 }
 void Service::pinShelf(QString id, bool pin) { m_store->pinShelf(id, pin); refresh(); }
 void Service::reorderShelves(QStringList ids) { m_store->reorderShelves(ids); refresh(); }
-void Service::saveSettings(QJsonObject settings) { if (!m_store->saveSettings(settings)) emit feedback("Could not save preferences.", false); publish(); refresh(); }
+void Service::saveSettings(QJsonObject settings)
+{
+    if (!m_store->saveSettings(settings)) emit feedback("Could not save preferences.", false);
+    // Acknowledge the submitted patch before the committed snapshot. The GUI
+    // can then stop overlaying its pending values, including failed writes.
+    emit settingsSaved(settings);
+    publish(); refresh();
+}
 void Service::completePick(QStringList ids)
 {
     if (!m_picker) return;

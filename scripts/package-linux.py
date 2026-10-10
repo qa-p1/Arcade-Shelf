@@ -90,9 +90,17 @@ def main() -> int:
         executable = bundle / "bin/arcade-shelf"
         if not executable.is_file():
             raise SystemExit("Expected CMake install to create bin/arcade-shelf")
-        for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "sqldrivers", "platformthemes", "xcbglintegrations", "egldeviceintegrations", "tls"):
+        for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "platformthemes", "xcbglintegrations", "egldeviceintegrations", "tls"):
             for plugin_root in plugin_roots:
                 copy_tree(plugin_root / plugin, bundle / "plugins" / plugin)
+        # Shelf uses only SQLite. Other SDK SQL drivers link external server
+        # clients (MySQL/Mimer/PostgreSQL) that are neither needed nor bundled.
+        sqlite_dir = bundle / "plugins/sqldrivers"
+        sqlite_dir.mkdir(parents=True, exist_ok=True)
+        for plugin_root in plugin_roots:
+            sqlite_plugin = plugin_root / "sqldrivers/libqsqlite.so"
+            if sqlite_plugin.is_file():
+                shutil.copy2(sqlite_plugin, sqlite_dir / sqlite_plugin.name)
         if not (bundle / "plugins/sqldrivers/libqsqlite.so").is_file():
             raise SystemExit("Qt's QSQLITE runtime plugin is required in the bundle")
         # Only runtime modules used by Qt Quick Controls/Shelf. Qt5Compat is

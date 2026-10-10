@@ -16,6 +16,14 @@
   and reviewable shared ecosystem onboarding patches.
 - Corrected search focus, native drag-source lifetime, and rapid-add GUI overhead;
   untrusted display strings remain literal text.
+- Edge hover peeking without focus theft, inward dock expansion and persistent
+  tab return; native move-completion snapping and fullscreen capsule policies.
+- Platform backdrop adapters with explicit compositor and transparent-window
+  fallbacks; two-worker thumbnail decoding with a configurable bounded cache.
+- Protected asynchronous preference edits, storage replacement and special-file
+  guards, and preflighted Link response limits before committing additions.
+- Relocatable Linux runtime launch, required SQLite-only driver deployment,
+  per-user Windows packaging and bounded CI failure diagnostics.
 
 This milestone is not a stable release. Platform interaction and ecosystem
 verification boundaries are recorded in [status](docs/STATUS.md).

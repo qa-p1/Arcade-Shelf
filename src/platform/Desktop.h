@@ -45,8 +45,13 @@ public:
     static QMimeData *mimeDataForContents(const QJsonArray &contents);
     static QRect clampGeometry(const QRect &geometry, const QRect &available,
                                const QSize &minimum = QSize(200, 64));
+    static QString nearestEdge(const QRect &geometry, const QRect &available,
+                               int distance = 20);
+    static QRect snappedGeometry(const QRect &geometry, const QRect &available,
+                                 const QString &edge);
     static QString validateShortcut(const QString &accelerator);
 
+    bool eventFilter(QObject *watched, QEvent *event) override;
     bool nativeEventFilter(const QByteArray &eventType, void *message,
                            qintptr *result) override;
 
@@ -57,6 +62,10 @@ signals:
     void errorOccurred(const QString &message);
     void dragFinished(int action);
     void geometryObserved(const QRect &geometry, const QString &screenName);
+    // Emitted only after a native movement gesture finishes. On Wayland only
+    // supported compositor geometry is reported; synthetic Qt button release
+    // at the beginning of xdg move is never treated as completion.
+    void moveFinished(const QRect &geometry, const QString &screenName);
 
 private:
     struct Native;
@@ -64,6 +73,8 @@ private:
     void setError(const QString &message);
     void setShortcutStatus(const QString &message);
     void clearShortcut();
+    void clearMove();
+    void completeMove(quint64 generation);
     void startPortalShortcut(quint64 generation);
     void installHyprlandShortcut(quint64 generation);
 };

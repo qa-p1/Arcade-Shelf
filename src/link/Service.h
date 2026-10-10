@@ -38,6 +38,7 @@ public:
     void release();
 signals:
     void snapshot(QJsonArray shelves, QJsonArray items, QString active, QJsonObject settings, bool undoAvailable);
+    void settingsSaved(QJsonObject changes);
     void feedback(QString message, bool pulse);
     void showRequested(QString shelf, bool settings);
     void toggleRequested();

@@ -49,11 +49,18 @@ private:
     QSqlDatabase m_db;
     QHash<QString, QString> m_handoffs;
     qint64 m_handoffBytes = 0;
+    QString m_canonicalRoot;
+    QString m_canonicalObjects;
+    quint64 m_rootDevice = 0, m_rootInode = 0;
+    quint64 m_objectsDevice = 0, m_objectsInode = 0;
+    bool m_boundariesRecorded = false;
     bool exec(const QString &sql);
     bool hasShelf(const QString &id);
     QJsonObject item(const QString &id);
     bool removeOwnedPath(const QString &path);
     bool privateOwnedDirectory(const QString &path);
+    bool ownedStorageSafe() const;
+    bool ownedObjectSafe(const QString &path) const;
     QString textHandoff(const QString &id, const QByteArray &bytes, ArcadeLink::Error *error);
     QString fileHandoff(const QString &id, const QString &path, qint64 size, ArcadeLink::Error *error);
     QString writeHandoff(const QString &key, const QString &name, const QByteArray &bytes,

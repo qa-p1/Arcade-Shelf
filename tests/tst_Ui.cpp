@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QDragEnterEvent>
+#include <QDragLeaveEvent>
 #include <QDropEvent>
 #include <QFile>
 #include <QImage>
@@ -13,11 +14,13 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTcpServer>
 #include <QTest>
 #include <QThread>
+#include <QWheelEvent>
 #include <functional>
 #include <memory>
 
@@ -96,7 +99,7 @@ private slots:
             Store seed(m_profile->path()+"/shelf");
             QVERIFY(seed.open());
             auto settings = seed.settings();
-            settings["shortcut"] = ""; // Never install a global binding during tests.
+            settings["shortcut"] = ""; // No binding unless a case explicitly tests shortcut settings.
             settings["theme"] = "dark";
             QVERIFY(seed.saveSettings(settings));
         }
@@ -195,6 +198,183 @@ private slots:
         QTRY_VERIFY(m_controller->reducedMotion());
         QTest::keyClick(m_window,Qt::Key_Escape);
         QTRY_VERIFY(!m_controller->settingsOpen());
+    }
+    void shortcutDraftSurvivesIncomingAddsAndCommits() {
+        m_controller->showSettings(); settle();
+        auto *scroll=find("preferencesScroll"); QVERIFY(scroll);
+        auto *field=find("shortcutField"); QVERIFY(field);
+        const QPoint scrollPoint=point(scroll,QPointF(scroll->width()/2,scroll->height()/2));
+        const auto inViewport=[&] {
+            const QPointF position=field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2));
+            return position.y()>0 && position.y()<scroll->height();
+        };
+        // Wheel scrolling animates over several frames. Wait for the real
+        // target to enter the clipped viewport before dispatching its click.
+        for(int attempt=0;attempt<4 && !inViewport();++attempt) {
+            QTest::mouseMove(m_window,scrollPoint);
+            QWheelEvent wheel(scrollPoint,m_window->mapToGlobal(scrollPoint),{},{0,-480},Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
+            QApplication::sendEvent(m_window,&wheel);
+            QTest::qWait(220);
+        }
+        QVERIFY2(inViewport(),qPrintable(QStringLiteral("Shortcut center y=%1, preferences viewport height=%2")
+            .arg(field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2)).y()).arg(scroll->height())));
+        settle();
+        QTest::mouseClick(m_window,Qt::LeftButton,{},point(field,QPointF(field->width()/2,field->height()/2)));
+        QTRY_VERIFY(field->hasActiveFocus());
+        QTest::keyClick(m_window,Qt::Key_A,Qt::ControlModifier);
+        const QByteArray prefix="Ctrl+Alt+";
+        for(char key:prefix) QTest::keyClick(m_window,key);
+        QCOMPARE(field->property("text").toString(),QString::fromLatin1(prefix));
+        QCOMPARE(m_controller->shortcut(),QString());
+        m_controller->acceptDrop({},"Arrived while configuring the shortcut","");
+        QTRY_COMPARE(m_controller->count(),1);
+        settle();
+        QCOMPARE(field->property("text").toString(),QString::fromLatin1(prefix));
+        QVERIFY(field->hasActiveFocus());
+        QTest::keyClick(m_window,'J');
+        QTest::keyClick(m_window,Qt::Key_Return);
+        QTRY_COMPARE(m_controller->shortcut(),QString("Ctrl+Alt+J"));
+        m_controller->attachWindow(nullptr); m_engine.reset(); m_controller.reset(); m_window=nullptr;
+        Store recovered(m_profile->path()+"/shelf"); QVERIFY(recovered.open());
+        QCOMPARE(recovered.settings()["shortcut"].toString(),QString("Ctrl+Alt+J"));
+        QCOMPARE(recovered.items("quick").size(),1);
+    }
+    void rapidPreferenceEditsSurviveWorkerSnapshots() {
+        // All writes race queued imports/refreshes, then are verified through
+        // a fresh SQLite connection after the resident has fully stopped.
+        for(int index=0;index<12;++index) {
+            m_controller->acceptDrop({},QStringLiteral("Concurrent preference item %1").arg(index),"");
+            m_controller->setTheme(index%2 ? "light" : "dark");
+            m_controller->setReducedMotion(index%2);
+            m_controller->setRetention(30+index);
+            m_controller->setQuota(128+index);
+            m_controller->setPeerEnabled("arcade.look",index%2);
+            m_controller->show();
+        }
+        QTRY_COMPARE(m_controller->count(),12);
+        QTRY_COMPARE(m_controller->theme(),QString("light"));
+        QTRY_VERIFY(m_controller->reducedMotion());
+        m_controller->attachWindow(nullptr); m_engine.reset(); m_controller.reset(); m_window=nullptr;
+        Store recovered(m_profile->path()+"/shelf"); QVERIFY(recovered.open());
+        const auto settings=recovered.settings();
+        QCOMPARE(settings["theme"].toString(),QString("light"));
+        QVERIFY(settings["reducedMotion"].toBool());
+        QCOMPARE(settings["retentionDays"].toInt(),41);
+        QCOMPARE(settings["quotaBytes"].toInteger(),qint64(139)*1048576);
+        QVERIFY(settings["peers"].toObject()["arcade.look"].toBool());
+        QCOMPARE(recovered.items("quick").size(),12);
+    }
+    void dockedPanelsExpandInwardAndRestoreEveryEdge() {
+        if(QGuiApplication::platformName()=="wayland") QSKIP("Ordinary Wayland geometry is compositor managed; run native compositor validation separately.");
+        const QStringList edges={"left","right","top","bottom"};
+        for(const auto &edge:edges) {
+            m_controller->collapse(); m_controller->dock(edge); settle();
+            QTRY_COMPARE(m_controller->dockEdge(),edge);
+            const bool vertical=edge=="left"||edge=="right";
+            QTRY_COMPARE(m_window->width(),vertical ? 38 : 112);
+            QTRY_COMPARE(m_window->height(),vertical ? 112 : 38);
+            const QRect available=m_window->screen()->availableGeometry();
+            auto aligned=[&] {
+                const auto geometry=m_window->geometry();
+                if(edge=="left") return geometry.left()==available.left();
+                if(edge=="right") return geometry.right()==available.right();
+                if(edge=="top") return geometry.top()==available.top();
+                return geometry.bottom()==available.bottom();
+            };
+            QTRY_VERIFY(aligned());
+            m_controller->show(); settle();
+            QVERIFY(m_controller->focusPanel());
+            QCOMPARE(m_controller->dockEdge(),QString());
+            QTRY_VERIFY(available.contains(m_window->geometry()));
+            QTest::keyClick(m_window,Qt::Key_Escape);
+            QTRY_VERIFY(!m_controller->expanded());
+            QTRY_COMPARE(m_controller->dockEdge(),edge);
+            QTRY_COMPARE(m_window->width(),vertical ? 38 : 112);
+            QTRY_COMPARE(m_window->height(),vertical ? 112 : 38);
+            QTRY_VERIFY(aligned());
+        }
+        m_controller->dock(""); settle();
+        QTRY_COMPARE(m_controller->dockEdge(),QString());
+        QTRY_COMPARE(m_window->width(),216);
+        QTRY_COMPARE(m_window->height(),76);
+    }
+    void edgeHoverPeekCancelsAndPromotesTheSameClick() {
+        m_controller->acceptDrop({},"Select this after hovering","");
+        QTRY_COMPARE(m_controller->count(),1);
+        m_controller->dock("left"); settle();
+        QTest::mouseMove(m_window,QPoint(m_window->width()/2,m_window->height()/2));
+        QTest::qWait(100); QVERIFY(!m_controller->expanded());
+        QTest::mouseMove(m_window,QPoint(-20,-20));
+        QTest::qWait(240); QVERIFY(!m_controller->expanded());
+        QTest::mouseMove(m_window,QPoint(m_window->width()/2,m_window->height()/2));
+        QTRY_VERIFY_WITH_TIMEOUT(m_controller->expanded(),1200);
+        QVERIFY(!m_controller->focusPanel());
+        QVERIFY(m_window->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        clickItem(0);
+        QTRY_VERIFY(m_controller->focusPanel());
+        QVERIFY(m_controller->selected(m_controller->items()[0].toMap()["id"].toString()));
+        QVERIFY(!m_window->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        m_controller->collapse(); settle();
+        QTest::mouseMove(m_window,QPoint(-20,-20));
+        // Hover delivery is synchronized with a frame. Give the real leave
+        // a frame before re-entering, rather than coalescing both positions.
+        settle();
+        QTest::mouseMove(m_window,QPoint(m_window->width()/2,m_window->height()/2));
+        QTRY_VERIFY_WITH_TIMEOUT(m_controller->expanded(),1200);
+        QTest::mouseMove(m_window,QPoint(-20,-20));
+        QTRY_VERIFY_WITH_TIMEOUT(!m_controller->expanded(),1200);
+        QCOMPARE(m_controller->dockEdge(),QString("left"));
+    }
+    void nativeDragHoverPeeksWithoutTakingFocus() {
+        const QString path=writeFile("hover.txt"); QVERIFY(!path.isEmpty());
+        m_controller->dock("left"); settle();
+        QMimeData mime; mime.setUrls({QUrl::fromLocalFile(path)});
+        QDragEnterEvent enter(QPoint(19,55),Qt::CopyAction,&mime,Qt::LeftButton,{});
+        QApplication::sendEvent(m_window,&enter); QVERIFY(enter.isAccepted());
+        QTRY_VERIFY_WITH_TIMEOUT(m_controller->expanded(),1200);
+        QVERIFY(!m_controller->focusPanel());
+        QVERIFY(m_window->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        QDragLeaveEvent leave; QApplication::sendEvent(m_window,&leave);
+        QTest::mouseMove(m_window,QPoint(-20,-20));
+        QTRY_VERIFY_WITH_TIMEOUT(!m_controller->expanded(),1200);
+        QCOMPARE(m_controller->dockEdge(),QString("left"));
+    }
+    void rawImageDragHoverPeeksAndImportsWithoutTakingFocus() {
+        m_controller->dock("left"); settle();
+        QImage image(12,10,QImage::Format_ARGB32); image.fill(QColor("#bdadfc"));
+        QMimeData mime; mime.setImageData(image);
+        QDragEnterEvent enter(QPoint(19,55),Qt::CopyAction,&mime,Qt::LeftButton,{});
+        QApplication::sendEvent(m_window,&enter); QVERIFY(enter.isAccepted());
+        QVERIFY(m_controller->nativeDragHover());
+        QTRY_VERIFY_WITH_TIMEOUT(m_controller->expanded(),1200);
+        QVERIFY(!m_controller->focusPanel());
+        QVERIFY(m_window->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        QDropEvent drop(QPointF(40,180),Qt::CopyAction,&mime,Qt::LeftButton,{});
+        QApplication::sendEvent(m_window,&drop); QVERIFY(drop.isAccepted());
+        QVERIFY(!m_controller->nativeDragHover());
+        QTRY_COMPARE(m_controller->count(),1);
+        const auto imported=m_controller->items().first().toMap();
+        QVERIFY(imported["owned"].toBool());
+        QVERIFY(QFile::exists(imported["path"].toString()));
+        const QImage recovered(imported["path"].toString());
+        QCOMPARE(recovered.size(),image.size());
+        QCOMPARE(recovered.pixelColor(3,3),image.pixelColor(3,3));
+        QVERIFY(!m_controller->focusPanel());
+    }
+    void noninteractiveAddsPreserveAnotherFullscreenWindowsFocus() {
+        QQuickWindow other;
+        other.setTitle("Fullscreen focus probe");
+        other.setColor(Qt::black);
+        other.showFullScreen();
+        other.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(),static_cast<QWindow *>(&other));
+        QVERIFY(m_window->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        m_controller->acceptDrop({},"Added while another window is fullscreen","");
+        QTRY_COMPARE(m_controller->count(),1);
+        settle();
+        QCOMPARE(QGuiApplication::focusWindow(),static_cast<QWindow *>(&other));
+        QVERIFY(!m_controller->expanded());
+        QVERIFY(!m_controller->focusPanel());
     }
     void collectionPersistence() {
         m_controller->createShelf("Reference",false);

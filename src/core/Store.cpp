@@ -17,6 +17,7 @@
 #include <limits>
 
 #ifdef Q_OS_UNIX
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -78,6 +79,26 @@ PathInfo inspect(const QString &path)
     return result;
 }
 
+bool openRegular(QFile &file, QIODevice::OpenMode mode = QIODevice::ReadOnly)
+{
+#ifdef Q_OS_UNIX
+    // A peer can replace a validated path before open(). O_NONBLOCK prevents a
+    // substituted FIFO from hanging the worker; fstat validates the descriptor
+    // we actually received, and O_NOFOLLOW preserves handoff ownership rules.
+    const int access = mode.testFlag(QIODevice::WriteOnly) ? O_RDWR : O_RDONLY;
+    const int fd = ::open(QFile::encodeName(file.fileName()).constData(),access | O_CLOEXEC | O_NONBLOCK | O_NOFOLLOW);
+    if (fd < 0) return false;
+    struct stat st {};
+    if (::fstat(fd,&st) != 0 || !S_ISREG(st.st_mode) || !file.open(fd,mode,QFileDevice::AutoCloseHandle)) {
+        ::close(fd); return false;
+    }
+    return true;
+#else
+    const auto info = inspect(file.fileName());
+    return info.regular && !info.symlink && file.open(mode);
+#endif
+}
+
 QString referenceKey(QString path)
 {
 #ifdef Q_OS_WIN
@@ -96,6 +117,18 @@ QString safeName(QString name, const QString &fallback)
 }
 
 bool validName(const QString &name) { return safeString(name.trimmed()) && name.size() <= 100; }
+
+bool privateDirectoryBoundary(const QString &path)
+{
+    if (!QDir::isAbsolutePath(path) || QFileInfo(path).isSymLink()) return false;
+#ifdef Q_OS_UNIX
+    struct stat st {};
+    if (::lstat(QFile::encodeName(path).constData(),&st) != 0) return false;
+    return S_ISDIR(st.st_mode) && st.st_uid == ::getuid() && (st.st_mode & 0077) == 0;
+#else
+    return QFileInfo(path).isDir();
+#endif
+}
 
 bool isHandoff(const QJsonObject &content, const QString &path)
 {
@@ -161,6 +194,32 @@ bool Store::privateOwnedDirectory(const QString &path)
     return ArcadeLink::ensurePrivateDir(path);
 }
 
+bool Store::ownedStorageSafe() const
+{
+    // Recheck before owned I/O. A resident process can outlive a renamed data
+    // directory; an ancestor alias must not redirect cleanup into user files.
+    const QString objects = m_root + QStringLiteral("/objects");
+    if (!m_boundariesRecorded || !privateDirectoryBoundary(m_root) || !privateDirectoryBoundary(objects) ||
+        QFileInfo(m_root).canonicalFilePath() != m_canonicalRoot || QFileInfo(objects).canonicalFilePath() != m_canonicalObjects) return false;
+#ifdef Q_OS_UNIX
+    struct stat rootStat {}, objectsStat {};
+    if (::lstat(QFile::encodeName(m_root).constData(),&rootStat) != 0 || ::lstat(QFile::encodeName(objects).constData(),&objectsStat) != 0) return false;
+    if (static_cast<quint64>(rootStat.st_dev) != m_rootDevice || static_cast<quint64>(rootStat.st_ino) != m_rootInode ||
+        static_cast<quint64>(objectsStat.st_dev) != m_objectsDevice || static_cast<quint64>(objectsStat.st_ino) != m_objectsInode) return false;
+#endif
+    return true;
+}
+
+bool Store::ownedObjectSafe(const QString &path) const
+{
+    if (!ownedStorageSafe()) return false;
+    const QString objects = m_root + QStringLiteral("/objects");
+    const auto info = inspect(path);
+    const QString actualRoot = QFileInfo(objects).canonicalFilePath();
+    return info.regular && !info.symlink && beneath(objects,path) && !actualRoot.isEmpty() &&
+        beneath(actualRoot,QFileInfo(path).canonicalFilePath());
+}
+
 bool Store::open(QString *error)
 {
     if (error) error->clear();
@@ -168,6 +227,18 @@ bool Store::open(QString *error)
     const auto fail = [&](const QString &message) { if (error) *error = message; m_db.close(); return false; };
     if (!privateOwnedDirectory(m_root) || !privateOwnedDirectory(m_root + QStringLiteral("/objects")))
         return fail(QStringLiteral("Shelf storage must be a private directory owned by the current user."));
+    m_boundariesRecorded = false;
+    m_canonicalRoot = QFileInfo(m_root).canonicalFilePath();
+    m_canonicalObjects = QFileInfo(m_root + QStringLiteral("/objects")).canonicalFilePath();
+    if (m_canonicalRoot.isEmpty() || m_canonicalObjects.isEmpty()) return fail(QStringLiteral("Could not resolve Shelf storage boundaries."));
+#ifdef Q_OS_UNIX
+    struct stat rootStat {}, objectsStat {};
+    if (::lstat(QFile::encodeName(m_root).constData(),&rootStat) != 0 || ::lstat(QFile::encodeName(m_root + QStringLiteral("/objects")).constData(),&objectsStat) != 0)
+        return fail(QStringLiteral("Could not inspect Shelf storage boundaries."));
+    m_rootDevice = rootStat.st_dev; m_rootInode = rootStat.st_ino;
+    m_objectsDevice = objectsStat.st_dev; m_objectsInode = objectsStat.st_ino;
+#endif
+    m_boundariesRecorded = true;
     const auto database = m_root + QStringLiteral("/shelf.sqlite3");
     if (QFileInfo(database).isSymLink()) return fail(QStringLiteral("Refusing a symlinked Shelf database."));
     if (!m_db.isValid()) m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connection);
@@ -280,6 +351,7 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
 {
     AddResult result;
     if (!m_db.isOpen()) { result.error = failure(QStringLiteral("internal"),QStringLiteral("Storage is not open")); return result; }
+    if (!ownedStorageSafe()) { result.error = failure(QStringLiteral("internal"),QStringLiteral("Shelf storage permissions or directory boundaries changed")); return result; }
     if ((options.contains(QStringLiteral("shelf")) && (!options.value(QStringLiteral("shelf")).isString() || !safeString(options.value(QStringLiteral("shelf")).toString()))) ||
         (options.contains(QStringLiteral("reveal")) && !options.value(QStringLiteral("reveal")).isBool())) {
         result.error = failure(QStringLiteral("unsupported_input"),QStringLiteral("Invalid Shelf options")); return result;
@@ -301,6 +373,25 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
     }
     if (expanded.size() > MaxInputs) { result.error = failure(QStringLiteral("unsupported_input"),QStringLiteral("At most 1000 items can be added in one request")); return result; }
     if (expanded.isEmpty()) { result.error = failure(QStringLiteral("unsupported_input")); return result; }
+    // An array of short path values can fit the request line but overflow the
+    // response after adding stable IDs and structured skip reasons. Reject
+    // before persistence so callers never see a transport failure after commit.
+    qint64 responseBytes = 4096;
+    for (const auto &value : expanded) {
+        const auto c = value.toObject();
+        QJsonObject added{{QStringLiteral("item"),QString(35,QLatin1Char('x'))}};
+        QJsonObject skipped{{QStringLiteral("reason"),QString(32,QLatin1Char('x'))}};
+        if (c.contains(QStringLiteral("path"))) {
+            added.insert(QStringLiteral("path"),c.value(QStringLiteral("path")));
+            skipped.insert(QStringLiteral("path"),c.value(QStringLiteral("path")));
+        } else skipped.insert(QStringLiteral("type"),c.value(QStringLiteral("type")));
+        responseBytes += qMax(QJsonDocument(added).toJson(QJsonDocument::Compact).size(),
+                              QJsonDocument(skipped).toJson(QJsonDocument::Compact).size()) + 1;
+        if (responseBytes > 900 * 1024) {
+            result.error = failure(QStringLiteral("too_large"),{},ArcadeLink::MaxLineBytes);
+            return result;
+        }
+    }
     const qint64 quota = settings().value(QStringLiteral("quotaBytes")).toVariant().toLongLong();
     qint64 used = ownedBytes();
     QSqlQuery order(m_db); order.prepare(QStringLiteral("SELECT COALESCE(MAX(position),-1)+1 FROM items WHERE shelf=?")); order.addBindValue(shelf);
@@ -360,8 +451,9 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
             if (textContent) {
                 if (size > MaxText || size > quota - used) { exceeded = true; if (size > MaxText) rejectedLimit = qMin(rejectedLimit,MaxText); skip(c,QStringLiteral("quota")); continue; }
                 QFile source(path);
-                if (!source.open(QIODevice::ReadOnly)) { skip(c,QStringLiteral("unreadable")); continue; }
+                if (!openRegular(source)) { skip(c,QStringLiteral("unreadable")); continue; }
                 bytes = source.read(MaxText + 1);
+                if (source.error() != QFileDevice::NoError || bytes.size() != size) { skip(c,QStringLiteral("copy_failed")); continue; }
                 if (bytes.size() > MaxText || !source.atEnd()) { exceeded = true; rejectedLimit = qMin(rejectedLimit,MaxText); skip(c,QStringLiteral("quota")); continue; }
                 QStringDecoder decoder(QStringDecoder::Utf8); text = decoder(bytes);
                 if (decoder.hasError() || !safeString(text)) { skip(c,QStringLiteral("invalid_text")); continue; }
@@ -403,7 +495,7 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
             bool copied = out.open(QIODevice::WriteOnly) && out.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
             if (copied && textContent) copied = out.write(bytes) == bytes.size();
             else if (copied) {
-                copied = source.open(QIODevice::ReadOnly);
+                copied = openRegular(source);
                 qint64 total = 0;
                 while (copied && !source.atEnd()) {
                     const auto chunk = source.read(64 * 1024);
@@ -454,6 +546,7 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
 
 bool Store::removeOwnedPath(const QString &path)
 {
+    if (!ownedStorageSafe()) return false;
     const QString objects = m_root + QStringLiteral("/objects");
     if (!beneath(objects,path)) return false;
     const QString relative = QDir(objects).relativeFilePath(path);
@@ -466,6 +559,7 @@ bool Store::removeOwnedPath(const QString &path)
 
 bool Store::remove(QStringList ids)
 {
+    if (!ownedStorageSafe()) return false;
     if (!m_db.transaction()) return false;
     QStringList paths;
     for (const auto &id : QSet<QString>(ids.begin(),ids.end())) {
@@ -497,7 +591,7 @@ bool Store::renameShelf(QString id, QString name)
 
 bool Store::deleteShelf(QString id)
 {
-    if (id == QStringLiteral("quick") || !hasShelf(id) || !m_db.transaction()) return false;
+    if (!ownedStorageSafe() || id == QStringLiteral("quick") || !hasShelf(id) || !m_db.transaction()) return false;
     QStringList paths;
     for (const auto &v : items(id)) { const auto i = v.toObject(); if (i.value(QStringLiteral("owned")).toBool()) paths.append(i.value(QStringLiteral("path")).toString()); }
     if (activeShelf() == id && !setActiveShelf(QStringLiteral("quick"))) { m_db.rollback(); return false; }
@@ -548,9 +642,7 @@ QString Store::textHandoff(const QString &id, const QByteArray &bytes, ArcadeLin
 QString Store::fileHandoff(const QString &id, const QString &path, qint64 size, ArcadeLink::Error *error)
 {
     const auto info = inspect(path);
-    const QString objects = m_root + QStringLiteral("/objects");
-    const auto actualRoot = QFileInfo(objects).canonicalFilePath();
-    if (!info.regular || info.symlink || !beneath(objects,path) || actualRoot.isEmpty() || !beneath(actualRoot,QFileInfo(path).canonicalFilePath())) {
+    if (!ownedObjectSafe(path)) {
         if (error) *error = failure(QStringLiteral("unsupported_input"));
         return {};
     }
@@ -563,10 +655,24 @@ QString Store::writeHandoff(const QString &key, const QString &name, const QByte
                            const QString &source, qint64 size, ArcadeLink::Error *error)
 {
     const auto handoff = ArcadeLink::Locations::discover().handoff;
+    if (!privateOwnedDirectory(handoff)) {
+        if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Could not create a private handoff"));
+        return {};
+    }
     const QString cached = m_handoffs.value(key);
     if (!cached.isEmpty() && beneath(handoff,cached) && inspect(cached).regular && !QFileInfo(cached).isSymLink()) {
+        const QString actualRoot = QFileInfo(handoff).canonicalFilePath();
+        if (!privateDirectoryBoundary(QFileInfo(cached).absolutePath()) || actualRoot.isEmpty() || !beneath(actualRoot,QFileInfo(cached).canonicalFilePath())) {
+            if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("An owned handoff directory boundary changed"));
+            return {};
+        }
         QFile marker(QFileInfo(cached).absolutePath() + QStringLiteral("/.arcade-shelf"));
-        if (marker.open(QIODevice::ReadWrite)) marker.setFileTime(QDateTime::currentDateTimeUtc(),QFileDevice::FileModificationTime);
+        const QByteArray expected = QByteArray("arcade.shelf\n") + key.toUtf8() + '\n' + name.toUtf8() + '\n';
+        if (!openRegular(marker,QIODevice::ReadWrite) || marker.read(4096) != expected ||
+            !marker.setFileTime(QDateTime::currentDateTimeUtc(),QFileDevice::FileModificationTime)) {
+            if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Could not renew the owned handoff lifetime"));
+            return {};
+        }
         return cached;
     }
     const qint64 quota = settings().value(QStringLiteral("quotaBytes")).toVariant().toLongLong();
@@ -587,7 +693,7 @@ QString Store::writeHandoff(const QString &key, const QString &name, const QByte
     bool copied = f.open(QIODevice::WriteOnly) && f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     if (copied && source.isEmpty()) copied = f.write(bytes) == bytes.size();
     else if (copied) {
-        QFile input(source); copied = input.open(QIODevice::ReadOnly); qint64 total = 0;
+        QFile input(source); copied = openRegular(input); qint64 total = 0;
         while (copied && !input.atEnd()) {
             const auto chunk = input.read(64 * 1024);
             if (chunk.isEmpty() && input.error() != QFileDevice::NoError) { copied = false; break; }
@@ -637,8 +743,14 @@ QJsonArray Store::exportItems(QStringList ids, QStringList types, bool multiple,
         if (type == QStringLiteral("folder/reference")) { outputs.append(QJsonObject{{QStringLiteral("type"),type},{QStringLiteral("path"),path}}); continue; }
         QString text = i.value(QStringLiteral("text")).toString();
         if (!path.isEmpty()) {
-            QFile f(path); if (!f.open(QIODevice::ReadOnly) || f.size() > MaxText) continue;
-            QStringDecoder decoder(QStringDecoder::Utf8); text = decoder(f.readAll()); if (decoder.hasError()) continue;
+            if (!ownedObjectSafe(path)) {
+                if (error) *error = failure(QStringLiteral("unsupported_input"));
+                return {};
+            }
+            QFile f(path); if (!openRegular(f) || f.size() > MaxText) continue;
+            const auto content = f.read(MaxText + 1);
+            if (f.error() != QFileDevice::NoError || content.size() > MaxText || !f.atEnd()) continue;
+            QStringDecoder decoder(QStringDecoder::Utf8); text = decoder(content); if (decoder.hasError()) continue;
         }
         const QString html = type == QStringLiteral("text/rich") ? i.value(QStringLiteral("html")).toString() : QString();
         QJsonObject c{{QStringLiteral("type"),type}};
@@ -686,6 +798,7 @@ bool Store::cleanup()
 {
     // One startup listing, never idle polling. Remove only Shelf's generated object IDs.
     const QString objects = m_root + QStringLiteral("/objects");
+    if (!ownedStorageSafe()) return false;
     QSet<QString> referenced;
     QSqlQuery q(m_db); q.prepare(QStringLiteral("SELECT path FROM items WHERE owned=1 AND path<>''"));
     if (!q.exec()) return false;
@@ -709,7 +822,7 @@ bool Store::cleanup()
     for (const auto &d : QDir(handoff).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         if (d.isSymLink() || !QRegularExpression(QStringLiteral("^[0-9a-f]{32}$")).match(d.fileName()).hasMatch()) continue;
         QFile marker(d.absoluteFilePath() + QStringLiteral("/.arcade-shelf"));
-        if (QFileInfo(marker).isSymLink() || !marker.open(QIODevice::ReadOnly)) continue;
+        if (!openRegular(marker)) continue;
         const auto ownership = marker.read(4096);
         const auto fields = ownership.split('\n');
         if (fields.value(0) != QByteArray("arcade.shelf")) continue;

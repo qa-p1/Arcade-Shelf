@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QSvgRenderer>
 #include <QPainter>
+#include <QImageReader>
 
 int main(int argc, char **argv)
 {
@@ -35,6 +36,9 @@ int main(int argc, char **argv)
         QTextStream(stderr) << "Shelf uses resident background handling; --arcade-invoke is not supported.\n"; return 2;
     }
     QApplication app(argc,argv);
+    // Cap intermediate allocations even for image formats whose decoders do
+    // not support native scaled reads. Thumbnail workers are separately bounded.
+    QImageReader::setAllocationLimit(64);
     app.setQuitOnLastWindowClosed(false);
     app.setDesktopFileName("arcade.shelf");
     QQuickStyle::setStyle("Basic");
@@ -77,7 +81,13 @@ int main(int argc, char **argv)
     if (parser.isSet("background")) controller.start();
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("shelf",&controller);
-    engine.addImageProvider("thumb",new Shelf::ThumbnailProvider);
+    auto *thumbnails = new Shelf::ThumbnailProvider;
+    engine.addImageProvider("thumb",thumbnails);
+    QObject::connect(&controller,&Shelf::Controller::changed,&engine,[thumbnails,&controller] {
+        const auto preferences = controller.preferences();
+        if (preferences.contains("thumbnailQuotaBytes"))
+            thumbnails->setCacheLimitBytes(preferences.value("thumbnailQuotaBytes").toLongLong());
+    });
     QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{ QCoreApplication::exit(1); },Qt::QueuedConnection);
     engine.loadFromModule("ArcadeShelf","Main");
     if (engine.rootObjects().isEmpty()) return 1;
@@ -94,7 +104,11 @@ int main(int argc, char **argv)
     menu.addAction("Restart Arcade Shelf",&app,[&] {
         QStringList successor = parser.isSet("background") ? QStringList{"--background"} : QStringList{"--show"};
         successor << "--wait-for-exit" << QString::number(QCoreApplication::applicationPid());
-        QProcess::startDetached(ArcadeLink::executablePath(),successor);
+        if (!QProcess::startDetached(ArcadeLink::executablePath(),successor)) {
+            qWarning("Could not start the replacement Shelf process; keeping this instance running.");
+            tray.showMessage("Arcade Shelf","Could not restart. This Shelf instance is still running.",QSystemTrayIcon::Warning);
+            return;
+        }
         app.quit();
     });
     menu.addSeparator(); menu.addAction("Quit Arcade Shelf",&app,&QCoreApplication::quit);

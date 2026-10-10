@@ -15,13 +15,16 @@ the vendored Arcade Link Qt module supplies frozen v1 IPC and discovery.
 | `src/link/PeerHub.*` | Cached discovery and capability offers; off-thread peer calls |
 | `src/link/ShelfInvoke.*` | App-owned bounded invocation adapter over Link's wire/authentication |
 | `src/platform/Desktop.*` | Native drag, move/resize, reveal, placement, shortcuts and opt-in login startup |
+| `src/platform/Backdrop.*`, `FullscreenGuard.*` | Native system materials and event-driven passive-capsule fullscreen policy |
 | `src/ThumbnailProvider.*` | Asynchronous scaled images and a bounded memory cache |
 | `ui/` | Capsule, panel, collections, menus, picker, preferences and accessible interaction |
 
 The GUI thread renders and handles gestures. One event-loop worker owns Store
 and the two local servers. Another event-loop worker owns the watched registry.
-A temporary invocation thread handles one active peer call; thumbnail work uses
-Qt's thread pool only when images are requested. No discovery, filesystem scan,
+A temporary invocation thread handles one active peer call; thumbnails use a
+dedicated pool of at most two workers, created on demand and expired after five
+seconds. Its cache honors `thumbnailQuotaBytes` (64 MiB by default; zero disables
+the cache), separately from Qt Quick textures. No discovery, filesystem scan,
 or clipboard polling timer runs while idle. A cancellation timer exists only
 while an interactive picker is outstanding.
 
@@ -39,6 +42,9 @@ invisible controls and repeated JSON-to-variant conversion after rapid additions
 
 Content names, plain text, URLs, and peer messages render as literal text.
 They cannot opt into Qt's automatic rich-text/image loading by containing markup.
+Preference edits are sent as individual patches. Pending values remain overlaid
+until the storage worker acknowledges each patch, preventing older snapshots
+from overwriting a newer edit.
 
 ## Data model and recovery
 
@@ -60,6 +66,12 @@ profile. Atomic file writes precede the metadata commit; startup recovery remove
 unreferenced Shelf-owned objects. Removal deletes only generated owned objects.
 It never deletes an original reference. Startup retention applies to temporary
 collections, excluding pinned collections.
+Owned I/O rechecks the original canonical directory boundaries and Unix directory
+identities, so renamed or substituted storage cannot redirect cleanup elsewhere.
+Unix owned-file reads use nonblocking descriptors and verify regular files before
+reading. Additions preflight the complete structured reply before committing;
+a batch whose result cannot fit Link's envelope returns `too_large` without a
+partial hidden commit.
 
 Exported owned data receives a reusable private 24-hour handoff. This keeps an
 external file copy valid after the user removes an item. Handoff cleanup checks
@@ -85,9 +97,10 @@ part of the real-desktop validation checklist.
 
 On other Wayland compositors, native movement and MIME transfer remain available;
 absolute restore, forced edge position, and forced topmost behavior remain under
-compositor control. The UI reports that limitation. Transparency is implemented;
-there is no app-owned blur adapter in this milestone. Native blur depends on
-compositor settings.
+compositor control. The UI reports that limitation. Linux blur remains compositor
+controlled. macOS uses a noninteractive system material behind Qt's original
+content view; Windows preserves the transparent capsule when the official DWM
+backdrop cannot apply to its layered surface. See [native surface details](NATIVE_SURFACES.md).
 
 X11, Windows, and macOS use Qt's native toplevel movement, resizing, stacking,
 and drag backends. Monitor restore is clamped to available geometry. Global

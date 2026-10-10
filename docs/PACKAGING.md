@@ -86,7 +86,7 @@ packaging changes only its installed copy's runtime search path.
 | Asset | Size | Validation |
 |---|---:|---|
 | `dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz` | 63,289,608 bytes | 145 copied dynamic libraries; clean registered-ELF startup and full packaged process suite passed |
-| Windows per-user `.exe` | Not built in this Linux workspace | NSIS/windeployqt scripts and CI implemented; native run pending |
+| Windows per-user `.exe` | Built by Windows CI | `fadd592` compiled, tested, packaged and smoked successfully; uploaded as a development artifact |
 | macOS `.dmg` | Not built in this Linux workspace | macdeployqt/hdiutil scripts and CI implemented; native run pending |
 
 Linux archive SHA-256:
@@ -130,7 +130,17 @@ for snapshot `a41a4ed` failed in Qt installation before compilation. The
 for `15a0af1` compiled on Linux, Windows and macOS, then failed validation or
 packaging in all three jobs. No successful end-to-end CI run is claimed.
 The [repair run](https://github.com/qa-p1/Arcade-Shelf/actions/runs/38024585867)
-for `fadd592` was in progress when this evidence was recorded.
+for `fadd592` completed: the Windows job passed compilation, immutable-vendor
+checks, CTest, metadata-generator tests, NSIS packaging, packaged executable
+smoke, nightly metadata generation and artifact upload. Its
+[development artifact](https://github.com/qa-p1/Arcade-Shelf/actions/runs/38024585867/artifacts/11660007845)
+ZIP is 53,864,461 bytes with archive digest
+`sha256:fc44f42db52ce467628002f86d4489820575ec6bee232384199e47d5bc3b27ce`.
+This digest identifies the uploaded ZIP, not the enclosed installer. Native
+interactive Windows drag-and-drop was not exercised. Linux passed both CTest
+phases and failed its package step; macOS compiled and failed one Store test
+whose nested path exceeded the OS limit. These failures are being corrected;
+that repair run is not an all-platform success.
 
 The workflow selects Linux's `linux_gcc_64` archive and only the optional
 `qtimageformats` module; QtSvg is included in Qt essentials. The Qt installer

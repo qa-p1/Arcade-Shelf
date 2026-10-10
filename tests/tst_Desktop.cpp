@@ -4,9 +4,11 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <QWindow>
 #include <QtTest>
 #include <memory>
 
@@ -128,6 +130,65 @@ private slots:
                  QRect(-480, 480, 480, 400));
         QCOMPARE(Desktop::clampGeometry(QRect(-3000, -3000, 6000, 6000), leftMonitor), leftMonitor);
         QCOMPARE(Desktop::clampGeometry(QRect(40, 40, 10, 10), QRect(0, 0, 100, 50)), QRect(0, 0, 100, 50));
+    }
+
+    void edgeThresholdUsesLogicalCoordinatesOnEachMonitor()
+    {
+        const QRect leftMonitor(-1920, -200, 1920, 1080);
+        QCOMPARE(Desktop::nearestEdge(QRect(-1900, 0, 320, 160), leftMonitor, 20), QStringLiteral("left"));
+        QVERIFY(Desktop::nearestEdge(QRect(-1899, 0, 320, 160), leftMonitor, 20).isEmpty());
+        QCOMPARE(Desktop::nearestEdge(QRect(-340, 0, 320, 160), leftMonitor, 20), QStringLiteral("right"));
+        QCOMPARE(Desktop::nearestEdge(QRect(-800, -182, 320, 160), leftMonitor), QStringLiteral("top"));
+        QCOMPARE(Desktop::nearestEdge(QRect(-800, 701, 320, 160), leftMonitor), QStringLiteral("bottom"));
+        QCOMPARE(Desktop::nearestEdge(QRect(-1920, -200, 320, 160), leftMonitor), QStringLiteral("left"));
+        QVERIFY(Desktop::nearestEdge(QRect(-1920, 5000, 320, 160), leftMonitor).isEmpty());
+        QVERIFY(Desktop::nearestEdge(QRect(200, 100, 320, 160), leftMonitor).isEmpty());
+        const QRect scaledMonitor(0, 0, 1280, 720); // Qt geometry is logical, independent of physical DPI.
+        QCOMPARE(Desktop::nearestEdge(QRect(945, 150, 320, 160), scaledMonitor), QStringLiteral("right"));
+        QVERIFY(Desktop::nearestEdge(QRect(500, 300, 320, 160), scaledMonitor).isEmpty());
+        QVERIFY(Desktop::nearestEdge(QRect(), scaledMonitor).isEmpty());
+        QVERIFY(Desktop::nearestEdge(QRect(0, 0, 320, 160), scaledMonitor, -1).isEmpty());
+    }
+
+    void snappingPreservesTabsAndClampsAvailableBounds()
+    {
+        const QRect available(-1920, -200, 1920, 1080);
+        QCOMPARE(Desktop::snappedGeometry(QRect(-1000, -150, 28, 92), available, QStringLiteral("left")),
+                 QRect(-1920, -150, 28, 92));
+        QCOMPARE(Desktop::snappedGeometry(QRect(-1000, -150, 320, 160), available, QStringLiteral("right")),
+                 QRect(-320, -150, 320, 160));
+        QCOMPARE(Desktop::snappedGeometry(QRect(-1000, 700, 320, 160), available, QStringLiteral("top")),
+                 QRect(-1000, -200, 320, 160));
+        QCOMPARE(Desktop::snappedGeometry(QRect(-1000, -150, 320, 160), available, QStringLiteral("bottom")),
+                 QRect(-1000, 720, 320, 160));
+        QCOMPARE(Desktop::snappedGeometry(QRect(-2100, 800, 6000, 6000), available, QStringLiteral("right")), available);
+        const QRect original(-1000, -150, 28, 92);
+        QCOMPARE(Desktop::snappedGeometry(original, available, QStringLiteral("invalid")), original);
+        QCOMPARE(Desktop::snappedGeometry(original, QRect(), QStringLiteral("left")), original);
+    }
+
+    void rejectedMoveAndSyntheticReleaseNeverComplete()
+    {
+        // The offscreen backend rejects native movement. A failed start and
+        // Wayland-like synthetic release must not leave a pending snap.
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen")
+            && QGuiApplication::platformName() != QStringLiteral("minimal"))
+            QSKIP("This regression requires an offscreen backend that rejects native movement");
+        Desktop desktop;
+        QWindow window;
+        window.resize(300, 180);
+        window.show();
+        QSignalSpy finished(&desktop, &Desktop::moveFinished);
+        QVERIFY(!desktop.move(nullptr));
+        QVERIFY(!desktop.move(&window));
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(20, 20), QPointF(20, 20),
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&window, &release);
+        QEvent leave(QEvent::Leave), enter(QEvent::Enter);
+        QCoreApplication::sendEvent(&window, &leave);
+        QCoreApplication::sendEvent(&window, &enter);
+        QCoreApplication::processEvents();
+        QCOMPARE(finished.count(), 0);
     }
 
     void shortcutValidationProtectsStandardClipboardShortcuts()

@@ -1,15 +1,20 @@
 #include "core/Store.h"
+#include <QCoreApplication>
 #include <QDir>
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUuid>
 
 #ifdef Q_OS_UNIX
+#include <atomic>
+#include <cstdio>
+#include <thread>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -22,6 +27,17 @@ QString writeFile(const QString &path,const QByteArray &bytes = QByteArray("orig
     QDir().mkpath(QFileInfo(path).absolutePath());
     QFile f(path); if (!f.open(QIODevice::WriteOnly) || f.write(bytes) != bytes.size()) return {};
     f.close(); return path;
+}
+QString longDirectory(QString path,int targetBytes = 930)
+{
+    int level = 0;
+    while (path.toUtf8().size() < targetBytes) {
+        const int length = qMin(180,targetBytes - static_cast<int>(path.toUtf8().size()) - 1);
+        if (length <= 0) break;
+        path += "/" + QString(length,QChar('a' + (level++ % 26)));
+        if (!QDir().mkdir(path)) return {};
+    }
+    return path;
 }
 QJsonObject file(const QString &path,const QString &type = QStringLiteral("file/any"))
 {
@@ -41,6 +57,53 @@ bool setDatabaseValue(const QString &root,const QString &sql)
     }
     QSqlDatabase::removeDatabase(name); return ok;
 }
+
+#ifdef Q_OS_UNIX
+int unsafeStagingProbe()
+{
+    QTemporaryDir d; if (!d.isValid()) return 10;
+    qputenv("ARCADE_HOME",(d.path() + "/arcade").toUtf8());
+    const auto handoff = ArcadeLink::Locations::discover().handoff;
+    if (!ArcadeLink::ensurePrivateDir(handoff)) return 11;
+    const auto foreign = handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+    if (!ArcadeLink::ensurePrivateDir(foreign) || ::mkfifo(QFile::encodeName(foreign + "/.arcade-shelf").constData(),0600) != 0) return 12;
+    Store store(d.path() + "/store"); if (!store.open()) return 13;
+    const auto sourceDirectory = handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+    if (!ArcadeLink::ensurePrivateDir(sourceDirectory)) return 14;
+    const auto path = writeFile(sourceDirectory + "/text.txt",QByteArray(300 * 1024,'r'));
+    const auto added = store.add({QJsonObject{{"type","text/plain"},{"path",path},{"owner","arcade.clipboard"}}});
+    if (added.error.isError()) return 15;
+    ArcadeLink::Error error; const auto selected = store.exportItems(added.addedIds,{},true,&error);
+    if (error.isError()) return 16;
+    const auto output = selected.first().toObject()["path"].toString();
+    const auto marker = QFileInfo(output).absolutePath() + "/.arcade-shelf";
+    if (!QFile::rename(marker,marker + ".saved") || ::mkfifo(QFile::encodeName(marker).constData(),0600) != 0) return 17;
+    if (!store.exportItems(added.addedIds,{},true,&error).isEmpty() || !error.isError()) return 18;
+    if (!QFile::remove(marker) || !QFile::rename(marker + ".saved",marker)) return 19;
+
+    // Bound this whole probe in the parent process so an unsafe FIFO open
+    // fails the test rather than hanging the runner.
+    const auto changing = writeFile(sourceDirectory + "/changing.png",QByteArray(128 * 1024,'i'));
+    const auto alternate = sourceDirectory + "/alternate.png", temporary = sourceDirectory + "/swap";
+    if (::mkfifo(QFile::encodeName(alternate).constData(),0600) != 0) return 20;
+    const auto a = QFile::encodeName(changing), b = QFile::encodeName(alternate), t = QFile::encodeName(temporary);
+    std::atomic_bool stop = false;
+    std::thread peer([&] {
+        while (!stop.load(std::memory_order_relaxed)) {
+            if (::rename(a.constData(),t.constData()) == 0) {
+                if (::rename(b.constData(),a.constData()) == 0) ::rename(t.constData(),b.constData());
+                else ::rename(t.constData(),a.constData());
+            }
+        }
+    });
+    auto input = file(changing,"file/image"); input.insert("owner","arcade.lens");
+    QJsonArray inputs; for (int i=0;i<200;++i) inputs.append(input);
+    const auto result = store.add(inputs);
+    stop.store(true,std::memory_order_relaxed); peer.join();
+    if (result.error.isError() && result.error.code != "unsupported_input") return 21;
+    return 0;
+}
+#endif
 }
 
 class TestStore : public QObject {
@@ -312,16 +375,148 @@ private slots:
         // OS path limits are lower than the Link's JSON limit; valid deeply nested
         // references still need an aggregate envelope bound across 1000 values.
 #ifdef Q_OS_UNIX
-        QString directory = d.path();
-        for (int i=0;i<6;++i) { directory += "/" + QString(180,QChar('a' + i)); QVERIFY(QDir().mkdir(directory)); }
+        const QString directory = longDirectory(d.path()); QVERIFY(!directory.isEmpty());
         QJsonArray paths;
         for (int i=0;i<1000;++i) { const auto path = writeFile(directory + "/item_" + QString::number(i)); QVERIFY(!path.isEmpty()); paths.append(path); }
-        const auto refs = store.add({QJsonObject{{"type","file/any[]"},{"paths",paths}}}); QVERIFY(!refs.error.isError());
-        QVERIFY(store.exportItems(refs.addedIds,{},true,&error).isEmpty()); QCOMPARE(error.code,QString("too_large")); QCOMPARE(error.limit,static_cast<qint64>(ArcadeLink::MaxLineBytes));
+        QStringList referenceIds;
+        for (int offset=0;offset<1000;offset+=500) {
+            QJsonArray batch; for (int i=offset;i<offset+500;++i) batch.append(paths[i]);
+            const auto refs = store.add({QJsonObject{{"type","file/any[]"},{"paths",batch}}}); QVERIFY(!refs.error.isError()); referenceIds.append(refs.addedIds);
+        }
+        QVERIFY(store.exportItems(referenceIds,{},true,&error).isEmpty()); QCOMPARE(error.code,QString("too_large")); QCOMPARE(error.limit,static_cast<qint64>(ArcadeLink::MaxLineBytes));
 #endif
     }
 
 #ifdef Q_OS_UNIX
+    void nonRegularAndRacingHandoffsNeverBlock()
+    {
+        QProcess probe;
+        probe.start(QCoreApplication::applicationFilePath(),{"--unsafe-staging-probe"});
+        QVERIFY(probe.waitForStarted(3000));
+        if (!probe.waitForFinished(10000)) { probe.kill(); probe.waitForFinished(); QFAIL("Owned staging blocked on a non-regular or concurrently replaced handoff"); }
+        QCOMPARE(probe.exitStatus(),QProcess::NormalExit);
+        QVERIFY2(probe.exitCode() == 0,qPrintable(QString("Staging probe exit %1: %2").arg(probe.exitCode()).arg(QString::fromUtf8(probe.readAllStandardError()))));
+    }
+
+    void swappedAncestorAndDirectoryIdentityAreRejected()
+    {
+        QTemporaryDir d; const auto ancestor = d.path() + "/ancestor"; const auto root = ancestor + "/store";
+        Store store(root); QVERIFY(store.open());
+        const auto external = d.path() + "/external-ancestor";
+        QVERIFY(ArcadeLink::ensurePrivateDir(external + "/store")); QVERIFY(ArcadeLink::ensurePrivateDir(external + "/store/objects"));
+        const auto sentinel = writeFile(external + "/store/objects/it_0123456789abcdef0123456789abcdef/original","must survive"); QVERIFY(!sentinel.isEmpty());
+        QVERIFY(QDir(d.path()).rename("ancestor","saved-ancestor"));
+        QVERIFY(::symlink(QFile::encodeName(external).constData(),QFile::encodeName(ancestor).constData()) == 0);
+        QVERIFY(!QFileInfo(root).isSymLink()); QVERIFY(!QFileInfo(root + "/objects").isSymLink());
+        QVERIFY(!store.cleanup()); QVERIFY(QFileInfo::exists(sentinel));
+        QCOMPARE(store.add({text("refused after ancestor swap")}).error.code,QString("internal"));
+        QVERIFY(QFile::remove(ancestor)); QVERIFY(QDir(d.path()).rename("saved-ancestor","ancestor"));
+        QVERIFY(store.cleanup());
+        QVERIFY(QDir(root).rename("objects","saved-objects")); QVERIFY(ArcadeLink::ensurePrivateDir(root + "/objects"));
+        const auto replacement = writeFile(root + "/objects/it_fedcba9876543210fedcba9876543210/keep","different directory"); QVERIFY(!replacement.isEmpty());
+        QVERIFY(!store.cleanup()); QVERIFY(QFileInfo::exists(replacement));
+        QVERIFY(QDir(root).rename("objects","replacement-objects")); QVERIFY(QDir(root).rename("saved-objects","objects"));
+        QVERIFY(store.cleanup()); QVERIFY(QFileInfo::exists(root + "/replacement-objects/it_fedcba9876543210fedcba9876543210/keep"));
+        QVERIFY(QFileInfo::exists(sentinel));
+    }
+
+    void addReplyBudgetRejectsBeforePersistence()
+    {
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const QString directory = longDirectory(d.path()); QVERIFY(!directory.isEmpty());
+        QJsonArray paths;
+        for (int i=0;i<1000;++i) { const auto path = writeFile(directory + "/item_" + QString::number(i)); QVERIFY(!path.isEmpty()); paths.append(path); }
+        const QJsonArray inputs{QJsonObject{{"type","file/any[]"},{"paths",paths}}};
+        const QJsonObject request{{"v",1},{"id",1},{"method","invoke"},{"params",QJsonObject{{"action","shelf.add"},{"version",1},{"inputs",inputs},{"options",QJsonObject{}}}}};
+        QVERIFY(QJsonDocument(request).toJson(QJsonDocument::Compact).size() + 1 < ArcadeLink::MaxLineBytes);
+        const auto result = store.add(inputs); QCOMPARE(result.error.code,QString("too_large")); QCOMPARE(result.error.limit,static_cast<qint64>(ArcadeLink::MaxLineBytes));
+        QVERIFY(result.addedIds.isEmpty()); QVERIFY(store.items("quick").isEmpty());
+        QVERIFY(QFileInfo::exists(paths.first().toString())); QVERIFY(QFileInfo::exists(paths.last().toString()));
+        QJsonArray batch; for (int i=0;i<500;++i) batch.append(paths[i]);
+        const auto allowed = store.add({QJsonObject{{"type","file/any[]"},{"paths",batch}}}); QVERIFY(!allowed.error.isError()); QCOMPARE(allowed.addedIds.size(),500);
+        QVERIFY(QJsonDocument(allowed.result).toJson(QJsonDocument::Compact).size() < 900 * 1024);
+    }
+
+    void swappedStorageBoundariesNeverDeleteExternalFiles()
+    {
+        QTemporaryDir d; const QString root = d.path() + "/store"; Store store(root); QVERIFY(store.open());
+        const auto collection = store.createShelf("Protected"); QVERIFY(!collection.isEmpty());
+        const auto sourceDirectory = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(sourceDirectory)); const auto source = writeFile(sourceDirectory + "/capture.png","capture");
+        auto content = file(source,"file/image"); content.insert("owner","arcade.lens");
+        const auto added = store.add({content},{{"shelf",collection}}); QVERIFY(!added.error.isError()); QCOMPARE(added.addedIds.size(),1);
+        const auto staged = store.items(collection).first().toObject()["path"].toString();
+        const auto relative = QDir(root + "/objects").relativeFilePath(staged);
+        const auto external = d.path() + "/external"; QVERIFY(ArcadeLink::ensurePrivateDir(external));
+        const auto externalCopy = writeFile(external + "/" + relative,"external original"); QVERIFY(!externalCopy.isEmpty());
+        const auto orphan = writeFile(external + "/it_0123456789abcdef0123456789abcdef/sentinel","unrelated original"); QVERIFY(!orphan.isEmpty());
+        QVERIFY(QDir(root).rename("objects","objects-saved"));
+        QVERIFY(::symlink(QFile::encodeName(external).constData(),QFile::encodeName(root + "/objects").constData()) == 0);
+        QVERIFY(!store.cleanup()); QVERIFY(QFileInfo::exists(orphan)); QVERIFY(QFileInfo::exists(externalCopy));
+        QVERIFY(!store.remove(added.addedIds)); QVERIFY(!store.deleteShelf(collection));
+        QCOMPARE(store.add({text("must not be persisted")}).error.code,QString("internal"));
+        ArcadeLink::Error error; QVERIFY(store.exportItems(added.addedIds,{},true,&error).isEmpty()); QVERIFY(error.isError());
+        QCOMPARE(store.items(collection).size(),1); QVERIFY(QFileInfo::exists(externalCopy));
+        QVERIFY(QFile::remove(root + "/objects")); QVERIFY(QDir(root).rename("objects-saved","objects"));
+        QVERIFY(store.cleanup()); QVERIFY(QFileInfo::exists(staged));
+
+        QVERIFY(QDir(d.path()).rename("store","saved-store"));
+        const auto externalRoot = d.path() + "/external-root"; QVERIFY(ArcadeLink::ensurePrivateDir(externalRoot));
+        QVERIFY(ArcadeLink::ensurePrivateDir(externalRoot + "/objects"));
+        const auto rootSentinel = writeFile(externalRoot + "/objects/" + relative,"other original"); QVERIFY(!rootSentinel.isEmpty());
+        QVERIFY(::symlink(QFile::encodeName(externalRoot).constData(),QFile::encodeName(root).constData()) == 0);
+        QVERIFY(!store.remove(added.addedIds)); QVERIFY(!store.cleanup()); QVERIFY(QFileInfo::exists(rootSentinel));
+        QCOMPARE(store.add({text("still refused")}).error.code,QString("internal"));
+        QVERIFY(QFile::remove(root)); QVERIFY(QDir(d.path()).rename("saved-store","store"));
+        QVERIFY(store.remove(added.addedIds)); QVERIFY(!QFileInfo::exists(staged));
+        QVERIFY(QFileInfo::exists(rootSentinel)); QVERIFY(QFileInfo::exists(externalCopy)); QVERIFY(QFileInfo::exists(orphan));
+        QVERIFY(QFileInfo::exists(source)); QVERIFY(QDir(sourceDirectory).removeRecursively());
+    }
+
+    void swappedOwnedTextAndHandoffAliasesAreRejected()
+    {
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const auto sourceDirectory = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(sourceDirectory));
+        const auto original = writeFile(sourceDirectory + "/text.txt",QByteArray(300 * 1024,'x'));
+        const auto added = store.add({QJsonObject{{"type","text/plain"},{"path",original},{"owner","arcade.clipboard"}}}); QVERIFY(!added.error.isError());
+        const auto staged = store.items("quick").first().toObject()["path"].toString();
+        const auto external = writeFile(d.path() + "/external.txt","external private content"); QVERIFY(!external.isEmpty());
+        QVERIFY(QFile::rename(staged,staged + ".saved")); QVERIFY(::symlink(QFile::encodeName(external).constData(),QFile::encodeName(staged).constData()) == 0);
+        ArcadeLink::Error error; QVERIFY(store.exportItems(added.addedIds,{},true,&error).isEmpty()); QVERIFY(error.isError());
+        QVERIFY(QFileInfo::exists(external)); QVERIFY(QFile::remove(staged)); QVERIFY(QFile::rename(staged + ".saved",staged));
+        auto output = store.exportItems(added.addedIds,{},true,&error); QVERIFY(!error.isError()); const auto exported = output.first().toObject()["path"].toString();
+        const auto directory = QFileInfo(exported).absolutePath(); const auto savedDirectory = directory + "-saved";
+        QFile marker(directory + "/.arcade-shelf"); QVERIFY(marker.open(QIODevice::ReadOnly)); const auto ownership = marker.readAll(); marker.close();
+        const auto externalDirectory = d.path() + "/external-handoff"; QVERIFY(ArcadeLink::ensurePrivateDir(externalDirectory));
+        const auto sentinel = writeFile(externalDirectory + "/text.txt","other app content"); QVERIFY(!sentinel.isEmpty());
+        QVERIFY(!writeFile(externalDirectory + "/.arcade-shelf",ownership).isEmpty());
+        QVERIFY(QDir().rename(directory,savedDirectory));
+        QVERIFY(::symlink(QFile::encodeName(externalDirectory).constData(),QFile::encodeName(directory).constData()) == 0);
+        QVERIFY(store.exportItems(added.addedIds,{},true,&error).isEmpty()); QCOMPARE(error.code,QString("internal"));
+        QVERIFY(QFileInfo::exists(sentinel));
+        QVERIFY(QFile::remove(directory)); QVERIFY(QDir().rename(savedDirectory,directory));
+        output = store.exportItems(added.addedIds,{},true,&error); QVERIFY(!error.isError()); QCOMPARE(output.first().toObject()["path"].toString(),exported);
+        QVERIFY(QDir(directory).removeRecursively()); QVERIFY(QDir(sourceDirectory).removeRecursively());
+    }
+
+    void reusedHandoffsRequireRenewableOwnershipMarker()
+    {
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const auto sourceDirectory = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(sourceDirectory));
+        const auto original = writeFile(sourceDirectory + "/text.txt",QByteArray(300 * 1024,'r'));
+        const auto added = store.add({QJsonObject{{"type","text/plain"},{"path",original},{"owner","arcade.clipboard"}}}); QVERIFY(!added.error.isError());
+        ArcadeLink::Error error; const auto first = store.exportItems(added.addedIds,{},true,&error); QVERIFY(!error.isError());
+        const auto path = first.first().toObject()["path"].toString(); const auto markerPath = QFileInfo(path).absolutePath() + "/.arcade-shelf";
+        QFile marker(markerPath); QVERIFY(marker.open(QIODevice::ReadOnly)); const auto ownership = marker.readAll(); marker.close();
+        QVERIFY(!writeFile(markerPath,"not Shelf's ownership marker").isEmpty());
+        QVERIFY(store.exportItems(added.addedIds,{},true,&error).isEmpty()); QCOMPARE(error.code,QString("internal"));
+        QVERIFY(!writeFile(markerPath,ownership).isEmpty());
+        const auto restored = store.exportItems(added.addedIds,{},true,&error); QVERIFY(!error.isError()); QCOMPARE(restored.first().toObject()["path"].toString(),path);
+        QVERIFY(QDir(QFileInfo(path).absolutePath()).removeRecursively()); QVERIFY(QDir(sourceDirectory).removeRecursively());
+    }
+
     void directorySymlinksAreReferencesAndDeduplicateByAlias()
     {
         QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
@@ -373,5 +568,13 @@ private:
     QByteArray m_oldHome;
 };
 
-QTEST_GUILESS_MAIN(TestStore)
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc,argv);
+#ifdef Q_OS_UNIX
+    if (app.arguments().contains("--unsafe-staging-probe")) return unsafeStagingProbe();
+#endif
+    TestStore test;
+    return QTest::qExec(&test,argc,argv);
+}
 #include "tst_Store.moc"

@@ -28,6 +28,10 @@ The surface supports dark, light, and system themes, multiple selection,
 collection filtering, resizing, edge docking, reduced motion, optional topmost
 behavior, and preferences. Desktop capabilities depend on the window system:
 read the [Wayland decision](docs/ARCHITECTURE.md#wayland-surface-decision).
+Moving near an edge snaps the shelf on supported desktops. Hover over its tab
+to peek without taking keyboard focus; click to work in it, and press Escape to
+return to the tab. [Native surface notes](docs/NATIVE_SURFACES.md) describe
+fullscreen handling, system materials and compositor-specific limits.
 
 ## Build and run
 
@@ -116,7 +120,10 @@ overhead are additional. Temporary shelf items expire after 30 days by default
 at startup; pinned collections are retained. Retention 0 disables expiration.
 Requests accept at most 1,000 values, 256 KiB inline text, and up to 16 MiB text
 through private handoffs. Thumbnails are generated lazily and their memory cache
-is bounded to 32 MiB. There is no idle filesystem polling or clipboard history.
+defaults to 64 MiB with at most two decoder workers. The saved
+`thumbnailQuotaBytes` setting bounds this cache; zero disables it. Qt Quick's
+visible textures are additional memory. There is no idle filesystem polling or
+clipboard history.
 
 ## Verify and package
 
