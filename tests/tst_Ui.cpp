@@ -203,6 +203,8 @@ private slots:
         m_controller->showSettings(); settle();
         auto *scroll=find("preferencesScroll"); QVERIFY(scroll);
         auto *field=find("shortcutField"); QVERIFY(field);
+        // The panel grows from the capsule first; the popup lays out after it.
+        QTRY_VERIFY_WITH_TIMEOUT(scroll->height()>100,3000);
         const QPoint scrollPoint=point(scroll,QPointF(scroll->width()/2,scroll->height()/2));
         const auto inViewport=[&] {
             const QPointF position=field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2));
