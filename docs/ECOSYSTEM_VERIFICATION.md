@@ -1,6 +1,7 @@
 # Ecosystem verification
 
-Verified in the Codex Cloud workspace on 2026-10-09. These results distinguish
+Verified on 2026-10-09 and, for Find and the onboarding branches, again on
+2026-10-10. These results distinguish
 real peer executables, reference protocol clients, mocks, and source inspection.
 An offscreen Qt run exercises the real Shelf service and SQLite persistence; it
 does not prove desktop drag-and-drop, focus, compositor behavior, or platform UI.
@@ -17,7 +18,7 @@ does not prove desktop drag-and-drop, focus, compositor behavior, or platform UI
 | Arcade Box | `3418932e772c94ed38600eda8671f703f63030d4` | Main and arcade/link coincide; shared native tool runtime and Link handlers inspected. |
 | Arcade Clipboard | `da848cdc46a31e2337138c2fa493eaf71ddeee4f` | Main and arcade/link coincide; Private mode, 16 MiB limit, picker and handoff behavior inspected. |
 | Arcade Tools | `16b5bb0b69729f3eb95b1eed722933aba9e85bdb` | Main; installer validation, lifecycle, release schema and fixed application catalog inspected. |
-| Arcade Find feature/find-v0.1 | `5700d0d948decbe47d9365d98851d6991ef7e33d` | Handoff documentation update over first implementation snapshot `810ac1df69fab7f7152601ec97cb9efe5d9c11e7`. |
+| Arcade Find feature/find-v0.1 | `9a9c9892e72a3fb8acceabdaaee2794e19dbdd30` | Resident Link service with `find.search` (also one-shot) and `find.show`; generic peer offers. |
 
 Shared onboarding changes are isolated patches, described in
 [integration-patches/README.md](integration-patches/README.md). The frozen tag was not changed.
@@ -107,25 +108,33 @@ sends `job.done`, deadlines, a killed peer, malformed replies, real file-size
 revalidation, stopped-peer background launch, and Box pipeline effect contracts.
 This is consumer protocol evidence, not a claim that native peer UIs ran.
 
-## Find evidence and boundary
+## Real Find against real Shelf
 
-`cargo test -p find-core --locked` passed **47 tests, 0 failed** on the actual Find
-branch above. The subsequent `cargo test --workspace --locked -j2` also completed
-successfully: **64 passed, 0 failed**, comprising 17 app/model/rendering/instance
-tests and 47 core tests. The app tests finished in 0.06 seconds and the core
-tests in 0.66 seconds; these are test execution durations, not app performance
-measurements. The full command log is
-`/workspace/scratch/find-workspace-test.log`.
+Added 2026-10-10, with both apps built from their feature branches (Find
+`feature/find-v0.1`, Shelf `feature/shelf-v0.1`, Qt 6.8.3), each in an
+isolated profile:
 
-Its `crates/arcade-find/src/main.rs` still has `fn main() {}`; no
-`link.rs` or `service.rs` exists. `os.rs` is present but is not included by that
-main module. These facts agree with the handoff's CODE/DESIGNED distinction.
+- **Find's end-to-end script** (`scripts/e2e-linux.sh` in Arcade-Find, with
+  `ARCADE_SHELF_BIN` pointing at this repository's `build/arcade-shelf`):
+  49/49 checks in headless Sway (layer shell) and Xvfb. Driving Find's real
+  overlay with the keyboard, a 4-item mixed selection → Tab → "Add to Shelf"
+  lands in Shelf's SQLite store as references (`owned=0`) and Find stays open
+  with Shelf's message; with Shelf stopped, Find launches it through
+  `launch.background` and the add still lands; Shelf's exact `find.show`
+  request for one file opens Find with that file selected.
+- **Link's ecosystem runner** (onboarding branch, `tools/e2e.py --only find`):
+  3/3. `find.search` answers resident and, after `quit`, one-shot through
+  `launch.invoke` without leaving a resident; `find.show` for a file selects
+  it and for a folder scopes the search (`in:`); Find's `find.search` outputs
+  sent to the real `shelf.add` are all added by reference.
+- **`tst_PeerHub::findManifestOffersShowAndSearch`** (this repository): with
+  Find's real manifest (`tests/fixtures/arcade.find.manifest.json`, from
+  `arcade-find --arcade-manifest`), Shelf offers `find.show` for one file,
+  folder or text item and `find.search` for a text item, neither for a
+  multi-selection, and its `find.show` payload passes pre-flight validation.
 
-Real Find-to-Shelf invocation and optional Shelf-to-`find.show` cannot be verified
-with this snapshot: Find has no runnable resident service or advertised Link
-actions. Shelf's verified incoming payloads follow the frozen handoff, and its
-generic peer discovery will offer `find.show` when a real Find manifest advertises
-it. Find is not registered using its empty placeholder executable.
+Not covered: Shelf's GUI menu clicking "Search in Find" (the request it sends
+is covered above), drag and drop between the two, and real desktops.
 
 ## Actual native Box CLI
 
@@ -147,32 +156,24 @@ interactive desktop shell were exercised against each other.
 
 ## Shared onboarding candidate checks
 
-These results are from the separately reviewable integration branches and
-patches; they do not describe synchronized published app releases. Exact base
-and candidate commits and application commands are preserved in
-[integration-patches/README.md](integration-patches/README.md).
-
-| Candidate check | Actual result |
-|---|---|
-| Link Rust, `cargo test -p arcade-link` | 36 passed: 19 unit, 12 IPC integration, 5 conformance tests. |
-| Link Qt module | 2/2 CTest targets passed, including Shelf/Find metadata assertions. |
-| Shared isolated Shelf e2e group | 3/3 checks passed with the real Shelf binary under private Xvfb/D-Bus: mixed additions/skips, stopped-app background relaunch/recovery, picker Escape cancellation. |
-| Tools focused native core tests | 12/12 passed across `shelf_onboarding`, `releases`, `platform_logic` and `link_contract`, including release-source selection, archive validation, rollback and login ownership. |
-| Wheel focused integration tests | 2/2 CTest targets passed: `test_WheelLink` and `test_ArcadeLinkProvider`, with the Link mock CLI on PATH; named Shelf options and input modes were preserved. |
-
-The Tools checks use generated fixtures rather than executing real platform
-installers. The Wheel checks use explicit protocol mocks rather than proving a
-native slot-assignment session with Shelf. Full native installer and peer UI
-validation remains open.
+The Link, Tools and Wheel branches now register Find as implemented as well
+as Shelf. Their checks, rerun on 2026-10-10, are recorded with the exact heads
+in [integration-patches/README.md](integration-patches/README.md#verification--2026-10-10):
+Link Rust 36 and Qt 2/2; the ecosystem runner's shelf 3/3 and find 3/3 with
+real binaries; Tools 15/15 focused plus lifecycle 4/4 and 3/3 through the
+isolated runner; Wheel's full CTest 9/9. Tools' checks use generated fixtures
+rather than real platform installers; Wheel's use protocol mocks rather than
+a native slot session.
 
 ## Remaining native ecosystem checks
 
-Look, Lens, Clipboard and Wheel contracts are implemented through their real
-capabilities and verified by source plus protocol mocks. Their native UI flows
-have not been executed as real peers in this verification stream. Box's native
-CLI and the full Find workspace results are recorded above. Tools requires the isolated onboarding patch and synchronized consumer
-dependencies before the released manager can recognize Shelf; merely writing a
-Shelf manifest does not update its fixed application list.
+Find runs against Shelf for real (above), and Box's native CLI output was
+imported for real. Look, Lens, Clipboard and Wheel contracts are implemented
+through their real capabilities and verified by source plus protocol mocks;
+their native UI flows have not been executed as real peers. The released
+Tools manager recognizes Shelf only after the onboarding change and a
+synchronized dependency ship; writing a Shelf manifest does not update its
+fixed app list.
 
 Final validation still needs real Hyprland/Nautilus transfers, peer capture and
 preview windows, native Clipboard Private mode/device transfers, Wheel slot

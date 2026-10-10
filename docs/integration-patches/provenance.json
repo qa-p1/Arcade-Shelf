@@ -5,7 +5,7 @@
       "repository": "https://github.com/qa-p1/Arcade-Link",
       "branch": "feature/shelf-find-onboarding",
       "base": "92aa03c1c062628757a48a1838cb54c3916a017c",
-      "candidate": "c4c755ffddd4b69e7de3577f024dbd7e3ae40864",
+      "candidate": "b4befb6c2ddea521133685d24f1ce21ac0bc300d",
       "state": "pushed; draft pull request; unmerged; no protocol tag or release published",
       "pullRequest": "https://github.com/qa-p1/Arcade-Link/pull/1"
     },
@@ -13,7 +13,7 @@
       "repository": "https://github.com/qa-p1/Arcade-tools",
       "branch": "feature/shelf-onboarding",
       "base": "16b5bb0b69729f3eb95b1eed722933aba9e85bdb",
-      "candidate": "126e09b8f5c7be79213a12cebbcf63a8c51adebd",
+      "candidate": "91caecfb4cb11148282d6559a60d77d22fa7d1b7",
       "state": "pushed; draft pull request; unmerged; no protocol tag or release published",
       "pullRequest": "https://github.com/qa-p1/Arcade-tools/pull/1"
     },
@@ -21,7 +21,7 @@
       "repository": "https://github.com/qa-p1/Arcade-wheel",
       "branch": "feature/shelf-action-onboarding",
       "base": "550efe1a56270ed85ad1bb1fe080b37005e65c84",
-      "candidate": "8f91423d3de87aefee109bc28e889fee3f2449cb",
+      "candidate": "488a1ce9d670e4b8a267fd9d47888b9db67b37c6",
       "state": "pushed; draft pull request; unmerged; no protocol tag or release published",
       "pullRequest": "https://github.com/qa-p1/Arcade-wheel/pull/5"
     }

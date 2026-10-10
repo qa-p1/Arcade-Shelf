@@ -99,9 +99,10 @@ are discovered by capabilities; unavailable integrations are hidden.
 
 Look owns preview and inspection; Lens owns capture, image recognition, and
 pins; Box owns transformations and pipelines; Clipboard owns explicit picking
-and eligible device delivery. Optional Find actions appear only when Find
-actually advertises them. Wheel and Tools also need the included shared
-onboarding patches before their existing app allowlists recognize Shelf.
+and eligible device delivery. With Arcade Find installed, Find's "Add to
+Shelf" collects search results, and an item's "Search in Find" opens Find on
+it. Wheel and Tools need the shared onboarding changes before their existing
+app allowlists recognize Shelf.
 
 See [the contracts and ownership rules](docs/ARCADE_LINK.md),
 [ecosystem verification](docs/ECOSYSTEM_VERIFICATION.md), and

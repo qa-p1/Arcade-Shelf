@@ -1,7 +1,7 @@
 From d2fab05620b25addb1d1ba07834b6696c60da940 Mon Sep 17 00:00:00 2001
 From: Arcade contributors <qa-p1@users.noreply.github.com>
 Date: Fri, 9 Oct 2026 20:14:42 +0000
-Subject: [PATCH 1/2] Onboard Shelf with safe portable bundle installation and
+Subject: [PATCH 1/3] Onboard Shelf with safe portable bundle installation and
  native paths
 
 ---
@@ -513,13 +513,13 @@ index 77e2677..7d5f79c 100644
              .trim_end_matches("/releases");
          let endpoint = if channel == "stable" {
 -- 
-2.52.0
+2.43.0
 
 
 From 126e09b8f5c7be79213a12cebbcf63a8c51adebd Mon Sep 17 00:00:00 2001
 From: Harneet Singh <tutejaharneet@gmail.com>
 Date: Fri, 9 Oct 2026 21:08:17 +0000
-Subject: [PATCH 2/2] Format Shelf onboarding implementation for required Rust
+Subject: [PATCH 2/3] Format Shelf onboarding implementation for required Rust
  CI
 
 ---
@@ -1041,5 +1041,313 @@ index 6e41ef8..d9b3916 100644
 +    );
  }
 -- 
-2.52.0
+2.43.0
+
+
+From 91caecfb4cb11148282d6559a60d77d22fa7d1b7 Mon Sep 17 00:00:00 2001
+From: qa-p1 <tutejaharneet@gmail.com>
+Date: Sat, 10 Oct 2026 05:58:56 +0000
+Subject: [PATCH 3/3] Onboard Arcade Find: catalog, install, data and login
+ mappings
+
+Find ships an AppImage, a per-user Inno installer and a universal DMG
+(Arcade-Find feature/find-v0.1), so Tools can manage it like the others:
+
+- apps::FIND in the app list and tools.install allowlist, with name,
+  pitch and releases URL until a Link pin carries them.
+- Data folders match Find's own paths (Linux config/data arcade-find,
+  Windows %APPDATA%/%LOCALAPPDATA% Arcade\Arcade Find, macOS Application
+  Support/Arcade Find); the login entries are the ones Find's Settings
+  toggle writes (arcade-find.desktop, Run value ArcadeFind,
+  arcade.find.plist), so either side can switch it.
+- The desktop shell watched only Link's five app endpoints; it now watches
+  every managed app, so Shelf's and Find's running state refreshes.
+- tests/find_onboarding.rs: paths, release selection (AppImage, Inno,
+  universal DMG) and updating an entry Find wrote itself.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MGVuwj5qJec99PTCt3AbkN
+---
+ README.md                |   6 +-
+ src-tauri/src/desktop.rs |   2 +-
+ src/apps.rs              |  30 ++++-----
+ src/paths.rs             |   9 +++
+ src/platform.rs          |   1 +
+ tests/find_onboarding.rs | 128 +++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 159 insertions(+), 17 deletions(-)
+ create mode 100644 tests/find_onboarding.rs
+
+diff --git a/README.md b/README.md
+index 256673c..b1ac45a 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,7 @@
+ # Arcade Tools
+ 
+-Install, update, repair, launch and remove the five Arcade desktop apps. Choose
++Install, update, repair, launch and remove the Arcade desktop apps (Box, Lens,
++Look, Wheel, Clipboard, Shelf and Find). Choose
+ stable or nightly for each app and manage start at login. The manager is optional.
+ Every Arcade app works independently and can still be installed and updated by hand.
+ 
+@@ -13,7 +14,8 @@ Install locations are per user, without administrator access:
+ 
+ - **Linux:** AppImages in `~/Applications/Arcade/`. Clipboard tarballs run their
+   verified `scripts/install-linux.sh`, installing to
+-  `${XDG_DATA_HOME:-~/.local/share}/arcade-clipboard/`.
++  `${XDG_DATA_HOME:-~/.local/share}/arcade-clipboard/`. Shelf's runtime bundle
++  is extracted (no scripts, no links) to `${XDG_DATA_HOME:-~/.local/share}/arcade-shelf/`.
+ - **Windows:** the app's per-user NSIS or Inno installer, with the release's
+   validated silent arguments, under `%LOCALAPPDATA%\Programs\<app name>\`.
+ - **macOS:** mount the disk image read-only with `hdiutil`, then copy its app
+diff --git a/src-tauri/src/desktop.rs b/src-tauri/src/desktop.rs
+index 0b60302..d665b94 100644
+--- a/src-tauri/src/desktop.rs
++++ b/src-tauri/src/desktop.rs
+@@ -257,7 +257,7 @@ fn watch_state(
+     locations: &arcade_link::Locations,
+ ) -> (String, Vec<Option<(std::time::SystemTime, u64)>>) {
+     let manifests = serde_json::to_string(registry.apps()).unwrap_or_default();
+-    let endpoints = arcade_link::manifest::ids::APPS
++    let endpoints = arcade_tools_core::apps::APPS
+         .iter()
+         .chain(std::iter::once(&"arcade.tools"))
+         .map(|id| {
+diff --git a/src/apps.rs b/src/apps.rs
+index 4d17fc0..c673143 100644
+--- a/src/apps.rs
++++ b/src/apps.rs
+@@ -1,34 +1,36 @@
+ //! Backward-compatible onboarding metadata while Arcade Link v0.1.0 stays immutable.
+-//! Remove the Shelf overrides only after a new reviewed Link pin ships them.
++//! Remove the Shelf and Find overrides only after a new reviewed Link pin ships them.
+ use arcade_link::manifest::{self, ids};
+ 
+ pub const SHELF: &str = "arcade.shelf";
+-pub const APPS: [&str; 6] = [
++pub const FIND: &str = "arcade.find";
++pub const APPS: [&str; 7] = [
+     ids::BOX,
+     ids::LENS,
+     ids::LOOK,
+     ids::WHEEL,
+     ids::CLIPBOARD,
+     SHELF,
++    FIND,
+ ];
+ pub fn app_name(id: &str) -> &str {
+-    if id == SHELF {
+-        "Arcade Shelf"
+-    } else {
+-        manifest::app_name(id)
++    match id {
++        SHELF => "Arcade Shelf",
++        FIND => "Arcade Find",
++        _ => manifest::app_name(id),
+     }
+ }
+ pub fn app_pitch(id: &str) -> &'static str {
+-    if id == SHELF {
+-        "Collect, organize and transfer desktop content."
+-    } else {
+-        manifest::app_pitch(id)
++    match id {
++        SHELF => "Collect, organize and transfer desktop content.",
++        FIND => "Find files and folders instantly.",
++        _ => manifest::app_pitch(id),
+     }
+ }
+ pub fn releases_url(id: &str) -> &'static str {
+-    if id == SHELF {
+-        "https://github.com/qa-p1/Arcade-Shelf/releases"
+-    } else {
+-        manifest::releases_url(id)
++    match id {
++        SHELF => "https://github.com/qa-p1/Arcade-Shelf/releases",
++        FIND => "https://github.com/qa-p1/Arcade-Find/releases",
++        _ => manifest::releases_url(id),
+     }
+ }
+diff --git a/src/paths.rs b/src/paths.rs
+index 605c80e..40cb61c 100644
+--- a/src/paths.rs
++++ b/src/paths.rs
+@@ -109,6 +109,10 @@ impl Paths {
+                 ids::LOOK => vec![self.config.join("arcade-look")],
+                 ids::WHEEL => vec![self.config.join("Arcade Wheel/Arcade Wheel")],
+                 crate::apps::SHELF => vec![self.data.join("qa-p1/ArcadeShelf")],
++                crate::apps::FIND => vec![
++                    self.config.join("arcade-find"),
++                    self.data.join("arcade-find"),
++                ],
+                 ids::CLIPBOARD => vec![
+                     self.data.join("dev.arcade.clipboard"),
+                     self.data.join("clipboard"),
+@@ -127,6 +131,10 @@ impl Paths {
+                 ids::LOOK => vec![self.roaming.join("arcade-look")],
+                 ids::WHEEL => vec![self.local.join("Arcade Wheel/Arcade Wheel")],
+                 crate::apps::SHELF => vec![self.local.join("qa-p1/ArcadeShelf")],
++                crate::apps::FIND => vec![
++                    self.roaming.join("Arcade/Arcade Find"),
++                    self.local.join("Arcade/Arcade Find"),
++                ],
+                 ids::CLIPBOARD => vec![self.roaming.join("dev.arcade/clipboard")],
+                 _ => vec![],
+             },
+@@ -143,6 +151,7 @@ impl Paths {
+                         .home
+                         .join("Library/Preferences/Arcade Wheel/Arcade Wheel")],
+                     crate::apps::SHELF => vec![support.join("qa-p1/ArcadeShelf")],
++                    crate::apps::FIND => vec![support.join("Arcade Find")],
+                     ids::CLIPBOARD => vec![support.join("dev.arcade.clipboard")],
+                     _ => vec![],
+                 }
+diff --git a/src/platform.rs b/src/platform.rs
+index 79f9473..1654e00 100644
+--- a/src/platform.rs
++++ b/src/platform.rs
+@@ -730,6 +730,7 @@ pub fn windows_run_name(id: &str) -> &'static str {
+         ids::WHEEL => "ArcadeWheel",
+         ids::CLIPBOARD => "ArcadeClipboard",
+         crate::apps::SHELF => "ArcadeShelf",
++        crate::apps::FIND => "ArcadeFind",
+         _ => "ArcadeTools",
+     }
+ }
+diff --git a/tests/find_onboarding.rs b/tests/find_onboarding.rs
+new file mode 100644
+index 0000000..3683637
+--- /dev/null
++++ b/tests/find_onboarding.rs
+@@ -0,0 +1,128 @@
++//! Arcade Find's install, data and login locations, as its packages and its
++//! own start-at-login code use them (Arcade-Find feature/find-v0.1:
++//! packaging/, crates/find-core/src/paths.rs, crates/arcade-find/src/autostart.rs).
++mod support;
++use arcade_tools_core::{
++    apps,
++    paths::Paths,
++    platform,
++    release::{Arch, Channel, Kind, Os},
++    source::Source,
++};
++use std::path::Path;
++
++#[test]
++fn find_metadata_install_data_and_login_paths_match_the_app() {
++    assert!(apps::APPS.contains(&apps::FIND));
++    assert_eq!(apps::app_name(apps::FIND), "Arcade Find");
++    assert!(!apps::app_pitch(apps::FIND).is_empty());
++    assert_eq!(
++        apps::releases_url(apps::FIND),
++        "https://github.com/qa-p1/Arcade-Find/releases"
++    );
++    let paths = Paths::under(Path::new("/isolated"));
++    // AppImage, per-user Inno installer ({localappdata}\Programs\Arcade Find),
++    // and the DMG's "Arcade Find.app" with CFBundleExecutable arcade-find.
++    assert!(paths
++        .executable(apps::FIND, Os::Linux, false)
++        .ends_with("home/Applications/Arcade/Arcade-Find.AppImage"));
++    assert!(paths
++        .executable(apps::FIND, Os::Windows, false)
++        .ends_with("local/Programs/Arcade Find/arcade-find.exe"));
++    assert!(paths
++        .executable(apps::FIND, Os::Macos, false)
++        .ends_with("Applications/Arcade Find.app/Contents/MacOS/arcade-find"));
++    assert_eq!(
++        paths.data_folders(apps::FIND, Os::Linux),
++        [
++            paths.config.join("arcade-find"),
++            paths.data.join("arcade-find")
++        ]
++    );
++    assert_eq!(
++        paths.data_folders(apps::FIND, Os::Windows),
++        [
++            paths.roaming.join("Arcade/Arcade Find"),
++            paths.local.join("Arcade/Arcade Find")
++        ]
++    );
++    assert_eq!(
++        paths.data_folders(apps::FIND, Os::Macos),
++        [paths.home.join("Library/Application Support/Arcade Find")]
++    );
++    // The same entries Find's own Settings toggle writes.
++    assert!(paths
++        .autostart(apps::FIND, Os::Linux)
++        .ends_with("autostart/arcade-find.desktop"));
++    assert!(paths
++        .autostart(apps::FIND, Os::Macos)
++        .ends_with("LaunchAgents/arcade.find.plist"));
++    assert_eq!(platform::windows_run_name(apps::FIND), "ArcadeFind");
++    assert!(platform::login_supported(apps::FIND, Os::Macos));
++    let request = arcade_link::InvokeRequest::new("tools.install", "arcade.find")
++        .options(serde_json::json!({"app": apps::FIND}));
++    assert_eq!(
++        arcade_tools_core::link::install_target(&request).unwrap(),
++        apps::FIND
++    );
++}
++
++#[test]
++fn find_release_selects_appimage_inno_and_universal_dmg() {
++    let server = support::FakeRelease::new();
++    server.publish(
++        apps::FIND,
++        "0.1.0",
++        "stable",
++        &[
++            ("Arcade-Find-x86_64.AppImage", b"appimage"),
++            ("Arcade-Find-0.1.0-x64-setup.exe", b"inno"),
++            ("Arcade-Find-0.1.0-universal.dmg", b"dmg"),
++        ],
++        "inno",
++    );
++    let source = Source::test_server(&server.url).unwrap();
++    let linux = source
++        .check(apps::FIND, Channel::Stable, Os::Linux, Arch::X64)
++        .unwrap();
++    assert_eq!(linux.asset.kind, Kind::Appimage);
++    let windows = source
++        .check(apps::FIND, Channel::Stable, Os::Windows, Arch::X64)
++        .unwrap();
++    assert_eq!(windows.asset.kind, Kind::Inno);
++    let mac = source
++        .check(apps::FIND, Channel::Stable, Os::Macos, Arch::Arm64)
++        .unwrap();
++    assert_eq!(mac.asset.kind, Kind::Dmg);
++}
++
++#[cfg(target_os = "linux")]
++#[test]
++fn find_login_entry_matches_finds_own() {
++    let temp = tempfile::tempdir().unwrap();
++    let paths = Paths::under(temp.path());
++    let exe = paths.home.join("Applications/Arcade/Arcade-Find.AppImage");
++    std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
++    std::fs::write(&exe, "appimage").unwrap();
++    // An entry Find wrote itself is updated in place, keeping its extra keys.
++    let login = paths.autostart(apps::FIND, Os::Linux);
++    std::fs::create_dir_all(login.parent().unwrap()).unwrap();
++    std::fs::write(
++        &login,
++        format!(
++            "[Desktop Entry]\nType=Application\nName=Arcade Find\nExec=\"{}\" --background\nIcon=arcade-find\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n",
++            exe.display()
++        ),
++    )
++    .unwrap();
++    assert!(platform::autostart_enabled(&paths, apps::FIND));
++    platform::set_autostart(&paths, apps::FIND, &exe, true).unwrap();
++    let entry = std::fs::read_to_string(&login).unwrap();
++    assert!(
++        entry.contains(&format!("Exec=\"{}\" --background", exe.display())),
++        "{entry}"
++    );
++    assert!(entry.contains("Icon=arcade-find"), "{entry}");
++    platform::set_autostart(&paths, apps::FIND, &exe, false).unwrap();
++    assert!(!platform::autostart_enabled(&paths, apps::FIND));
++}
+-- 
+2.43.0
 

@@ -2,7 +2,8 @@
 
 Canonical ID: `arcade.shelf`. Protocol 1 and manifest schema 1. The Qt source is
 vendored unchanged from Arcade Link `v0.1.0`; `scripts/check-vendor.py` verifies
-its hashes. The actual Find handoff governs payloads and lifecycle.
+its hashes. Find's side of the contract is documented in Arcade Find's
+[docs/SHELF.md](https://github.com/qa-p1/Arcade-Find/blob/feature/find-v0.1/docs/SHELF.md).
 
 ## Public actions
 
@@ -108,7 +109,7 @@ Progress, bounded deadlines, cancellation, and peer failure are handled.
 | Box | Manifest tools and cached running-peer pipeline catalog; progress/cancel; retain outputs | Protocol mocks and source; real engine flows pending |
 | Clipboard | Explicit picker and compatible device-send action; one-Content and size guards | Private mode/device behavior delegated to peer; native tests pending |
 | Wheel | `shelf.show` public action and explicit named-shelf action reference | Shared app allowlist requires onboarding patch |
-| Find | Generic incoming file/folder payloads; optional advertised `find.show` | Actual Find snapshot has no Link service yet |
+| Find | Incoming selections from Find's "Add to Shelf"; "Search in Find" (`find.show`) for one item and "Find matching files" (`find.search`) for a text item, both offered from Find's manifest | Real Find and Shelf: Find's e2e (49/49) and Link's runner (3/3); Shelf's menu click itself not automated |
 | Tools | Get entry invokes `tools.install` when available; release URL fallback | Shared catalog/install mappings require onboarding patch |
 
 Effects with persistence, file writes, clipboard changes, or outbound transfer

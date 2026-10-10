@@ -133,3 +133,24 @@ Those absolute paths are not runtime dependencies or an installation recipe.
 Normal builds use an installed Qt SDK. Native startup was independently probed
 under offscreen, Xvfb/xcb and headless Weston; final application evidence is listed
 in [status](STATUS.md) and [ecosystem verification](ECOSYSTEM_VERIFICATION.md).
+
+Where download.qt.io is unreachable, conda-forge's `qt6-main=6.8.3` works as
+well (with `libgl-devel`, `libegl-devel` and `glib`); configure with
+`-DCMAKE_PREFIX_PATH=<env> -DCMAKE_CXX_COMPILER=<env>/bin/x86_64-conda-linux-gnu-g++`.
+
+## With Arcade Find
+
+Both apps from their feature branches, each in an isolated profile:
+
+```sh
+# Find drives its real overlay (headless Sway and Xvfb) against this Shelf.
+ARCADE_LINK_CLI=/path/to/arcade-link ARCADE_SHELF_BIN=$PWD/build/arcade-shelf \
+  /path/to/Arcade-Find/scripts/e2e-linux.sh /path/to/Arcade-Find/target/release/arcade-find
+
+# Link's ecosystem runner, onboarding branch (Find checked out beside Link).
+ARCADE_SHELF_REPO=$PWD python3 /path/to/Arcade-Link/tools/e2e.py --only find
+```
+
+`tst_PeerHub::findManifestOffersShowAndSearch` checks Shelf's offers against
+Find's real manifest; refresh `tests/fixtures/arcade.find.manifest.json` with
+`arcade-find --arcade-manifest` when Find's actions change.

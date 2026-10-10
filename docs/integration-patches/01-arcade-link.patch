@@ -1,7 +1,7 @@
 From 6997428a4dece7e1283e368cf755ed0b3a4f8efe Mon Sep 17 00:00:00 2001
 From: Arcade contributors <qa-p1@users.noreply.github.com>
 Date: Fri, 9 Oct 2026 20:14:42 +0000
-Subject: [PATCH 1/2] Register Shelf and Find metadata and verify resident
+Subject: [PATCH 1/3] Register Shelf and Find metadata and verify resident
  Shelf flows
 
 ---
@@ -571,13 +571,13 @@ index 0000000..5098373
 +    assert '"outputs"' not in out, out
 +    return "Interactive cancellation; no shelf contents returned"
 -- 
-2.52.0
+2.43.0
 
 
 From c4c755ffddd4b69e7de3577f024dbd7e3ae40864 Mon Sep 17 00:00:00 2001
 From: Harneet Singh <tutejaharneet@gmail.com>
 Date: Fri, 9 Oct 2026 21:08:17 +0000
-Subject: [PATCH 2/2] Format onboarding metadata test for required Rust CI
+Subject: [PATCH 2/3] Format onboarding metadata test for required Rust CI
 
 ---
  crates/arcade-link/src/manifest.rs | 5 +----
@@ -600,5 +600,526 @@ index 95c9c2a..cb3682b 100644
              assert_eq!(app_name(id), name);
              assert!(!app_pitch(id).is_empty());
 -- 
-2.52.0
+2.43.0
+
+
+From b4befb6c2ddea521133685d24f1ce21ac0bc300d Mon Sep 17 00:00:00 2001
+From: qa-p1 <tutejaharneet@gmail.com>
+Date: Sat, 10 Oct 2026 05:52:31 +0000
+Subject: [PATCH 3/3] Register Arcade Find as implemented; real Find checks in
+ the e2e runner
+
+Find's Link service exists now (Arcade-Find feature/find-v0.1), so its
+entries describe what it ships instead of a designed placeholder:
+
+- fixtures/find.json (from `arcade-find --arcade-manifest`, with mock
+  results) replaces find-designed.json; SPEC lists find.search and
+  find.show in the action catalog and Find's shortcut without "designed".
+- Find's accent is the one it uses, #22C55E (the placeholder was close to
+  Lens's teal); its glyph is the one it draws.
+- Glyphs are named arcade.<app>.svg like the others (consumers load
+  `<id>.svg`).
+- tools/e2e.py runs the real Find (ARCADE_FIND_REPO, ARCADE_FIND_HOME); the
+  find group checks find.search resident and one-shot, find.show exactly as
+  Shelf's "Search in Find" sends it, and Find's results landing in the real
+  Shelf by reference. The Shelf relaunch check waits for the old endpoint
+  to go before the next check starts a Shelf.
+- benchmarks/bench.py knows Find.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MGVuwj5qJec99PTCt3AbkN
+---
+ SPEC.md                                       |  10 +-
+ assets/glyphs/arcade.find.svg                 |   1 +
+ assets/glyphs/{shelf.svg => arcade.shelf.svg} |   0
+ assets/glyphs/find.svg                        |   1 -
+ assets/tokens.json                            |   2 +-
+ benchmarks/bench.py                           |  13 +-
+ fixtures/find-designed.json                   |  31 -----
+ fixtures/find.json                            | 106 +++++++++++++++++
+ qt/tests/tst_Vectors.cpp                      |   1 +
+ tools/e2e.py                                  |  11 +-
+ tools/e2e_checks/find.py                      | 111 ++++++++++++++++++
+ tools/e2e_checks/shelf.py                     |  11 +-
+ 12 files changed, 253 insertions(+), 45 deletions(-)
+ create mode 100644 assets/glyphs/arcade.find.svg
+ rename assets/glyphs/{shelf.svg => arcade.shelf.svg} (100%)
+ delete mode 100644 assets/glyphs/find.svg
+ delete mode 100644 fixtures/find-designed.json
+ create mode 100644 fixtures/find.json
+ create mode 100644 tools/e2e_checks/find.py
+
+diff --git a/SPEC.md b/SPEC.md
+index 168e2a4..a6e2471 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -405,7 +405,7 @@ Defaults change for new installs only; a saved shortcut is never changed.
+ | Clipboard | Ctrl+Shift+Space | Ctrl+Alt+V | Cmd+Shift+V |
+ | Wheel | F8 | F8 | F8 |
+ | Shelf | Ctrl+Alt+S | Ctrl+Alt+S | Ctrl+Alt+S |
+-| Find (designed) | Ctrl+Alt+F | Ctrl+Alt+F | Ctrl+Alt+F |
++| Find | Ctrl+Alt+F | Ctrl+Alt+F | Ctrl+Alt+F |
+ 
+ Apps publish their effective shortcuts in `shortcuts`. A shortcut recorder
+ warns "Used by <app>" when another app already uses the accelerator,
+@@ -457,13 +457,15 @@ clipboard contents without the user acting in the owner's UI.
+ | `shelf.add` | Shelf | `file/*`, `file/*[]`, `folder/reference`, `text/plain`, `text/url`, `text/rich` | — | persists | no | no |
+ | `shelf.show` | Shelf | — | — | opens-ui | yes | no |
+ | `shelf.pick` | Shelf | — | `file/*[]`, `folder/reference`, `text/plain`, `text/url` | opens-ui | yes | no |
++| `find.search` | Find | `text/plain` (the query), or `options.query` | `file/*[]`, `folder/reference` | — | no | yes |
++| `find.show` | Find | —, `text/plain`, `file/*`, `folder/reference` | — | opens-ui | yes | no |
+ | `tools.install` | Tools | `text/plain` (an app ID), or `options.app` | — | opens-ui (the user confirms in Tools) | yes | no |
+ 
+ Each app documents its exposed actions in its own repository. Shelf omits
+ `launch.invoke`: stopped noninteractive additions use `launch.background` and
+-are persisted by the resident process. Find IDs/design fixtures register the
+-app only; `find.show` and `find.search` are DESIGNED and must not be advertised
+-as implemented until Find publishes those actions.
++are persisted by the resident process. Find's `find.search` answers one-shot
++from its saved index (no frecency, no content search); `find.show` opens Find
++with a query, a folder scope (`in:`), or one file selected ("Reveal in Find").
+ 
+ ## 12. Conformance
+ 
+diff --git a/assets/glyphs/arcade.find.svg b/assets/glyphs/arcade.find.svg
+new file mode 100644
+index 0000000..44e85c5
+--- /dev/null
++++ b/assets/glyphs/arcade.find.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.75"/><path d="M10.5 10.5 14.25 14.25"/></svg>
+diff --git a/assets/glyphs/shelf.svg b/assets/glyphs/arcade.shelf.svg
+similarity index 100%
+rename from assets/glyphs/shelf.svg
+rename to assets/glyphs/arcade.shelf.svg
+diff --git a/assets/glyphs/find.svg b/assets/glyphs/find.svg
+deleted file mode 100644
+index 0678f27..0000000
+--- a/assets/glyphs/find.svg
++++ /dev/null
+@@ -1 +0,0 @@
+-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+diff --git a/assets/tokens.json b/assets/tokens.json
+index 8761a3b..7697b90 100644
+--- a/assets/tokens.json
++++ b/assets/tokens.json
+@@ -8,7 +8,7 @@
+     "arcade.clipboard": "#EC4899",
+     "arcade.tools": "#64748B",
+     "arcade.shelf": "#94A8FF",
+-    "arcade.find": "#5CC7A4"
++    "arcade.find": "#22C55E"
+   },
+   "neutral": {
+     "dark": {
+diff --git a/benchmarks/bench.py b/benchmarks/bench.py
+index 34f1e78..a1a6a00 100644
+--- a/benchmarks/bench.py
++++ b/benchmarks/bench.py
+@@ -39,6 +39,7 @@ LOOK = CODING / "Rust/arcade-look"
+ WHEEL = CODING / "C++/Arcade wheel"
+ CLIP = CODING / "App dev/Arcade-clipboard"
+ SHELF = Path(os.environ.get("ARCADE_SHELF_REPO", str(Path(__file__).resolve().parents[2] / "Arcade-Shelf")))
++FIND = Path(os.environ.get("ARCADE_FIND_REPO", str(Path(__file__).resolve().parents[2] / "Arcade-Find")))
+ 
+ APPS = {
+     "box": {
+@@ -66,6 +67,11 @@ APPS = {
+         "ready": "shelf",
+         "warm": [str(SHELF / "build/arcade-shelf"), "--status"],
+     },
++    "find": {
++        "start": [str(FIND / "target/release/arcade-find"), "--background"],
++        "ready": "find",
++        "warm": [str(FIND / "target/release/arcade-find"), "--status"],
++    },
+     "clipboard": {
+         "start": [str(CLIP / "apps/flutter_app/build/linux/x64/release/bundle/clipboard"), "--background"],
+         "ready": "clipboard",
+@@ -184,8 +190,8 @@ def is_ready(kind: str, pid: int, root: Path, env: dict) -> bool:
+         return name_has_owner("org.gnome.NautilusPreviewer", env)
+     if kind == "wheel":
+         return wheel_status(root / "runtime")
+-    if kind == "shelf":
+-        endpoint = root / "arcade/run/arcade.shelf.endpoint"
++    if kind in ("shelf", "find"):
++        endpoint = root / f"arcade/run/arcade.{kind}.endpoint"
+         try:
+             entry = json.loads(endpoint.read_text())
+             with socket.socket(socket.AF_UNIX) as channel:
+@@ -206,7 +212,7 @@ def isolated_env(root: Path) -> dict:
+     env = {k: v for k, v in os.environ.items() if k not in (
+         "WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP",
+         "DESKTOP_SESSION", "SWAYSOCK", "XDG_SESSION_TYPE", "APPIMAGE", "APPDIR", "OWD", "ARGV0")}
+-    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel", "shelf"):
++    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel", "shelf", "find"):
+         (root / d).mkdir(parents=True, exist_ok=True)
+     os.chmod(root / "runtime", 0o700)
+     env.update({
+@@ -221,6 +227,7 @@ def isolated_env(root: Path) -> dict:
+         "ARCADE_DATA_DIR": str(root / "clipdata"),
+         "ARCADE_WHEEL_INSTANCE": str(root / "wheel"),
+         "ARCADE_SHELF_HOME": str(root / "shelf"),
++        "ARCADE_FIND_HOME": str(root / "find"),
+         "ARCADE_WHEEL_DISABLE_GLOBAL_SHORTCUT": "1",
+         "QT_QPA_PLATFORM": "xcb",
+         "GDK_BACKEND": "x11",
+diff --git a/fixtures/find-designed.json b/fixtures/find-designed.json
+deleted file mode 100644
+index 5501bf6..0000000
+--- a/fixtures/find-designed.json
++++ /dev/null
+@@ -1,31 +0,0 @@
+-{
+-  "comment": "DESIGNED contract fixture only; Find Link actions are not implemented at inspected feature/find-v0.1 commit 5700d0d948decbe47d9365d98851d6991ef7e33d.",
+-  "id": "arcade.find",
+-  "name": "Arcade Find",
+-  "version": "0.1.0-mock",
+-  "shortcuts": [
+-    {
+-      "id": "show",
+-      "accelerator": "Ctrl+Alt+F"
+-    }
+-  ],
+-  "actions": [
+-    {
+-      "id": "find.show",
+-      "version": 1,
+-      "title": "Find files",
+-      "verb": "show",
+-      "accepts": [
+-        "text/plain",
+-        "folder/reference",
+-        "file/*"
+-      ],
+-      "produces": [],
+-      "effects": [
+-        "opens-ui"
+-      ],
+-      "interactive": true,
+-      "privacy": "local"
+-    }
+-  ]
+-}
+diff --git a/fixtures/find.json b/fixtures/find.json
+new file mode 100644
+index 0000000..2f13b83
+--- /dev/null
++++ b/fixtures/find.json
+@@ -0,0 +1,106 @@
++{
++  "id": "arcade.find",
++  "name": "Arcade Find",
++  "version": "0.1.0-mock",
++  "launch": {
++    "background": [
++      "--background"
++    ],
++    "invoke": [
++      "--arcade-invoke"
++    ]
++  },
++  "shortcuts": [
++    {
++      "id": "show",
++      "accelerator": "Ctrl+Alt+F"
++    }
++  ],
++  "actions": [
++    {
++      "id": "find.search",
++      "version": 1,
++      "title": "Find matching files",
++      "verb": "search",
++      "accepts": [
++        "text/plain"
++      ],
++      "produces": [
++        "file/*[]",
++        "folder/reference"
++      ],
++      "effects": [],
++      "interactive": false,
++      "privacy": "local",
++      "mock": {
++        "result": {
++          "outputs": [
++            {
++              "type": "file/document",
++              "path": "/tmp/arcade-mock/report-2024-q3.pdf",
++              "size": 20480
++            },
++            {
++              "type": "folder/reference",
++              "path": "/tmp/arcade-mock/Reports"
++            }
++          ],
++          "message": "2 matches",
++          "data": {
++            "query": "report",
++            "matched": 2,
++            "truncated": false,
++            "indexing": false,
++            "elapsedMs": 1.2,
++            "results": [
++              {
++                "path": "/tmp/arcade-mock/report-2024-q3.pdf",
++                "name": "report-2024-q3.pdf",
++                "parent": "/tmp/arcade-mock",
++                "type": "file/document",
++                "isDir": false,
++                "isSymlink": false,
++                "size": 20480,
++                "modified": 1760000000,
++                "score": 812
++              },
++              {
++                "path": "/tmp/arcade-mock/Reports",
++                "name": "Reports",
++                "parent": "/tmp/arcade-mock",
++                "type": "folder/reference",
++                "isDir": true,
++                "isSymlink": false,
++                "size": null,
++                "modified": 1760000000,
++                "score": 640
++              }
++            ]
++          }
++        }
++      }
++    },
++    {
++      "id": "find.show",
++      "version": 1,
++      "title": "Search in Find",
++      "verb": "search",
++      "accepts": [
++        "text/plain",
++        "file/*",
++        "folder/reference"
++      ],
++      "produces": [],
++      "effects": [
++        "opens-ui"
++      ],
++      "interactive": true,
++      "privacy": "local",
++      "mock": {
++        "result": {
++          "message": "Showing Arcade Find"
++        }
++      }
++    }
++  ]
++}
+diff --git a/qt/tests/tst_Vectors.cpp b/qt/tests/tst_Vectors.cpp
+index 2d1aefa..cab9b71 100644
+--- a/qt/tests/tst_Vectors.cpp
++++ b/qt/tests/tst_Vectors.cpp
+@@ -29,6 +29,7 @@ private slots:
+         QCOMPARE(appName(Ids::Shelf), QStringLiteral("Arcade Shelf"));
+         QCOMPARE(appName(Ids::Find), QStringLiteral("Arcade Find"));
+         QCOMPARE(releasesUrl(Ids::Shelf), QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/releases"));
++        QCOMPARE(releasesUrl(Ids::Find), QStringLiteral("https://github.com/qa-p1/Arcade-Find/releases"));
+         QVERIFY(!appPitch(Ids::Shelf).isEmpty());
+         QVERIFY(!appPitch(Ids::Find).isEmpty());
+     }
+diff --git a/tools/e2e.py b/tools/e2e.py
+index 85ec7e4..d0e2d21 100644
+--- a/tools/e2e.py
++++ b/tools/e2e.py
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env python3
+ """Ecosystem end-to-end runner (Linux, headless).
+ 
+-Starts the five Arcade apps from their sibling checkouts in background mode
++Starts the Arcade apps from their sibling checkouts in background mode
+ under one temporary ARCADE_HOME, drives the flagship flows through the
+ `arcade-link` debug CLI, then kills each app in turn to check that every
+ consumer degrades cleanly.
+@@ -65,6 +65,12 @@ APPS = {
+         "args": ["--background"],
+         "build": ["cmake", "--build", "build"],
+     },
++    "arcade.find": {
++        "dir": Path(os.environ.get("ARCADE_FIND_REPO", str(LINK.parent / "Arcade-Find"))),
++        "bin": "target/release/arcade-find",
++        "args": ["--background"],
++        "build": ["cargo", "build", "--release", "-p", "arcade-find"],
++    },
+     "arcade.clipboard": {
+         "dir": CODING / "App dev/Arcade-clipboard",
+         "bin": "apps/flutter_app/build/linux/x64/release/bundle/clipboard",
+@@ -80,7 +86,7 @@ STRIP = ("WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "XDG_CURRENT_DESKTOP"
+ 
+ def isolated_env(root: Path) -> dict:
+     env = {k: v for k, v in os.environ.items() if k not in STRIP}
+-    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel", "shelf"):
++    for d in ("home", "config", "data", "cache", "runtime", "lens", "clipdata", "arcade", "wheel", "shelf", "find"):
+         (root / d).mkdir(parents=True, exist_ok=True)
+     os.chmod(root / "runtime", 0o700)
+     env.update({
+@@ -95,6 +101,7 @@ def isolated_env(root: Path) -> dict:
+         "ARCADE_DATA_DIR": str(root / "clipdata"),
+         "ARCADE_WHEEL_INSTANCE": str(root / "wheel"),
+         "ARCADE_SHELF_HOME": str(root / "shelf"),
++        "ARCADE_FIND_HOME": str(root / "find"),
+         "ARCADE_WHEEL_DISABLE_GLOBAL_SHORTCUT": "1",
+         "QT_QPA_PLATFORM": "xcb",
+         "GDK_BACKEND": "x11",
+diff --git a/tools/e2e_checks/find.py b/tools/e2e_checks/find.py
+new file mode 100644
+index 0000000..a814dd6
+--- /dev/null
++++ b/tools/e2e_checks/find.py
+@@ -0,0 +1,111 @@
++"""Find's real Link service, alone and with the real Shelf.
++
++Find indexes a private tree (ARCADE_FIND_HOME/config/settings.json), answers
++`find.search` resident and one-shot, opens on `find.show` exactly as Shelf's
++"Search in Find" sends it, and its results land in Shelf by reference.
++"""
++import json
++import subprocess
++import time
++
++
++def _tree(s):
++    """A small tree and Find settings that index only it."""
++    tree = s.root / "find-tree"
++    if not tree.exists():
++        (tree / "Documents/Reports").mkdir(parents=True)
++        (tree / "Pictures").mkdir()
++        (tree / "Documents/Reports/report-2024-q3.pdf").write_bytes(b"%PDF-1.4 report")
++        (tree / "Pictures/report-cover.png").write_bytes(b"not decoded")
++        (tree / "Documents/notes.txt").write_text("unrelated")
++        config = s.root / "find/config"
++        config.mkdir(parents=True, exist_ok=True)
++        (config / "settings.json").write_text(json.dumps({"schema": 1, "roots": [str(tree)]}))
++    return tree
++
++
++def _search(s, query, *args):
++    return s.invoke("find", "find.search", "--text", query, *args)
++
++
++def _ready(s, query, timeout=20):
++    deadline = time.monotonic() + timeout
++    while True:
++        code, reply = _search(s, query)
++        if code == 0 and reply["data"]["matched"] and not reply["data"]["indexing"]:
++            return reply
++        assert time.monotonic() < deadline, reply
++        time.sleep(0.2)
++
++
++def _status(s):
++    exe = APPS["arcade.find"]["dir"] / APPS["arcade.find"]["bin"]
++    r = subprocess.run([str(exe), "--status"], env=s.env, capture_output=True, text=True, timeout=10)
++    return json.loads(r.stdout) if r.returncode == 0 else {}
++
++
++@check("find")
++def find_search_answers_resident_and_one_shot(s):
++    tree = _tree(s)
++    s.start("arcade.find")
++    manifest = json.loads((s.root / "arcade/apps/arcade.find.json").read_text())
++    assert manifest["launch"] == {"background": ["--background"], "invoke": ["--arcade-invoke"]}, manifest
++    reply = _ready(s, "report")
++    types = {o["type"] for o in reply["outputs"]}
++    assert "folder/reference" in types and any(t.startswith("file/") for t in types), reply
++    paths = [r["path"] for r in reply["data"]["results"]]
++    assert str(tree / "Documents/Reports/report-2024-q3.pdf") in paths, paths
++    code, reply = _search(s, "report ext:pdf")
++    assert code == 0 and [r["name"] for r in reply["data"]["results"]] == ["report-2024-q3.pdf"], reply
++    # Stopped Find: launch.invoke answers from the saved index, without a resident.
++    s.cli("quit", "find", check=True)
++    s.procs.pop("arcade.find", None)
++    time.sleep(0.5)
++    code, reply = _search(s, "report-cover")
++    assert code == 0 and reply["data"]["results"][0]["name"] == "report-cover.png", reply
++    assert not s.endpoint("arcade.find").exists(), "one-shot left a resident behind"
++    return f"{reply['message']} (one-shot)"
++
++
++@check("find")
++def find_show_opens_on_shelf_search_in_find(s):
++    tree = _tree(s)
++    if "arcade.find" not in s.procs:
++        s.start("arcade.find")
++    _ready(s, "report")
++    target = tree / "Documents/Reports/report-2024-q3.pdf"
++    # What Shelf's "Search in Find" sends for one file item.
++    code, reply = s.invoke("find", "find.show", "--input-json",
++                           json.dumps({"type": "file/document", "path": str(target), "size": target.stat().st_size}))
++    assert code == 0, reply
++    s.wait_window("Arcade Find")
++    deadline = time.monotonic() + 5
++    while _status(s).get("ui", {}).get("selectedPath") != str(target):
++        assert time.monotonic() < deadline, _status(s)
++        time.sleep(0.1)
++    s.screenshot("find-show-from-shelf")
++    code, reply = s.invoke("find", "find.show", "--input-json",
++                           json.dumps({"type": "folder/reference", "path": str(tree / "Pictures")}))
++    assert code == 0, reply
++    deadline = time.monotonic() + 5
++    while not _status(s).get("ui", {}).get("query", "").startswith("in:"):
++        assert time.monotonic() < deadline, _status(s)
++        time.sleep(0.1)
++    return "Reveal in Find selects the file; a folder scopes the search"
++
++
++@check("find")
++def find_results_land_in_shelf_by_reference(s):
++    tree = _tree(s)
++    for app in ("arcade.find", "arcade.shelf"):
++        if app not in s.procs:
++            s.start(app)
++    reply = _ready(s, "report")
++    args = [value for item in reply["outputs"] for value in ("--input-json", json.dumps(item))]
++    code, added = s.invoke("shelf", "shelf.add", *args)
++    assert code == 0, added
++    expected = len(reply["data"]["results"])
++    assert len(added["data"]["added"]) == expected, (reply, added)
++    assert {a["path"] for a in added["data"]["added"]} == {r["path"] for r in reply["data"]["results"]}, added
++    assert (tree / "Documents/Reports/report-2024-q3.pdf").read_bytes() == b"%PDF-1.4 report"
++    return added["message"]
+diff --git a/tools/e2e_checks/shelf.py b/tools/e2e_checks/shelf.py
+index 5098373..38e6f04 100644
+--- a/tools/e2e_checks/shelf.py
++++ b/tools/e2e_checks/shelf.py
+@@ -1,7 +1,7 @@
+ """Shelf's real resident persistence, input encoding and picker cancellation.
+ 
+-Find's consumer is not implemented at the inspected handoff commit, so this
+-group sends its documented inputs directly and makes no real-Find assertion.
++These checks send Find's selection encoding directly; the `find` group runs
++the real Find against the real Shelf.
+ """
+ import json
+ import time
+@@ -34,7 +34,7 @@ def shelf_resident_adds_mixed_references_and_reports_skips(s):
+     code, reply = s.invoke("shelf", "shelf.add", "--input-json",
+                            json.dumps({"type": "folder/reference", "path": str(s.root / "missing")}))
+     assert code != 0, reply
+-    return "Real Shelf; documented Find payload, duplicates and missing references"
++    return "Real Shelf; Find's selection encoding, duplicates and missing references"
+ 
+ 
+ @check("shelf")
+@@ -59,6 +59,11 @@ def shelf_relaunch_uses_background_resident_and_recovers_references(s):
+         # invoke_action owns this detached launch; Session's Popen table does
+         # not. Shut down precisely this private-profile Link endpoint.
+         s.cli("quit", "shelf", "--force")
++        # Quitting is asynchronous: a Shelf started before this one has
++        # released its endpoint and instance lock would hand off to it and exit.
++        deadline = time.monotonic() + 5
++        while s.endpoint("arcade.shelf").exists() and time.monotonic() < deadline:
++            time.sleep(0.05)
+     return "Stopped Shelf launched through launch.background; SQLite state recovered"
+ 
+ 
+-- 
+2.43.0
 

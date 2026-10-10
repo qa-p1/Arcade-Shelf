@@ -25,5 +25,11 @@
 - Relocatable Linux runtime launch, required SQLite-only driver deployment,
   per-user Windows packaging and bounded CI failure diagnostics.
 
+- Kept Shelf-owned handoff exports across restarts: startup cleanup read an
+  invalid age for every export and deleted them (Qt 6.8.3).
+- Collapsing to a docked tab no longer stays clamped to the panel's height.
+- Works with Arcade Find both ways, verified with both real apps; contract
+  test against Find's real manifest. CI green on Linux, Windows and macOS.
+
 This milestone is not a stable release. Platform interaction and ecosystem
 verification boundaries are recorded in [status](docs/STATUS.md).
