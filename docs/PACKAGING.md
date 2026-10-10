@@ -74,9 +74,9 @@ Tools currently accepts Linux tarballs only for Clipboard; the isolated Tools
 onboarding patch adds Shelf bundle installation with bounded safe extraction.
 Apply and ship that change before claiming Tools can install this package.
 
-## Cloud evidence — 2026-10-09
+## Cloud evidence — 2026-10-10
 
-The Linux runtime bundle was rebuilt from the tested delivery working tree
+The Linux runtime bundle was rebuilt from the tested stable executable
 using Qt 6.8.2, CMake 3.31.6, GCC 14.2.0 and patchelf 0.18.0. It is a local
 development artifact, not a tagged or published release. The build input
 `build/arcade-shelf` SHA-256 was
@@ -85,17 +85,17 @@ packaging changes only its installed copy's runtime search path.
 
 | Asset | Size | Validation |
 |---|---:|---|
-| `dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz` | 63,289,491 bytes | 145 copied dynamic libraries; clean registered-ELF startup and full packaged process suite passed |
+| `dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz` | 63,289,608 bytes | 145 copied dynamic libraries; clean registered-ELF startup and full packaged process suite passed |
 | Windows per-user `.exe` | Not built in this Linux workspace | NSIS/windeployqt scripts and CI implemented; native run pending |
 | macOS `.dmg` | Not built in this Linux workspace | macdeployqt/hdiutil scripts and CI implemented; native run pending |
 
 Linux archive SHA-256:
-`5d0d6179435c5b27966a4db086e6e76b04b16bd9f8b6b4644a5d28c725c436e1`.
+`0ec5d26102dc44aeb4a3d20051db8862c743398482149df910953cfd18cff963`.
 The unmodified release generator produced `dist/arcade-release.json` with
 channel `nightly` and `dist/SHA256SUMS.txt` for this exact file. No upload or
 release publication occurred.
 
-All **11 packaged process tests passed in 5.207 seconds**, executing the
+All **11 packaged process tests passed in 5.660 seconds**, executing the
 extracted ELF directly with development Qt paths removed. This covers resident
 lifecycle, malformed/authentication requests, reference batches, partial
 successes, duplicates, owned handoffs, symlinks, disabled integration, picker
@@ -103,7 +103,9 @@ cancellation and crash recovery. A separate real immutable Link CLI invoked
 `shelf.add` while Shelf was stopped; it launched the registered ELF through
 `launch.background`, added one reference successfully and shut down cleanly.
 Direct `--version`, `--arcade-manifest` and background/status commands also
-passed with those development variables absent.
+passed with those development variables absent. The wrapper forwarded
+`--version` successfully and exports no Qt or library search variables. This
+prevents Shelf-specific runtime paths from propagating into launched peers.
 
 These checks do not exercise interactive compositor behavior. Reproduce the
 packaged process suite with:
@@ -112,7 +114,7 @@ packaged process suite with:
 mkdir package-smoke
 tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz -C package-smoke
 env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH \
-  QT_QPA_PLATFORM=offscreen python3 tests/process_smoke.py \
+  QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software python3 tests/process_smoke.py \
   --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/bin/arcade-shelf
 ```
 
@@ -123,13 +125,21 @@ validation tasks. No code signing, Windows signing or macOS notarization has
 been performed; no stable release or shared Link tag was published.
 
 The first GitHub [CI run](https://github.com/qa-p1/Arcade-Shelf/actions/runs/37986290672)
-for snapshot `a41a4ed` failed in Qt installation before compilation on all three
-OS jobs. The workflow has been corrected to use Linux's `linux_gcc_64` archive
-and request only the optional `qtimageformats` module; QtSvg is included in Qt
-essentials. It now installs `xdotool` and runs Linux native pointer-event drag
-tests under Xvfb with `QT_QUICK_BACKEND=software`. These corrections still need
-a successful subsequent CI run; the initial run produced no application
-build, test or package evidence.
+for snapshot `a41a4ed` failed in Qt installation before compilation. The
+[subsequent run](https://github.com/qa-p1/Arcade-Shelf/actions/runs/37988927517)
+for `15a0af1` compiled on Linux, Windows and macOS, then failed validation or
+packaging in all three jobs. No successful end-to-end CI run is claimed.
+The [repair run](https://github.com/qa-p1/Arcade-Shelf/actions/runs/38024585867)
+for `fadd592` was in progress when this evidence was recorded.
+
+The workflow selects Linux's `linux_gcc_64` archive and only the optional
+`qtimageformats` module; QtSvg is included in Qt essentials. The Qt installer
+uses the built Node action pinned at v4.2.1 commit
+`12aa0336e1e410b3c6dff5e0722547f7a37e8c60`, avoiding a floating nested action.
+CI installs `xdotool` and runs Linux native pointer-event drag tests under Xvfb
+with `QT_QUICK_BACKEND=software`. Failed jobs emit bounded diagnostic
+annotations from their actual CTest logs. Successful native package and
+smoke-test results must be checked before publishing distributable releases.
 
 Shared Link/Tools/Wheel onboarding changes are reviewable patches under
 [`integration-patches/`](integration-patches/README.md). Their existence does

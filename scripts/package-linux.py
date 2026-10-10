@@ -30,6 +30,19 @@ def copy_tree(source: Path, dest: Path) -> None:
         shutil.copytree(source, dest, symlinks=False, dirs_exist_ok=True)
 
 
+def report_ci_failure(error: BaseException) -> None:
+    """Expose the actual package failure when Actions log storage is unavailable."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    message = f"{type(error).__name__}: {error}"
+    message = re.sub(r"(?i)([\"']?(?:token|authorization|password|secret)[\"']?\s*[:=]\s*)[^\s,}]+", r"\1[redacted]", message)
+    message = re.sub(r"\b[0-9a-fA-F]{32,}\b", "[redacted hex]", message)
+    message = "".join(character if character in "\r\n\t" or ord(character) >= 32 else "?" for character in message)
+    message = message.encode("utf-8")[:6000].decode("utf-8", errors="ignore")
+    message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::error file=scripts/package-linux.py,line=1,title=Linux runtime packaging failed::{message}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", type=Path, default=Path("build"))
@@ -189,4 +202,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        result = main()
+    except (Exception, SystemExit) as error:
+        if not isinstance(error, SystemExit) or error.code not in (None, 0):
+            report_ci_failure(error)
+        raise
+    raise SystemExit(result)
