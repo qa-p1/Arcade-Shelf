@@ -830,7 +830,7 @@ bool Store::cleanup()
         const QString name = QString::fromUtf8(fields.value(2));
         if (!QRegularExpression(QStringLiteral("^it_[0-9a-f]{32}_[0-9a-f]{64}$")).match(id).hasMatch() ||
             !safeString(name) || safeName(name,{}) != name) continue;
-        if (QFileInfo(marker).lastModified().toMSecsSinceEpoch() < now - 24LL * 60 * 60 * 1000) {
+        if (marker.fileTime(QFileDevice::FileModificationTime).toMSecsSinceEpoch() < now - 24LL * 60 * 60 * 1000) {
             QDir(d.absoluteFilePath()).removeRecursively();
             continue;
         }

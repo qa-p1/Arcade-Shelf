@@ -13,8 +13,15 @@ Window {
     flags: Qt.Window | Qt.FramelessWindowHint | (shelf.alwaysOnTop ? Qt.WindowStaysOnTopHint : 0) | (!shelf.focusPanel ? Qt.WindowDoesNotAcceptFocus : 0)
     minimumWidth: shelf.expanded ? 440 : dockEdge.length ? (verticalDock ? 38 : 112) : 216
     minimumHeight: shelf.expanded ? 350 : dockEdge.length ? (verticalDock ? 112 : 38) : 76
-    width: shelf.expanded ? panelWidth : dockEdge.length ? (verticalDock ? 38 : 112) : 216
-    height: shelf.expanded ? panelHeight : dockEdge.length ? (verticalDock ? 112 : 38) : 76
+    readonly property int targetWidth: shelf.expanded ? panelWidth : dockEdge.length ? (verticalDock ? 38 : 112) : 216
+    readonly property int targetHeight: shelf.expanded ? panelHeight : dockEdge.length ? (verticalDock ? 112 : 38) : 76
+    width: targetWidth
+    height: targetHeight
+    // Collapsing updates the size and minimum-size bindings in no fixed order.
+    // A size applied while the old, larger minimum is still in force is
+    // clamped to it (a docked tab stayed panel-tall); reapply once it drops.
+    onMinimumWidthChanged: if (width !== targetWidth) width = Qt.binding(() => targetWidth)
+    onMinimumHeightChanged: if (height !== targetHeight) height = Qt.binding(() => targetHeight)
 
     property int panelWidth: 640
     property int panelHeight: 490

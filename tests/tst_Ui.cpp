@@ -208,13 +208,15 @@ private slots:
             const QPointF position=field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2));
             return position.y()>0 && position.y()<scroll->height();
         };
-        // Wheel scrolling animates over several frames. Wait for the real
-        // target to enter the clipped viewport before dispatching its click.
+        // Wheel scrolling animates over several frames (and can overshoot and
+        // rebound). A press on a moving Flickable only stops it, so wait for
+        // the view to come to rest with the target inside the clipped viewport.
+        auto *flick=scroll->property("contentItem").value<QQuickItem *>(); QVERIFY(flick);
         for(int attempt=0;attempt<4 && !inViewport();++attempt) {
             QTest::mouseMove(m_window,scrollPoint);
             QWheelEvent wheel(scrollPoint,m_window->mapToGlobal(scrollPoint),{},{0,-480},Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
             QApplication::sendEvent(m_window,&wheel);
-            QTest::qWait(220);
+            QTRY_VERIFY_WITH_TIMEOUT(!flick->property("moving").toBool(),3000);
         }
         QVERIFY2(inViewport(),qPrintable(QStringLiteral("Shortcut center y=%1, preferences viewport height=%2")
             .arg(field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2)).y()).arg(scroll->height())));
@@ -335,7 +337,9 @@ private slots:
         QVERIFY(!m_controller->focusPanel());
         QVERIFY(m_window->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
         QDragLeaveEvent leave; QApplication::sendEvent(m_window,&leave);
-        QTest::mouseMove(m_window,QPoint(-20,-20));
+        // Not (-20,-20): the previous case ends there, and Qt drops a mouse
+        // move to the position it already has, so no hover exit would arrive.
+        QTest::mouseMove(m_window,QPoint(-24,-24));
         QTRY_VERIFY_WITH_TIMEOUT(!m_controller->expanded(),1200);
         QCOMPARE(m_controller->dockEdge(),QString("left"));
     }

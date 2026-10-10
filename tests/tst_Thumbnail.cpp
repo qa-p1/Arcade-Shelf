@@ -11,7 +11,6 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
-#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimeZone>
@@ -76,9 +75,9 @@ private:
             *image={}; if (error) *error="Thumbnail unavailable"; return true;
         }
         if (item->property("status").toInt()!=1 || !QTest::qWaitForWindowExposed(window,5000)) return false;
-        QSignalSpy frames(window,&QQuickWindow::frameSwapped);
-        window->requestUpdate();
-        if (frames.isEmpty() && !frames.wait(5000)) return false;
+        // grabWindow() synchronizes and renders the current scene itself.
+        // Waiting for frameSwapped after requestUpdate() was racy: a window
+        // with nothing left to repaint may not swap again.
         const QImage rendered=window->grabWindow();
         if (rendered.isNull()) return false;
         *image=rendered.copy(0,0,qRound(item->implicitWidth()),qRound(item->implicitHeight()));
