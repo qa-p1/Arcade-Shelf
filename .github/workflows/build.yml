@@ -40,7 +40,7 @@ jobs:
           cache: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build patchelf xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+        run: sudo apt-get update && sudo apt-get install -y ninja-build patchelf desktop-file-utils xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Windows build tools
         if: runner.os == 'Windows'
         run: choco install ninja nsis --no-progress -y

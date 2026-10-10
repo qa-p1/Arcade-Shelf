@@ -13,8 +13,9 @@ python3 scripts/check-vendor.py
 
 Linux AppImage (the Qt prefix contains `bin/qtpaths6`, `plugins/`
 and `qml/`; its original installation may instead use distribution paths).
-Install `patchelf` and `curl` on the build machine; neither is a runtime
-dependency:
+Install `patchelf`, `curl` and `desktop-file-utils` (provides
+`desktop-file-validate`) on the build machine; these are not runtime
+dependencies:
 
 ```sh
 python3 scripts/package-linux.py --build build --qt-prefix /path/to/Qt/6.8.3/gcc_64 --version 0.1.1 --output dist
