@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "id": "arcade.find",
+  "name": "Arcade Find",
+  "version": "0.1.0",
+  "link": {
+    "protocol": [
+      1
+    ]
+  },
+  "executable": "/opt/arcade-find/arcade-find",
+  "launch": {
+    "background": [
+      "--background"
+    ],
+    "invoke": [
+      "--arcade-invoke"
+    ]
+  },
+  "shortcuts": [
+    {
+      "id": "show",
+      "accelerator": "Ctrl+Alt+F"
+    }
+  ],
+  "settings": {
+    "linkEnabled": true
+  },
+  "actions": [
+    {
+      "id": "find.search",
+      "version": 1,
+      "title": "Find matching files",
+      "verb": "search",
+      "accepts": [
+        "text/plain"
+      ],
+      "produces": [
+        "file/*[]",
+        "folder/reference"
+      ],
+      "effects": [],
+      "interactive": false,
+      "privacy": "local",
+      "platforms": [
+        "linux",
+        "windows",
+        "macos"
+      ],
+      "available": true
+    },
+    {
+      "id": "find.show",
+      "version": 1,
+      "title": "Search in Find",
+      "verb": "search",
+      "accepts": [
+        "text/plain",
+        "file/*",
+        "folder/reference"
+      ],
+      "produces": [],
+      "effects": [
+        "opens-ui"
+      ],
+      "interactive": true,
+      "privacy": "local",
+      "platforms": [
+        "linux",
+        "windows",
+        "macos"
+      ],
+      "available": true
+    }
+  ]
+}

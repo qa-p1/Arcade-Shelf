@@ -90,6 +90,43 @@ private slots:
         qunsetenv("ARCADE_HOME");
     }
 
+    // Arcade Find's real manifest (`arcade-find --arcade-manifest`, Find
+    // feature/find-v0.1): what Shelf offers for each kind of selection, and
+    // that the payload Shelf builds passes its own pre-flight validation.
+    void findManifestOffersShowAndSearch()
+    {
+        QTemporaryDir temp;
+        qputenv("ARCADE_HOME", temp.path().toUtf8());
+        const auto locations = ArcadeLink::Locations::discover();
+        QFile fixture(QStringLiteral(SHELF_FIXTURES "/arcade.find.manifest.json"));
+        QVERIFY(fixture.open(QIODevice::ReadOnly));
+        auto find = QJsonDocument::fromJson(fixture.readAll()).object();
+        QCOMPARE(find.value("id").toString(), QString("arcade.find"));
+        find.insert("executable", QCoreApplication::applicationFilePath());
+        QVERIFY(ArcadeLink::writeManifest(locations, find));
+        const QString file = temp.filePath("brief.pdf");
+        { QFile f(file); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("pdf"); }
+        {
+            PeerHub hub;
+            hub.start();
+            QTRY_COMPARE_WITH_TIMEOUT(hub.manifests().size(), 1, 3000);
+            const QJsonObject one{{"type", "file/document"}, {"path", file}, {"size", 3}};
+            const QJsonObject folder{{"type", "folder/reference"}, {"path", temp.path()}};
+            const QJsonObject note{{"type", "text/plain"}, {"text", "invoice 2024"}};
+            QVERIFY(containsAction(hub.offers({one}), "find.show"));
+            QVERIFY(containsAction(hub.offers({folder}), "find.show"));
+            QVERIFY(containsAction(hub.offers({note}), "find.show"));
+            QVERIFY(containsAction(hub.offers({note}), "find.search"));
+            QVERIFY(!containsAction(hub.offers({one}), "find.search"));
+            // Find's actions take one value: never offered for a multi-selection.
+            QVERIFY(!containsAction(hub.offers({one, folder}), "find.show"));
+            QVERIFY(!containsAction(hub.offers({note, note}), "find.search"));
+            const QJsonObject request{{"action", "find.show"}, {"version", 1}, {"inputs", QJsonArray{one}}, {"options", QJsonObject{}}};
+            QVERIFY(!ShelfInvoke::validate(find, request).isError());
+        }
+        qunsetenv("ARCADE_HOME");
+    }
+
     void residentProgressAndCancellation()
     {
         QTemporaryDir temp;
