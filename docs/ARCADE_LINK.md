@@ -1,9 +1,9 @@
 # Arcade Link
 
 Canonical ID: `arcade.shelf`. Protocol 1 and manifest schema 1. The Qt source is
-vendored unchanged from Arcade Link `v0.1.0`; `scripts/check-vendor.py` verifies
+vendored unchanged from Arcade Link `v0.2.0`; `scripts/check-vendor.py` verifies
 its hashes. Find's side of the contract is documented in Arcade Find's
-[docs/SHELF.md](https://github.com/qa-p1/Arcade-Find/blob/feature/find-v0.1/docs/SHELF.md).
+[docs/SHELF.md](https://github.com/qa-p1/Arcade-Find/blob/main/docs/SHELF.md).
 
 ## Public actions
 

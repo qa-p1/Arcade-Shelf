@@ -3,7 +3,7 @@
 Arcade Shelf is MIT licensed. Dependencies retain their own licenses.
 
 * **Arcade Link:** https://github.com/qa-p1/Arcade-Link, immutable annotated
-  tag `v0.1.0`, code commit `337b85fe85fca3e68ec472a6337aa9ebd77fc7ef`.
+  tag `v0.2.0`, code commit `bedee71dd98475810fd43a7da23d45316389b4e5`.
   Upstream workspace declares `MIT OR Apache-2.0`; Shelf uses the MIT option.
   The unmodified Qt implementation, conformance vectors and release metadata
   generator are tracked by `vendor/arcade-link/provenance.json`. Upstream at

@@ -239,7 +239,7 @@ QVariantList Controller::peers() const
         rows << QVariantMap{{"id", id}, {"name", o["name"].toString()}, {"version", o["version"].toString()}, {"installed", true}, {"running", o["running"].toBool()}, {"enabled", m_settings["peers"].toObject()[id].toBool(true)}, {"linkEnabled", o["settings"].toObject()["linkEnabled"].toBool(true)}};
     }
     for (const auto &id : QStringList{"arcade.look", "arcade.lens", "arcade.box", "arcade.wheel", "arcade.clipboard", "arcade.find", "arcade.tools"}) {
-        if (!known.contains(id)) rows << QVariantMap{{"id", id}, {"name", id == "arcade.find" ? "Arcade Find" : ArcadeLink::appName(id)}, {"installed", false}, {"enabled", true}, {"linkEnabled", false}};
+        if (!known.contains(id)) rows << QVariantMap{{"id", id}, {"name", ArcadeLink::appName(id)}, {"installed", false}, {"enabled", true}, {"linkEnabled", false}};
     }
     return rows;
 }
@@ -509,7 +509,7 @@ void Controller::getPeer(QString id) {
             for (auto a : app["actions"].toArray()) if (a.toObject()["id"] == "tools.install" && ArcadeLink::actionUsable(app,a.toObject())) { peerCall("arcade.tools","tools.install",{ArcadeLink::textContent("text/plain",id)},{{"app",id}}); return; }
         }
     }
-    if (id == "arcade.find") QDesktopServices::openUrl(QUrl("https://github.com/qa-p1/Arcade-Find/releases")); else QDesktopServices::openUrl(QUrl(ArcadeLink::releasesUrl(id)));
+    QDesktopServices::openUrl(QUrl(ArcadeLink::releasesUrl(id)));
 }
 void Controller::setRetention(int days) { if (days >= 0 && days <= 3650) saveSetting("retentionDays",days); }
 void Controller::setQuota(int mib) { if (mib >= 1 && mib <= 4096) saveSetting("quotaBytes",qint64(mib)*1024*1024); }

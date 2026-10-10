@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-Link",
-  "tag": "v0.1.0",
-  "commit": "337b85fe85fca3e68ec472a6337aa9ebd77fc7ef",
+  "tag": "v0.2.0",
+  "commit": "bedee71dd98475810fd43a7da23d45316389b4e5",
   "license": "MIT OR Apache-2.0 (MIT option selected)",
   "licenseSource": "Cargo.toml workspace.package.license at pinned commit; upstream has no standalone LICENSE file",
   "files": [
@@ -38,12 +38,12 @@
     {
       "source": "qt/ArcadeLink.cpp",
       "destination": "vendor/arcade-link/qt/ArcadeLink.cpp",
-      "sha256": "7866fafa320a237d5495e8c44de6a0c17f72524ec7e9140eee912fcfd9b15e20"
+      "sha256": "d9991a124c1701d7a3acdec73e7a86a72a114f35e54fb4cc9e5f0e1b68411f78"
     },
     {
       "source": "qt/ArcadeLink.h",
       "destination": "vendor/arcade-link/qt/ArcadeLink.h",
-      "sha256": "67be8387c41466e835b70e3f1d76a60da422e4d3dbe78376e7264fb2065acf73"
+      "sha256": "0936144ecb8db6f441c9ab4a03113051ce2cd28d9cb0be7ee201da8204a0545c"
     },
     {
       "source": "qt/tests/tst_Server.cpp",
@@ -53,7 +53,7 @@
     {
       "source": "qt/tests/tst_Vectors.cpp",
       "destination": "vendor/arcade-link/qt/tests/tst_Vectors.cpp",
-      "sha256": "d73c7573b46a30b40121c1270fc51ff6e59a8b1d8fd0c7bbd1b7344a60e16bcd"
+      "sha256": "8ab33010b3a28b33149b09a6fefba27852db26645364de2f906891ad184041ff"
     },
     {
       "source": "spec/vectors/accelerators.json",

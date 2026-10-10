@@ -22,6 +22,17 @@ static QJsonObject load(const QString &name)
 class Vectors : public QObject {
     Q_OBJECT
 private slots:
+    void onboardingMetadata()
+    {
+        QVERIFY(Ids::apps().contains(Ids::Shelf));
+        QVERIFY(Ids::apps().contains(Ids::Find));
+        QCOMPARE(appName(Ids::Shelf), QStringLiteral("Arcade Shelf"));
+        QCOMPARE(appName(Ids::Find), QStringLiteral("Arcade Find"));
+        QCOMPARE(releasesUrl(Ids::Shelf), QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/releases"));
+        QCOMPARE(releasesUrl(Ids::Find), QStringLiteral("https://github.com/qa-p1/Arcade-Find/releases"));
+        QVERIFY(!appPitch(Ids::Shelf).isEmpty());
+        QVERIFY(!appPitch(Ids::Find).isEmpty());
+    }
     void wire()
     {
         const QJsonObject v = load(QStringLiteral("wire.json"));

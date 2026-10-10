@@ -24,7 +24,7 @@ namespace ArcadeLink {
 
 QList<int> supportedProtocols() { return {1}; }
 
-QStringList Ids::apps() { return {Box, Lens, Look, Wheel, Clipboard}; }
+QStringList Ids::apps() { return {Box, Lens, Look, Wheel, Clipboard, Shelf, Find}; }
 
 QString appName(const QString &id)
 {
@@ -34,6 +34,8 @@ QString appName(const QString &id)
     if (id == Ids::Wheel) return QStringLiteral("Arcade Wheel");
     if (id == Ids::Clipboard) return QStringLiteral("Arcade Clipboard");
     if (id == Ids::Tools) return QStringLiteral("Arcade Tools");
+    if (id == Ids::Shelf) return QStringLiteral("Arcade Shelf");
+    if (id == Ids::Find) return QStringLiteral("Arcade Find");
     return id;
 }
 
@@ -45,6 +47,8 @@ QString appPitch(const QString &id)
     if (id == Ids::Wheel) return QStringLiteral("Put any action on a one-gesture radial launcher.");
     if (id == Ids::Clipboard) return QStringLiteral("Send content to all your devices, end-to-end encrypted.");
     if (id == Ids::Tools) return QStringLiteral("Install and update the Arcade apps.");
+    if (id == Ids::Shelf) return QStringLiteral("Collect, organize and transfer desktop content.");
+    if (id == Ids::Find) return QStringLiteral("Find files and folders instantly.");
     return {};
 }
 
@@ -55,6 +59,8 @@ QString releasesUrl(const QString &id)
     if (id == Ids::Look) return QStringLiteral("https://github.com/qa-p1/arcade-look/releases");
     if (id == Ids::Wheel) return QStringLiteral("https://github.com/qa-p1/Arcade-wheel/releases");
     if (id == Ids::Clipboard) return QStringLiteral("https://github.com/qa-p1/Arcade-clipboard/releases");
+    if (id == Ids::Shelf) return QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/releases");
+    if (id == Ids::Find) return QStringLiteral("https://github.com/qa-p1/Arcade-Find/releases");
     return QStringLiteral("https://github.com/qa-p1/Arcade-tools/releases");
 }
 

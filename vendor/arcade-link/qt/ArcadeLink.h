@@ -39,6 +39,8 @@ inline const QString Look = QStringLiteral("arcade.look");
 inline const QString Wheel = QStringLiteral("arcade.wheel");
 inline const QString Clipboard = QStringLiteral("arcade.clipboard");
 inline const QString Tools = QStringLiteral("arcade.tools");
+inline const QString Shelf = QStringLiteral("arcade.shelf");
+inline const QString Find = QStringLiteral("arcade.find");
 QStringList apps();
 }
 
