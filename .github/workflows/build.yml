@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
   build:
@@ -28,7 +28,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        # Pin the built Node action directly so its composite wrapper cannot
+        # introduce a nested floating @v4 dependency.
+        uses: jurplel/install-qt-action/action@12aa0336e1e410b3c6dff5e0722547f7a37e8c60 # v4.2.1
         with:
           version: '6.8.3'
           arch: ${{ matrix.qt_arch }}
@@ -37,7 +39,7 @@ jobs:
           cache: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+        run: sudo apt-get update && sudo apt-get install -y ninja-build patchelf xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Windows build tools
         if: runner.os == 'Windows'
         run: choco install ninja nsis --no-progress -y
@@ -68,7 +70,7 @@ jobs:
           python scripts/package-linux.py --build build --qt-prefix "$QT_ROOT_DIR" --version 0.1.0 --output dist
           mkdir package-smoke
           tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz -C package-smoke
-          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH QT_QPA_PLATFORM=offscreen python tests/process_smoke.py --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/arcade-shelf
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH QT_QPA_PLATFORM=offscreen python tests/process_smoke.py --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/bin/arcade-shelf
       - name: Windows package
         if: runner.os == 'Windows'
         shell: pwsh
@@ -77,7 +79,10 @@ jobs:
         if: runner.os == 'macOS'
         run: scripts/package-macos.sh build 0.1.0 dist
       - name: Generate release manifests
-        run: python scripts/arcade-release.py --id arcade.shelf --version 0.1.0 --channel nightly --notes https://github.com/qa-p1/Arcade-Shelf/blob/main/CHANGELOG.md dist
+        run: python scripts/arcade-release.py --id arcade.shelf --version 0.1.0 --channel nightly --notes https://github.com/qa-p1/Arcade-Shelf/blob/${{ github.event.pull_request.head.sha || github.sha }}/CHANGELOG.md dist
+      - name: Report bounded failure diagnostics
+        if: failure()
+        run: python scripts/ci-diagnostics.py --build build
       - name: Upload development artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 BASE_LIBS = re.compile(r"^(linux-vdso|ld-linux|lib(c|m|pthread|dl|rt|resolv|nss_.*)\.so|lib(GL|EGL|GLX|OpenGL|GLdispatch|gbm|drm|vulkan)\.so)")
@@ -46,8 +47,23 @@ def main() -> int:
         qpaths = qt_prefix / "bin/qtpaths"
     if not qpaths.exists():
         raise SystemExit("qtpaths6 or qtpaths is required under --qt-prefix/bin")
+    patchelf = shutil.which("patchelf")
+    if not patchelf:
+        raise SystemExit("patchelf is required to make registered ELF launches relocatable")
     plugin_source = Path(run(qpaths, "--query", "QT_INSTALL_PLUGINS"))
     qml_source = Path(run(qpaths, "--query", "QT_INSTALL_QML"))
+    reported_prefix = Path(run(qpaths, "--query", "QT_INSTALL_PREFIX"))
+
+    def runtime_roots(reported: Path, sdk_name: str, environment_name: str) -> list[Path]:
+        roots = [reported]
+        if reported.is_relative_to(reported_prefix):
+            roots.append(qt_prefix / reported.relative_to(reported_prefix))
+        roots.append(qt_prefix / sdk_name)
+        roots.extend(Path(path) for path in os.environ.get(environment_name, "").split(os.pathsep) if path)
+        return list(dict.fromkeys(path for path in roots if path.is_dir()))
+
+    plugin_roots = runtime_roots(plugin_source, "plugins", "QT_PLUGIN_PATH")
+    qml_roots = runtime_roots(qml_source, "qml", "QML_IMPORT_PATH")
     # Qt's distribution may relocate its prefix with qt.conf.
     if not plugin_source.is_dir():
         plugin_source = qt_prefix / "plugins"
@@ -62,11 +78,15 @@ def main() -> int:
         if not executable.is_file():
             raise SystemExit("Expected CMake install to create bin/arcade-shelf")
         for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "sqldrivers", "platformthemes", "xcbglintegrations", "egldeviceintegrations", "tls"):
-            copy_tree(plugin_source / plugin, bundle / "plugins" / plugin)
+            for plugin_root in plugin_roots:
+                copy_tree(plugin_root / plugin, bundle / "plugins" / plugin)
+        if not (bundle / "plugins/sqldrivers/libqsqlite.so").is_file():
+            raise SystemExit("Qt's QSQLITE runtime plugin is required in the bundle")
         # Only runtime modules used by Qt Quick Controls/Shelf. Qt5Compat is
         # harmless when absent and allows compatible visual effect imports.
         for module in ("QtQml", "QtQuick", "Qt5Compat"):
-            copy_tree(qml_source / module, bundle / "qml" / module)
+            for qml_root in qml_roots:
+                copy_tree(qml_root / module, bundle / "qml" / module)
         (bundle / "bin/qt.conf").write_text("[Paths]\nPrefix=..\nLibraries=lib\nPlugins=plugins\nQmlImports=qml\n")
         library_dir = bundle / "lib"
         library_dir.mkdir(exist_ok=True)
@@ -95,8 +115,12 @@ def main() -> int:
                 shutil.copy2(resolved_path, destination, follow_symlinks=True)
                 inventory[soname] = {"source": str(resolved_path), "sha256": hashlib.sha256(destination.read_bytes()).hexdigest()}
                 queue.append(destination)
+        # Link registers this ELF, so a stopped peer launches it directly.
+        # DT_RPATH is inherited for transitive dependencies; DT_RUNPATH alone
+        # does not cover distribution Qt libraries without their own rpaths.
+        subprocess.check_call([patchelf, "--force-rpath", "--set-rpath", "$ORIGIN:$ORIGIN/../lib", str(executable)])
         launcher = bundle / "arcade-shelf"
-        launcher.write_text('#!/bin/sh\nset -eu\nSHELF_BUNDLE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexport LD_LIBRARY_PATH="$SHELF_BUNDLE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexec "$SHELF_BUNDLE/bin/arcade-shelf" "$@"\n')
+        launcher.write_text('#!/bin/sh\nset -eu\nSHELF_BUNDLE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$SHELF_BUNDLE/bin/arcade-shelf" "$@"\n')
         launcher.chmod(0o755)
         notices = bundle / "share/arcade-shelf/licenses"
         notices.mkdir(parents=True, exist_ok=True)
@@ -127,10 +151,36 @@ def main() -> int:
             env = {key: value for key, value in os.environ.items() if key not in (
                 "LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QML_IMPORT_PATH", "QML2_IMPORT_PATH")}
             env.update(QT_QPA_PLATFORM="offscreen", ARCADE_HOME=f"{profile}/arcade", ARCADE_SHELF_HOME=f"{profile}/shelf")
-            subprocess.check_call([str(launcher), "--version"], env=env)
-            manifest = json.loads(subprocess.check_output([str(launcher), "--arcade-manifest"], env=env, text=True))
+            env["QT_QUICK_BACKEND"] = "software"
+            subprocess.check_call([str(executable), "--version"], env=env)
+            manifest = json.loads(subprocess.check_output([str(executable), "--arcade-manifest"], env=env, text=True))
             if manifest["id"] != "arcade.shelf" or "invoke" in manifest.get("launch", {}):
                 raise SystemExit("Packaged manifest ID/lifecycle is invalid")
+            if Path(manifest["executable"]) != executable:
+                raise SystemExit("Packaged manifest must register the installed ELF")
+            log_path = Path(profile) / "background.log"
+            with log_path.open("wb") as log:
+                resident = subprocess.Popen([manifest["executable"], *manifest["launch"]["background"]], env=env, stdout=log, stderr=log)
+                try:
+                    endpoint = Path(profile) / "arcade/run/arcade.shelf.endpoint"
+                    deadline = time.monotonic() + 3.0
+                    while not endpoint.is_file() and resident.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.02)
+                    if not endpoint.is_file():
+                        raise SystemExit(f"Clean registered-ELF background launch failed:\n{log_path.read_text(errors='replace')}")
+                    status = json.loads(subprocess.check_output([manifest["executable"], "--status"], env=env, text=True, timeout=3))
+                    if status.get("id") != "arcade.shelf":
+                        raise SystemExit(f"Clean packaged status failed: {status}")
+                    subprocess.check_call([manifest["executable"], "--quit"], env=env, timeout=3)
+                    resident.wait(timeout=3)
+                finally:
+                    if resident.poll() is None:
+                        resident.terminate()
+                        try:
+                            resident.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            resident.kill()
+                            resident.wait(timeout=3)
         archive_path = output / f"{name}.tar.gz"
         with tarfile.open(archive_path, "w:gz") as archive:
             archive.add(bundle, arcname=name)

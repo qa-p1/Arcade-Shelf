@@ -7,16 +7,18 @@ not complete Wheel/Tools onboarding.
 Reviewable format-patches, base commits, test evidence and application instructions
 are in [integration-patches/README.md](integration-patches/README.md).
 
-| Repository | Local candidate commit | Purpose |
-|---|---|---|
-| Arcade Link | `6997428a4dece7e1283e368cf755ed0b3a4f8efe` | Shelf/Find identity metadata, glyphs, catalog and isolated Shelf runner |
-| Arcade Tools | `d2fab05620b25addb1d1ba07834b6696c60da940` | Shelf catalog and safe per-platform install/data/lifecycle mapping |
-| Arcade Wheel | `8f91423d3de87aefee109bc28e889fee3f2449cb` | Compatible Shelf action references and connected-app metadata |
+| Repository | Published feature head | Draft review | Purpose |
+|---|---|---|---|
+| Arcade Link | `c4c755ffddd4b69e7de3577f024dbd7e3ae40864` | [Arcade-Link #1](https://github.com/qa-p1/Arcade-Link/pull/1) | Shelf/Find identity metadata, glyphs, catalog and isolated Shelf runner |
+| Arcade Tools | `126e09b8f5c7be79213a12cebbcf63a8c51adebd` | [Arcade-tools #1](https://github.com/qa-p1/Arcade-tools/pull/1) | Shelf catalog and safe per-platform install/data/lifecycle mapping |
+| Arcade Wheel | `8f91423d3de87aefee109bc28e889fee3f2449cb` | [Arcade-wheel #5](https://github.com/qa-p1/Arcade-wheel/pull/5) | Compatible Shelf action references and connected-app metadata |
 
-These changes preserve protocol v1 and the existing immutable tag. They were
-tested locally and captured inside this repository; they were not pushed,
-merged, released or tagged. Find's fixture is explicitly designed-only metadata,
-not a claim that Find's resident integration exists.
+These isolated feature branches were pushed without force and opened as draft
+pull requests on 2026-10-09. They preserve protocol v1, the immutable `v0.1.0`
+tag, current remote main branches and consumers' frozen dependencies. No changes
+were merged, released or tagged. Link and Tools include formatting-only follow-up
+commits so their required Rust formatting checks pass. Find's fixture is explicitly
+designed-only metadata; Find's resident integration still needs implementation.
 
 Current consumers can add/reference Shelf through generic Link discovery when
 their capabilities permit it. Released fixed allowlists need these patches and

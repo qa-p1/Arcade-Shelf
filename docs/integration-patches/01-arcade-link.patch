@@ -1,8 +1,8 @@
 From 6997428a4dece7e1283e368cf755ed0b3a4f8efe Mon Sep 17 00:00:00 2001
 From: Arcade contributors <qa-p1@users.noreply.github.com>
 Date: Fri, 9 Oct 2026 20:14:42 +0000
-Subject: [PATCH] Register Shelf and Find metadata and verify resident Shelf
- flows
+Subject: [PATCH 1/2] Register Shelf and Find metadata and verify resident
+ Shelf flows
 
 ---
  SPEC.md                            | 13 ++++-
@@ -570,6 +570,35 @@ index 0000000..5098373
 +    assert "Cancelled" in out + err, out + err
 +    assert '"outputs"' not in out, out
 +    return "Interactive cancellation; no shelf contents returned"
+-- 
+2.52.0
+
+
+From c4c755ffddd4b69e7de3577f024dbd7e3ae40864 Mon Sep 17 00:00:00 2001
+From: Harneet Singh <tutejaharneet@gmail.com>
+Date: Fri, 9 Oct 2026 21:08:17 +0000
+Subject: [PATCH 2/2] Format onboarding metadata test for required Rust CI
+
+---
+ crates/arcade-link/src/manifest.rs | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/crates/arcade-link/src/manifest.rs b/crates/arcade-link/src/manifest.rs
+index 95c9c2a..cb3682b 100644
+--- a/crates/arcade-link/src/manifest.rs
++++ b/crates/arcade-link/src/manifest.rs
+@@ -410,10 +410,7 @@ mod onboarding_tests {
+     use super::*;
+     #[test]
+     fn shelf_and_find_have_distinct_metadata_and_stable_ids() {
+-        for (id, name, repository) in [
+-            (ids::SHELF, "Arcade Shelf", "Arcade-Shelf"),
+-            (ids::FIND, "Arcade Find", "Arcade-Find"),
+-        ] {
++        for (id, name, repository) in [(ids::SHELF, "Arcade Shelf", "Arcade-Shelf"), (ids::FIND, "Arcade Find", "Arcade-Find")] {
+             assert!(ids::APPS.contains(&id));
+             assert_eq!(app_name(id), name);
+             assert!(!app_pitch(id).is_empty());
 -- 
 2.52.0
 

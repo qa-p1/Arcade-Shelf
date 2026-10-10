@@ -12,7 +12,8 @@ python3 scripts/check-vendor.py
 ```
 
 Linux portable bundle (the Qt prefix contains `bin/qtpaths6`, `plugins/`
-and `qml/`; its original installation may instead use distribution paths):
+and `qml/`; its original installation may instead use distribution paths).
+Install `patchelf` on the build machine; it is not a runtime dependency:
 
 ```sh
 python3 scripts/package-linux.py --build build --qt-prefix /path/to/Qt/6.8.3/gcc_64 --version 0.1.0 --output dist
@@ -20,9 +21,14 @@ tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz
 ./Arcade-Shelf-0.1.0-linux-x64/arcade-shelf
 ```
 
-The launcher resolves its bundle directory, loads separate dynamic libraries,
-and forwards all command arguments. No install script, privileged operation or
-desktop registration is needed. Keep the entire directory when moving it.
+The launcher resolves its bundle directory and forwards all command arguments.
+The packaged ELF also has inheritable `$ORIGIN:$ORIGIN/../lib` `DT_RPATH`, so
+Arcade Link can launch its registered executable directly without development
+Qt variables or the launcher. Qt plugins, including QSQLITE, are collected from
+the configured SDK's reported and relocated runtime directories. The bundler
+requires QSQLITE and verifies a clean registered-ELF background launch before
+writing the archive. No install script, privileged operation or desktop
+registration is needed. Keep the entire directory when moving it.
 glibc and graphics drivers come from the OS. Build on the oldest supported
 distribution, then test newer X11 and Wayland systems. The generated library
 inventory records the exact host dependency hashes; it is not a portability
@@ -56,7 +62,7 @@ Create Tools-compatible metadata once actual package files exist:
 
 ```sh
 python3 scripts/arcade-release.py --id arcade.shelf --version 0.1.0 --channel nightly \
-  --notes https://github.com/qa-p1/Arcade-Shelf/blob/main/CHANGELOG.md dist
+  --notes https://github.com/qa-p1/Arcade-Shelf/blob/feature/shelf-v0.1/CHANGELOG.md dist
 ```
 
 The generator is unmodified Arcade Link `v0.1.0` code and writes
@@ -70,31 +76,44 @@ Apply and ship that change before claiming Tools can install this package.
 
 ## Cloud evidence — 2026-10-09
 
-The first Linux runtime bundle was generated from the current working tree
-using Qt 6.8.2, CMake 3.31.6 and GCC 14.2.0. It is an intermediate development
-artifact, not a tagged or published release. Final source fixes require a new
-bundle and fresh checksum metadata before distribution.
+The Linux runtime bundle was rebuilt from the tested delivery working tree
+using Qt 6.8.2, CMake 3.31.6, GCC 14.2.0 and patchelf 0.18.0. It is a local
+development artifact, not a tagged or published release. The build input
+`build/arcade-shelf` SHA-256 was
+`9dc2bce580dda7e9cdc0487e0c4fa1b4a1bc66da6975d1e918e0a25c6229c695`;
+packaging changes only its installed copy's runtime search path.
 
 | Asset | Size | Validation |
 |---|---:|---|
-| `dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz` | 60,376,771 bytes | Created; 131 copied dynamic libraries; isolated `--version` and `--arcade-manifest` smoke passed |
+| `dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz` | 63,289,491 bytes | 145 copied dynamic libraries; clean registered-ELF startup and full packaged process suite passed |
 | Windows per-user `.exe` | Not built in this Linux workspace | NSIS/windeployqt scripts and CI implemented; native run pending |
 | macOS `.dmg` | Not built in this Linux workspace | macdeployqt/hdiutil scripts and CI implemented; native run pending |
 
-Intermediate Linux archive SHA-256:
-`30167241ed018dbbe195eea45e28305969cc8f211e1e052bf78b152cd3133399`.
-This value identifies the intermediate file only, and changes after repackaging.
+Linux archive SHA-256:
+`5d0d6179435c5b27966a4db086e6e76b04b16bd9f8b6b4644a5d28c725c436e1`.
+The unmodified release generator produced `dist/arcade-release.json` with
+channel `nightly` and `dist/SHA256SUMS.txt` for this exact file. No upload or
+release publication occurred.
 
-The package smoke did not exercise interactive compositor behavior. For final
-runtime-bundle validation, extract it into a fresh directory and run the real
-process suite without development Qt paths:
+All **11 packaged process tests passed in 5.207 seconds**, executing the
+extracted ELF directly with development Qt paths removed. This covers resident
+lifecycle, malformed/authentication requests, reference batches, partial
+successes, duplicates, owned handoffs, symlinks, disabled integration, picker
+cancellation and crash recovery. A separate real immutable Link CLI invoked
+`shelf.add` while Shelf was stopped; it launched the registered ELF through
+`launch.background`, added one reference successfully and shut down cleanly.
+Direct `--version`, `--arcade-manifest` and background/status commands also
+passed with those development variables absent.
+
+These checks do not exercise interactive compositor behavior. Reproduce the
+packaged process suite with:
 
 ```sh
 mkdir package-smoke
 tar -xzf dist/Arcade-Shelf-0.1.0-linux-x64.tar.gz -C package-smoke
 env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH \
   QT_QPA_PLATFORM=offscreen python3 tests/process_smoke.py \
-  --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/arcade-shelf
+  --binary package-smoke/Arcade-Shelf-0.1.0-linux-x64/bin/arcade-shelf
 ```
 
 The CI workflow includes this packaged process check. Native Nautilus drag-in,

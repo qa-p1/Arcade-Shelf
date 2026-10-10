@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.png -text
+
+# The frozen Link release is verified byte for byte on every platform.
+vendor/** -text

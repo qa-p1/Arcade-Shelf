@@ -1,4 +1,4 @@
-# Status — 2026-10-09
+# Status — 2026-10-10
 
 This is the first working 0.1.0 development milestone. Source, tests, package
 scripts and documentation are being delivered on `feature/shelf-v0.1`. It is not
@@ -28,18 +28,19 @@ interactively verified.
 
 | Check | Actual result | Limit |
 |---|---|---|
-| Linux C++/QML application build | Succeeded, Qt 6.8.2, GCC 14.2, CMake 3.31.6, RelWithDebInfo | Native Windows/macOS compilation is separate |
+| C++/QML application build | Local Linux succeeded with Qt 6.8.2/GCC 14.2; GitHub Linux, Windows and macOS compiled `15a0af1` with Qt 6.8.3 | Compilation does not establish native interaction or successful packaging |
 | Full Xvfb/xcb CTest run | 8/8 groups passed, 0 failures, 7.54 seconds | Software rendering in an isolated X11 session |
 | Native two-process X11 drag | Passed with real OS pointer injection and actual Desktop adapter; file and folder MIME bytes received | Not Nautilus or Wayland |
 | Actual QML render captures | Passed under Xvfb, dark/light/capsule screenshots saved | Controlled fixture, software rendering |
 | Actual QML/Controller GUI suite | 9 QtTest rows passed, 0 failed, 0 skipped on both offscreen and xcb | In-process Qt input injection; OS cross-process drag is the separate test above |
 | Real executable process suite | 11/11 passed, including 1,000-reference transaction, restarts, partial batches, authentication, cancellation and owned handoffs | Isolated offscreen profile |
+| Headless Wayland executable process suite | 11/11 passed under Weston | Does not test pointer drag transfers to Nautilus |
 | Frozen Rust Link CLI → real Shelf | 14/14 isolated checks passed | Offscreen; Find payload contract, not a real Find service |
 | Reference Rust Link tests | 42 passed, 1 intentionally ignored engine-download test | No downloaded engine |
 | Actual Find workspace | 64 tests passed | Its main remains a placeholder; Link/service not implemented |
-| Shared onboarding tests | Link Rust 36 + Qt 2; Tools 12; Wheel 2 targets; Shelf e2e 3 checks passed | Local patch candidates, not shipped shared releases |
-| Linux runtime package | Created; intermediate CLI/manifest smoke passed | Must rebuild from final milestone commit |
-| Initial GitHub three-platform CI | Failed during Qt download before compilation; corrected Qt architecture/addon names and test dependencies | Corrected run results must be checked separately |
+| Shared onboarding tests | Local Link Rust 36 + Qt 2, Tools 12, Wheel 2 targets and Shelf e2e 3 checks passed; public Link six-job and Tools three-OS matrices passed | Draft PRs, not shipped shared releases; Wheel passed three package jobs and failed Intel macOS packaging |
+| Linux runtime package | Rebuilt from the recorded milestone; 11 packaged process checks and real stopped-app Link launch passed with development Qt paths removed | Cloud host runtime bundle; native compositor and distribution compatibility remain separate |
+| GitHub three-platform CI | Initial download failure corrected; subsequent `15a0af1` builds succeeded but later checks failed on each OS | Windows vendor checkout bytes, macOS tests and Linux package checks are being corrected; no green Shelf matrix claim |
 
 The GUI run exposed and fixed search focus being reset while typing. The
 collapsed grid now keeps an empty model and defers thumbnails until expansion;
@@ -52,7 +53,7 @@ desktop results or screenshots are used. Commands are in [TESTING.md](TESTING.md
 
 ## Measured performance
 
-[Raw three-run evidence](../benchmarks/cloud-milestone.json) uses the final
+[Raw three-run evidence](../benchmarks/cloud-milestone.json) uses the recorded `15a0af1`
 Linux RelWithDebInfo executable under offscreen/software rendering. Each run
 persists 101 references through 100 add/duplicate cycles, waits one second for
 feedback, and measures five seconds without IPC. All samples have the same
@@ -89,8 +90,11 @@ or physical monitor/DPI setup. Headless Wayland startup and X11 pointer tests
 cover narrower behaviors. Reproducible desktop steps are in [TESTING.md](TESTING.md).
 
 Released Wheel/Tools app allowlists do not recognize Shelf yet. The included
-backward-compatible Link/Tools/Wheel patches remain local candidates and must
-be reviewed, synchronized and shipped before ecosystem onboarding is complete.
+backward-compatible patches now have public draft PRs in
+[Link](https://github.com/qa-p1/Arcade-Link/pull/1),
+[Tools](https://github.com/qa-p1/Arcade-tools/pull/1) and
+[Wheel](https://github.com/qa-p1/Arcade-wheel/pull/5). They must be reviewed and
+shipped before ecosystem onboarding is complete.
 No shared tags, stable releases, or main merges were performed.
 
 ## Remaining implementation/refinement work
