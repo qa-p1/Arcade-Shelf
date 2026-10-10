@@ -29,6 +29,6 @@ Arcade Shelf is MIT licensed. Dependencies retain their own licenses.
 Packages include the source repository URL and build provenance. Qt libraries
 remain separate, replaceable files; Shelf does not statically link Qt. Rebuild
 Shelf with an alternate compatible Qt using the documented CMake commands.
-An unsigned development package is not a stable release or an authenticated
-publisher artifact. Review generated dependency inventories and applicable
+Release packages are unsigned: SHA-256 sums establish integrity, not an
+authenticated publisher. Review generated dependency inventories and applicable
 Qt/module license texts before redistribution.

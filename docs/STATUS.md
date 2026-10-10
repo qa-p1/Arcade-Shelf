@@ -1,9 +1,8 @@
 # Status — 2026-10-10
 
-This is the first working 0.1.0 development milestone. Source, tests, package
-scripts and documentation are being delivered on `feature/shelf-v0.1`. It is not
-a stable release or a claim that every original product requirement has been
-interactively verified.
+Version 0.1.0, the first release. It is not a claim that every original
+product requirement has been interactively verified: the limits below say
+what still needs a real desktop.
 
 ## Implemented
 
@@ -24,7 +23,7 @@ interactively verified.
 - Linux runtime-bundle generation, Windows NSIS/macOS DMG scripts, development CI,
   licensing/provenance checks and isolated shared onboarding patches.
 
-## Verified development milestone
+## Verified for 0.1.0
 
 | Check | Actual result | Limit |
 |---|---|---|
@@ -39,7 +38,7 @@ interactively verified.
 | Frozen Rust Link CLI → real Shelf | 14/14 isolated checks passed | Offscreen |
 | Real Arcade Find ↔ real Shelf | Find's e2e 49/49 (headless Sway and Xvfb): Find's "Add to Shelf" stores references, launches a stopped Shelf, and Shelf's `find.show` opens Find on the file; Link's runner `find` group 3/3; `tst_PeerHub` contract test with Find's real manifest; `tst_Ui` clicks Actions → "Search in Find" and "Find matching files" against Find's manifest | Isolated profiles; no drag and drop between them yet; see [ECOSYSTEM_VERIFICATION.md](ECOSYSTEM_VERIFICATION.md#real-find-against-real-shelf) |
 | Reference Rust Link tests | 42 passed, 1 intentionally ignored engine-download test | No downloaded engine |
-| Shared onboarding tests (Shelf and Find) | Link Rust 36 + Qt 2/2; runner shelf 3/3 and find 3/3; Tools 15/15 focused, lifecycle 4/4 and 3/3; Wheel CTest 9/9 | Draft PRs, not shipped shared releases; details in [integration-patches](integration-patches/README.md) |
+| Shared onboarding tests (Shelf and Find) | Link Rust 36 + Qt 2/2; runner shelf 3/3 and find 3/3; Tools 15/15 focused, lifecycle 4/4 and 3/3; Wheel CTest 9/9 | Merged; details in [ONBOARDING.md](ONBOARDING.md) |
 | Linux runtime package | Rebuilt from the recorded milestone; 11 packaged process checks and real stopped-app Link launch passed with development Qt paths removed | Cloud host runtime bundle; native compositor and distribution compatibility remain separate |
 
 The GUI run exposed and fixed search focus being reset while typing. The
@@ -89,13 +88,9 @@ The cloud environment has no real Hyprland/Nautilus session, Windows/macOS host,
 or physical monitor/DPI setup. Headless Wayland startup and X11 pointer tests
 cover narrower behaviors. Reproducible desktop steps are in [TESTING.md](TESTING.md).
 
-Released Wheel/Tools app allowlists do not recognize Shelf (or Find) yet. The
-backward-compatible changes, now covering both apps, have public draft PRs in
-[Link](https://github.com/qa-p1/Arcade-Link/pull/1),
-[Tools](https://github.com/qa-p1/Arcade-tools/pull/1) and
-[Wheel](https://github.com/qa-p1/Arcade-wheel/pull/5). They must be reviewed and
-shipped before ecosystem onboarding is complete.
-No shared tags, stable releases, or main merges were performed.
+The shared repositories know Shelf and Find since Arcade Link `v0.2.0`
+(2026-10-10): Link, Tools and Wheel are merged and the other apps moved to the
+new tag; see [ONBOARDING.md](ONBOARDING.md).
 
 ## Remaining implementation/refinement work
 
@@ -111,5 +106,5 @@ No shared tags, stable releases, or main merges were performed.
 [README](../README.md) · [Architecture](ARCHITECTURE.md) ·
 [Link contracts](ARCADE_LINK.md) · [Testing](TESTING.md) ·
 [Packaging](PACKAGING.md) · [Ecosystem evidence](ECOSYSTEM_VERIFICATION.md) ·
-[Integration patches](INTEGRATION_PATCHES.md) · [Changelog](../CHANGELOG.md) ·
+[Ecosystem onboarding](ONBOARDING.md) · [Changelog](../CHANGELOG.md) ·
 [Dependency notices](../THIRD_PARTY_NOTICES.md)

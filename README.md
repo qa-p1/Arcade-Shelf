@@ -4,9 +4,11 @@ A floating workspace for files, folders, images, text, and links. Collect what
 you need, keep working, then drag it into another application or send it to an
 installed Arcade tool.
 
-**Development milestone, version 0.1.0.** This repository contains working C++20
-and Qt 6 software. It is under active verification; it is not a stable release.
-See [current status](docs/STATUS.md) for tested behavior and remaining work.
+**Version 0.1.0**, the first release. Working C++20 and Qt 6 software; some
+desktop behavior (real Hyprland, Windows and macOS sessions) is still being
+verified. See [current status](docs/STATUS.md) for what is tested and what
+remains. Install it with Arcade Tools or from
+[Releases](https://github.com/qa-p1/Arcade-Shelf/releases).
 
 ![Arcade Shelf dark theme, captured from the running Qt application](docs/images/expanded.png)
 
@@ -101,12 +103,12 @@ Look owns preview and inspection; Lens owns capture, image recognition, and
 pins; Box owns transformations and pipelines; Clipboard owns explicit picking
 and eligible device delivery. With Arcade Find installed, Find's "Add to
 Shelf" collects search results, and an item's "Search in Find" opens Find on
-it. Wheel and Tools need the shared onboarding changes before their existing
-app allowlists recognize Shelf.
+it. Since Arcade Link `v0.2.0`, Tools installs Shelf and Wheel slots can hold
+its actions.
 
 See [the contracts and ownership rules](docs/ARCADE_LINK.md),
 [ecosystem verification](docs/ECOSYSTEM_VERIFICATION.md), and
-[reviewable onboarding patches](docs/INTEGRATION_PATCHES.md).
+[ecosystem onboarding](docs/ONBOARDING.md).
 
 ## Data and limits
 
@@ -142,4 +144,4 @@ See [testing instructions](docs/TESTING.md), [packaging](docs/PACKAGING.md),
 
 Shelf is [MIT licensed](LICENSE). Qt and other dependencies retain their own
 licenses; see [dependency provenance](THIRD_PARTY_NOTICES.md). Development packages
-are unsigned. No stable releases are published by the CI workflow.
+are unsigned. A version tag publishes a GitHub release through the CI workflow.

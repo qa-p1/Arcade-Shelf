@@ -130,4 +130,4 @@ data and its instance lock. The effective global shortcut is in the manifest.
 Per-peer toggles hide and deny outbound calls without changing peer preferences.
 
 See [real client and mock evidence](ECOSYSTEM_VERIFICATION.md),
-[onboarding patch status](INTEGRATION_PATCHES.md), and [test commands](TESTING.md).
+[ecosystem onboarding](ONBOARDING.md), and [test commands](TESTING.md).

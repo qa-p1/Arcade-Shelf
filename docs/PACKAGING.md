@@ -122,7 +122,7 @@ The CI workflow includes this packaged process check. Native Nautilus drag-in,
 cross-application drag-out, Hyprland movement/docking, multi-monitor/DPI,
 Windows OLE drag-out and macOS pasteboard drag-out remain distinct platform
 validation tasks. No code signing, Windows signing or macOS notarization has
-been performed; no stable release or shared Link tag was published.
+been performed; releases are unsigned.
 
 The first GitHub [CI run](https://github.com/qa-p1/Arcade-Shelf/actions/runs/37986290672)
 for snapshot `a41a4ed` failed in Qt installation before compilation. The
@@ -151,8 +151,8 @@ with `QT_QUICK_BACKEND=software`. Failed jobs emit bounded diagnostic
 annotations from their actual CTest logs. Successful native package and
 smoke-test results must be checked before publishing distributable releases.
 
-Shared Link/Tools/Wheel onboarding changes are reviewable patches under
-[`integration-patches/`](integration-patches/README.md). Their existence does
-not make the currently published Tools installer accept Shelf. Shipping these
-changes and validating actual update/removal with the final assets is required
-for full ecosystem distribution.
+A `v<version>` tag (or a manual run of the workflow on that tag) builds and
+tests all three platforms, then publishes the packages with one stable
+`arcade-release.json` and `SHA256SUMS.txt` as a GitHub release, which Arcade
+Tools installs from ([onboarding](ONBOARDING.md)). Real install, update and
+removal through Tools on each platform still need a desktop run.

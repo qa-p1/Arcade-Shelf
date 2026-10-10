@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — development milestone
+## 0.1.0 — 2026-10-10
 
 - Floating capsule and expanded native Qt Quick surface with dark/light themes,
   collection filtering, multi-selection, menus, keyboard controls and preferences.
@@ -32,5 +32,9 @@
   test against Find's real manifest, and a UI test that clicks Shelf's own
   Actions menu into Find. CI green on Linux, Windows and macOS.
 
-This milestone is not a stable release. Platform interaction and ecosystem
-verification boundaries are recorded in [status](docs/STATUS.md).
+- Arcade Link `v0.2.0`: Shelf is a registered family app (Connected apps,
+  Tools installs, Wheel slots); the vendored Qt module follows the new tag.
+- Releases from a version tag, with `arcade-release.json` for Arcade Tools.
+
+Packages are unsigned. Platform interaction and ecosystem verification
+boundaries are recorded in [status](docs/STATUS.md).
