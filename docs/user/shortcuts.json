@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "app": "arcade.shelf",
+  "version": "0.1.1",
+  "groups": [
+    {
+      "title": "Show Shelf",
+      "context": "global",
+      "shortcuts": [
+        {
+          "id": "show-shelf",
+          "title": "Show or toggle Arcade Shelf",
+          "keys": {
+            "default": "Ctrl+Alt+S"
+          },
+          "rebindable": true
+        }
+      ]
+    },
+    {
+      "title": "Collection and items",
+      "context": "shelf",
+      "shortcuts": [
+        {
+          "id": "select-all",
+          "title": "Select all visible items",
+          "keys": {
+            "default": "Ctrl+A",
+            "macos": "Super+A"
+          }
+        },
+        {
+          "id": "copy-selection",
+          "title": "Copy selected content",
+          "keys": {
+            "default": "Ctrl+C",
+            "macos": "Super+C"
+          }
+        },
+        {
+          "id": "collect-clipboard",
+          "title": "Collect supported clipboard content",
+          "keys": {
+            "default": "Ctrl+V",
+            "macos": "Super+V"
+          }
+        },
+        {
+          "id": "undo-addition",
+          "title": "Undo the last addition",
+          "keys": {
+            "default": "Ctrl+Z",
+            "macos": "Super+Z"
+          }
+        },
+        {
+          "id": "focus-filter",
+          "title": "Focus the collection filter",
+          "keys": {
+            "default": "Ctrl+F",
+            "macos": "Super+F"
+          }
+        },
+        {
+          "id": "remove-selection",
+          "title": "Remove selected items from this collection",
+          "keys": {
+            "default": [
+              "Delete",
+              "Backspace"
+            ]
+          }
+        },
+        {
+          "id": "open-or-confirm-enter",
+          "title": "Open the focused item or confirm a picker selection",
+          "keys": {
+            "default": [
+              "Enter",
+              "NumpadEnter"
+            ]
+          }
+        },
+        {
+          "id": "preview-with-look",
+          "title": "Preview the selection through Look when available",
+          "keys": {
+            "default": "Space"
+          }
+        },
+        {
+          "id": "escape",
+          "title": "Cancel a picker, clear the filter or close the panel",
+          "keys": {
+            "default": "Escape"
+          }
+        },
+        {
+          "id": "move-left",
+          "title": "Move the focus left; Shift selects a range, Ctrl toggles",
+          "keys": {
+            "default": [
+              "Left",
+              "Shift+Left",
+              "Ctrl+Left"
+            ]
+          }
+        },
+        {
+          "id": "move-right",
+          "title": "Move the focus right; Shift selects a range, Ctrl toggles",
+          "keys": {
+            "default": [
+              "Right",
+              "Shift+Right",
+              "Ctrl+Right"
+            ]
+          }
+        },
+        {
+          "id": "move-up",
+          "title": "Move the focus up; Shift selects a range, Ctrl toggles",
+          "keys": {
+            "default": [
+              "Up",
+              "Shift+Up",
+              "Ctrl+Up"
+            ]
+          }
+        },
+        {
+          "id": "move-down",
+          "title": "Move the focus down; Shift selects a range, Ctrl toggles",
+          "keys": {
+            "default": [
+              "Down",
+              "Shift+Down",
+              "Ctrl+Down"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "title": "Item grid",
+      "context": "item-grid",
+      "shortcuts": [
+        {
+          "id": "select-item-click",
+          "title": "Select an item in the grid",
+          "keys": {
+            "default": "MouseLeft"
+          }
+        },
+        {
+          "id": "item-context-menu",
+          "title": "Open the item context menu",
+          "keys": {
+            "default": "MouseRight"
+          }
+        }
+      ]
+    }
+  ]
+}
