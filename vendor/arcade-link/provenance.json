@@ -79,21 +79,6 @@
       "source": "spec/vectors/wire.json",
       "destination": "vendor/arcade-link/spec/vectors/wire.json",
       "sha256": "abe417d8142eecda655f9f94303b0f681c4a86bfd84a9ff0adaa1944183c20c5"
-    },
-    {
-      "source": "tools/arcade-release.py",
-      "destination": "scripts/arcade-release.py",
-      "sha256": "52042f7a9ecac497e69b5e6a73b4fa9541c27cf725f80016466202ab076f6ae0"
-    },
-    {
-      "source": "tools/test_arcade_release.py",
-      "destination": "scripts/test_arcade_release.py",
-      "sha256": "5348868c8e679abf3861ef39e786fe655c5c2ba284bcec3bc03b1ec3ff5ef4cf"
-    },
-    {
-      "source": "spec/arcade-release.schema.json",
-      "destination": "spec/arcade-release.schema.json",
-      "sha256": "e51c243f2802450047a18ef2f5c1128f1187d9e2502e02a7f16eb38b7b3c11af"
     }
   ]
 }

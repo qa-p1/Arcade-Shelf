@@ -58,6 +58,8 @@ jobs:
         run: cmake --build build --parallel 2
       - name: Check immutable vendor source
         run: python scripts/check-vendor.py
+      - name: Validate shortcut data and generated sheet
+        run: python scripts/check-shortcuts.py
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
