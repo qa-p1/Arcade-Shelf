@@ -20,6 +20,13 @@ the folder on PATH during uninstall. The last one removes just that entry.
 Neither installer launches the app on a silent path. Neither needs elevation,
 changes machine PATH, or bypasses SmartScreen.
 
+With `ARCADE_HOME`, tests use the isolated filesystem root and HKCU
+`Software\ArcadeLink\Isolated\<hash>` instead of native user integration.
+Rust, Qt and PowerShell share the FNV-1a identity specified in
+[SPEC §8.6](../../SPEC.md#86-install-standard), with fixed cross-language
+[vectors](../../spec/vectors/windows-path-identity.json). Receipt operations
+still require native absolute paths; the hash is only an identity.
+
 Define these before including either file:
 
 | Define | Example |

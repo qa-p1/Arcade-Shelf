@@ -1,4 +1,13 @@
-# Status — 2026-10-11
+# Status — 2026-10-12
+
+## Arcade Tools hub integration
+
+Link v0.3.0 (`33650a87`) is vendored with its Qt conformance tests. Shelf
+implements the seven optional hub methods, receipt-based installation,
+portable backups, and tray hosting with disconnect hand-back. Local and
+three-platform verification for this branch is recorded below after the
+integration pass. These additions have not been exercised on a real desktop;
+Windows and macOS results are CI only.
 
 Version 0.1.1. Everything listed under "Verified for 0.1.0" was verified
 **headless only** (offscreen, Xvfb and headless Weston/Sway with software

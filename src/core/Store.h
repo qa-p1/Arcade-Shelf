@@ -38,6 +38,10 @@ public:
     bool reorderShelves(QStringList ids);
     QJsonObject settings();
     bool saveSettings(QJsonObject settings);
+    qint64 portableOwnedBytes();
+    bool exportPortable(const QString &path, bool includeOwned, qint64 *includedBytes = nullptr,
+                        int *omittedItems = nullptr, QString *error = nullptr);
+    bool importPortable(const QString &path, int *importedItems = nullptr, QString *error = nullptr);
     QJsonArray exportItems(QStringList ids, QStringList types = {}, bool multiple = true,
                            ArcadeLink::Error *error = nullptr);
     bool cleanup();

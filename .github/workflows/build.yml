@@ -2,7 +2,7 @@ name: Build, test and package
 on:
   pull_request:
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'arcade/**']
     tags: ['v*']
   workflow_dispatch:
 permissions:
@@ -60,6 +60,8 @@ jobs:
         run: python scripts/check-vendor.py
       - name: Validate shortcut data and generated sheet
         run: python scripts/check-shortcuts.py
+      - name: Validate local documentation links
+        run: python scripts/check-doc-links.py
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
@@ -86,12 +88,17 @@ jobs:
           # And the real GL path: show the window under Xvfb (Mesa llvmpipe)
           # with no backend override; it must still be running, then quit.
           export APP="$PWD/dist/Arcade-Shelf-$VERSION-x86_64.AppImage" APPIMAGE_EXTRACT_AND_RUN=1 \
-            ARCADE_SHELF_HOME="$RUNNER_TEMP/gl-profile" ARCADE_HOME="$RUNNER_TEMP/gl-arcade" ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS=1
+            HOME="$RUNNER_TEMP/gl-home" XDG_DATA_HOME="$RUNNER_TEMP/gl-data" XDG_CONFIG_HOME="$RUNNER_TEMP/gl-config" XDG_CACHE_HOME="$RUNNER_TEMP/gl-cache" \
+            ARCADE_SHELF_HOME="$RUNNER_TEMP/gl-profile" ARCADE_HOME="$RUNNER_TEMP/gl-arcade" ARCADE_NO_INSTALL_PROMPT=1 ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS=1
           env -u QT_QUICK_BACKEND -u LD_LIBRARY_PATH xvfb-run -a sh -c '"$APP" --show & pid=$!; sleep 4; kill -0 $pid && "$APP" --quit && wait $pid'
       - name: Windows package
         if: runner.os == 'Windows'
         shell: pwsh
         run: scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version ${{ steps.version.outputs.value }} -Output dist
+      - name: Windows silent installer lifecycle (isolated, CI only)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/test-windows-installer.ps1 -Version ${{ steps.version.outputs.value }} -Output dist
       - name: macOS package
         if: runner.os == 'macOS'
         run: scripts/package-macos.sh build ${{ steps.version.outputs.value }} dist

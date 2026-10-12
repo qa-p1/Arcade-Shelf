@@ -5,7 +5,8 @@ install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/THIRD_PARTY
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/licenses/" DESTINATION "${CMAKE_INSTALL_DATADIR}/arcade-shelf/licenses" OPTIONAL)
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/arcade-link/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/arcade-shelf/licenses/arcade-link"
-        FILES_MATCHING PATTERN "LICENSE*" PATTERN "provenance.json")
+        FILES_MATCHING PATTERN "LICENSE*" PATTERN "provenance.json" PATTERN "shared-provenance.json")
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/docs/user/" DESTINATION "${CMAKE_INSTALL_DATADIR}/arcade-shelf/docs/user")
 if(UNIX AND NOT APPLE)
     install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/arcade.shelf.desktop"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")

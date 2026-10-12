@@ -1,27 +1,27 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-link",
-  "commit": "4cab38ddcad4ba4541d4727f0ca44c3a2151cb00",
-  "reference": "arcade/tools-hub",
+  "commit": "33650a87b6999fbd553ac678cc7bde7a308cb852",
+  "reference": "v0.3.0",
   "files": [
     {
       "source": "packaging/windows/README.md",
       "destination": "vendor/arcade-link/shared/packaging/windows/README.md",
-      "sha256": "4a28dbdb51f57581d74b8bcbde3cf265e087387a73a762d413d0033fb30c3c63"
+      "sha256": "c0b052a5165ab43390d4cd4f19c05e1a9f9e6ff65e5a64c978087c91331c6c68"
     },
     {
       "source": "packaging/windows/arcade.iss",
       "destination": "vendor/arcade-link/shared/packaging/windows/arcade.iss",
-      "sha256": "8a3419c09b0f0a4ca16cac91420512d4ed450ed968e65011421dfc5a46ee2ae8"
+      "sha256": "fe152028ff674fdacdef4aed8970bb0a7afeb2dd67d2a3af075d7d95683bf96b"
     },
     {
       "source": "packaging/windows/arcade.nsh",
       "destination": "vendor/arcade-link/shared/packaging/windows/arcade.nsh",
-      "sha256": "89e8561134fbde1a15fd0fbc7aba675d2f0092a0d84bee4048bef4732bed6287"
+      "sha256": "1f548b420bc08b479d6c65801a208aa67dc80fef851b5e2a49696d307562831e"
     },
     {
       "source": "packaging/windows/arcade-integration.ps1",
       "destination": "vendor/arcade-link/shared/packaging/windows/arcade-integration.ps1",
-      "sha256": "a7c25ed6a98a7bae0a2c250fbdb9e7152f085809313210d12ae1e72e24ee53b4"
+      "sha256": "2b2a8b699dc1e6c81c02bb9ad9be1ddf2f8a5447541eb1dfe886056aa5dc4fd6"
     },
     {
       "source": "tools/arcade-release.py",

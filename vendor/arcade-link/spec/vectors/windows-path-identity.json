@@ -1,0 +1,17 @@
+{
+  "algorithm": "fnv1a64-low48-utf8-ascii-lowercase-forward-slash-no-trailing-slash",
+  "cases": [
+    {
+      "root": "C:\\Arcade Test\\isolated",
+      "key": "Software\\ArcadeLink\\Isolated\\e11462988077"
+    },
+    {
+      "root": "C:/ARCADE TEST/isolated/",
+      "key": "Software\\ArcadeLink\\Isolated\\e11462988077"
+    },
+    {
+      "root": "\\\\server\\Arcade\\isolated",
+      "key": "Software\\ArcadeLink\\Isolated\\7ef5adfa2549"
+    }
+  ]
+}

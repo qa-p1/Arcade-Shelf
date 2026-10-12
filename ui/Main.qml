@@ -160,6 +160,9 @@ Window {
             if (shelf.analysisResult && Object.keys(shelf.analysisResult).length > 0 && !analysisDialog.visible) analysisDialog.open();
         }
         function onPulse() { window.pulsing=true; pulseTimer.restart(); }
+        function onNewCollectionRequested() {
+            Qt.callLater(function() { window.editCollection("", "", "new"); });
+        }
         function onNativeDragHoverChanged() {
             if (shelf.nativeDragHover) {
                 peekDismissTimer.stop();
@@ -1034,6 +1037,18 @@ Window {
                         Label { Layout.alignment: Qt.AlignHCenter; text: (shelf.preferences.version || "") + " · Collect. Hold. Continue."; color: window.muted }
                         Label { Layout.fillWidth: true; text: "Built with Qt 6, SQLite, and Arcade Link. Your collections stay on this device."; color: window.muted; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
                         ShelfButton { Layout.alignment: Qt.AlignHCenter; text: "Project on GitHub"; glyph: "external"; foreground: window.accent; hoverSurface: window.hoverSurface; onClicked: Qt.openUrlExternally("https://github.com/qa-p1/Arcade-Shelf") }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: window.outline; opacity: 0.6 }
+                        Label { text: "BACKUP AND RESTORE"; font.pixelSize: 9; font.letterSpacing: 1.3; color: window.muted }
+                        Label {
+                            Layout.fillWidth: true
+                            text: "Owned content currently uses " + Number(shelf.ownedContentBytes).toLocaleString() + " bytes. Export asks before copying it. Referenced original files are never copied."
+                            color: window.muted; wrapMode: Text.WordWrap; font.pixelSize: 11
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ShelfButton { Layout.fillWidth: true; text: "Export backup…"; foreground: window.ink; surface: window.tileSurface; hoverSurface: window.hoverSurface; onClicked: shelf.exportPortableSettings() }
+                            ShelfButton { Layout.fillWidth: true; text: "Import backup…"; foreground: window.ink; surface: window.tileSurface; hoverSurface: window.hoverSurface; onClicked: shelf.importPortableSettings() }
+                        }
                     }
                 }
             }

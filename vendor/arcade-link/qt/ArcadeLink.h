@@ -1,7 +1,7 @@
 // Arcade Link for Qt (C++20, Qt 6.8+): the same protocol as the Rust crate,
-// for Arcade Wheel. See SPEC.md. Passes spec/vectors/ (qt/tests).
+// for Arcade Wheel and Shelf. See SPEC.md. Passes spec/vectors/ (qt/tests).
 //
-// Vendored into Wheel as src/link/ArcadeLink.{h,cpp}; keep the copies identical.
+// Vendor qt/ with tools/vendor_qt.py; pin the commit and file checksums.
 //
 // Threading: Server and Registry live on the thread that creates them and are
 // driven by its event loop (no extra threads, no timers while idle).
@@ -71,6 +71,8 @@ struct Error {
     QString reason;
     qint64 limit = -1;
     bool isError() const { return !code.isEmpty(); }
+    // Optional v1 methods may be absent on old servers.
+    bool isUnsupported() const;
     QJsonObject toJson() const;
     static Error fromJson(const QJsonObject &o);
     static Error make(const QString &code, const QString &message, const QString &reason = {}, qint64 limit = -1);
@@ -190,12 +192,25 @@ public:
     std::function<bool()> activate;
     std::function<bool()> quit;
 
+    // Optional methods are advertised only when their callback is assigned.
+    // Callbacks run on the Server's event-loop thread; queue slow work to a
+    // worker and queue the Responder answer back to this thread.
+    using MethodHandler = std::function<void(const QJsonObject &, const Responder &)>;
+    MethodHandler settings, menu, menuInvoke, shortcutsSet, settingsExport, settingsImport;
+    // restartReady validates before the acknowledgement; restart runs after
+    // it is flushed. The app owns successor launch and waiting for this PID.
+    std::function<Error(const QString &mode)> restartReady;
+    std::function<void(const QString &mode)> restart;
+    std::function<QString()> trayState;         // ArcadeTrayHost::state(), if used
+    QStringList methods() const;
+
     // Binds the endpoint. False (with `error`) if a live instance answers or binding fails.
     bool start(QString *error = nullptr);
     void stop();
     bool listening() const { return m_server.isListening(); }
     bool busy() const { return !m_jobs.isEmpty(); }
     void notifyChanged();
+    void notifyMenuChanged();
 
 private:
     void onConnection();
@@ -223,6 +238,17 @@ public:
     bool invoke(const QJsonObject &request, QJsonObject *result, Error *error,
                 const std::function<void(double, const QString &)> &progress = {},
                 const std::atomic_bool *cancel = nullptr);
+    QJsonObject describe(Error *error = nullptr);
+    bool settings(Error *error = nullptr);
+    bool restart(const QString &mode = {}, Error *error = nullptr);
+    QJsonArray menu(Error *error = nullptr);
+    bool menuInvoke(const QString &id, Error *error = nullptr);
+    QJsonObject shortcutsSet(const QString &id, const QString &accelerator, Error *error = nullptr);
+    QJsonArray settingsExport(Error *error = nullptr);
+    QJsonObject settingsImport(const QJsonArray &inputs, Error *error = nullptr);
+    // Optional subscriptions, read on a worker thread; no polling timer.
+    bool subscribe(const QStringList &topics, Error *error = nullptr);
+    bool nextNotification(QJsonObject *message, Error *error, int timeoutMs = -1);
     QString serverId() const { return m_serverId; }
     QString serverVersion() const { return m_serverVersion; }
 

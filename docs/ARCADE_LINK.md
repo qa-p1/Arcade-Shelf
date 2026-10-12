@@ -1,7 +1,30 @@
 # Arcade Link
 
+Shelf advertises `app.settings`, `app.restart`, `app.menu`, `app.menu.invoke`,
+`app.shortcuts.set`, `app.settings.export` and `app.settings.import` in
+`describe.methods`. Its extras are `new-shelf` and `show-shelf`. Restart checks
+for an active picker, shortcut request or retained outgoing selection before
+starting a successor that waits for the profile lock.
+
+`show-shelf` is the rebindable global shortcut. The native adapter or Linux
+portal applies it live; a desktop without registration support returns
+`via: manual` with a binding hint. Successful requests persist canonical key
+notation and rewrite the manifest. Unknown ids and invalid accelerators are
+denied.
+
+Settings exports produce one `file/any` handoff containing metadata and
+preferences. Owned content is excluded from this API export. Imports accept
+one file inside the private handoff directory, validate it and back up the
+database before restoring; `restartRequired` is false. The in-app backup UI
+can include owned content with explicit size disclosure and consent.
+
+Manifests cache `menu`, `logs`, `docs.version` and `install`. `app.status`
+reports `status.tray` as `own`, `hosted` or `none`. `ArcadeTrayHost` watches
+Tools and gates the local tray at startup, on disconnect, exclusion and Link
+disablement, without idle polling.
+
 Canonical ID: `arcade.shelf`. Protocol 1 and manifest schema 1. The Qt source is
-vendored unchanged from Arcade Link `v0.2.0`; `scripts/check-vendor.py` verifies
+vendored unchanged from Arcade Link `v0.3.0`; `scripts/check-vendor.py` verifies
 its hashes. Find's side of the contract is documented in Arcade Find's
 [docs/SHELF.md](https://github.com/qa-p1/Arcade-Find/blob/main/docs/SHELF.md).
 

@@ -17,6 +17,10 @@
 #include <QDropEvent>
 #include <QDragEnterEvent>
 #include <QCryptographicHash>
+#include <QFileDialog>
+#include <QLocale>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QJSValue>
 
 namespace Shelf {
@@ -25,12 +29,16 @@ Controller::Controller(QString root, bool background, QObject *parent)
 {
     m_service->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_service, &QObject::deleteLater);
-    connect(m_service, &Service::snapshot, this, [this](QJsonArray collections, QJsonArray content, QString active, QJsonObject settings, bool undo) {
+    connect(m_service, &Service::snapshot, this, [this](QJsonArray collections, QJsonArray content, QString active,
+                                                        QJsonObject settings, bool undo, qint64 ownedContentBytes) {
         const bool first = m_settings.isEmpty();
+        const QString previousShortcut = shortcut();
+        const bool previousAlwaysOnTop = alwaysOnTop();
         const QString oldActive = m_active;
         const bool contentsChanged = m_items != content || m_active != active;
         const bool collectionsChanged = m_shelves != collections;
         m_shelves = collections; m_items = content; m_active = active; m_settings = settings; m_undoAvailable = undo;
+        m_ownedContentBytes = ownedContentBytes;
         // An earlier worker snapshot must not roll back an edit that is still
         // queued. Send per-key patches so intervening edits cannot overwrite
         // other preferences when acknowledgements arrive asynchronously.
@@ -45,11 +53,15 @@ Controller::Controller(QString root, bool background, QObject *parent)
         m_peers.setEnabled(linkEnabled());
         const auto peerSettings = m_settings["peers"].toObject();
         for (auto it = peerSettings.begin(); it != peerSettings.end(); ++it) m_peers.setPeerEnabled(it.key(), it.value().toBool(true));
-        if (first) {
-            m_dock = settings["dockEdge"].toString();
-            if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(shortcut(), ArcadeLink::executablePath());
-            applyWindowPreferences();
+        if (first) m_dock = settings["dockEdge"].toString();
+        if ((first || previousShortcut != shortcut()) && m_appliedShortcut != shortcut() && shortcutWarning().isEmpty()) {
+            m_desktop.configureShortcut(shortcut(), ArcadeLink::executablePath());
+            m_appliedShortcut = shortcut();
         }
+        if (first) m_trayHost.start(linkEnabled());
+        else m_trayHost.setLinkEnabled(linkEnabled());
+        if (first) applyWindowPreferences();
+        else if (previousAlwaysOnTop != alwaysOnTop() && m_window) m_desktop.setAlwaysOnTop(m_window, alwaysOnTop());
         emit changed();
     });
     connect(m_service, &Service::settingsSaved, this, [this](QJsonObject changes) {
@@ -62,6 +74,17 @@ Controller::Controller(QString root, bool background, QObject *parent)
     });
     connect(m_service, &Service::showRequested, this, [this](QString, bool settings) { if (settings) showSettings(); else show(); });
     connect(m_service, &Service::toggleRequested, this, &Controller::toggle);
+    connect(m_service, &Service::newCollectionRequested, this, &Controller::newCollectionFromTray);
+    connect(m_service, &Service::shortcutRequested, this, [this](QString accelerator) {
+        m_desktop.rebindShortcut(accelerator, ArcadeLink::executablePath(),
+            [this, accelerator](QJsonObject result, ArcadeLink::Error error) {
+                if (!error.isError()) m_appliedShortcut = accelerator;
+                QMetaObject::invokeMethod(m_service, [this, result, error] { m_service->completeShortcutBinding(result, error); });
+            });
+    });
+    connect(&m_trayHost, &ArcadeLink::ArcadeTrayHost::stateChanged, this, [this](QString state) {
+        QMetaObject::invokeMethod(m_service, [this, state] { m_service->setTrayState(state); });
+    });
     connect(m_service, &Service::pickRequested, this, [this](bool multiple, QStringList types) { m_picking = true; setNativeDragHover(false); m_pickMultiple = multiple; m_pickTypes = types; m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); show(); });
     connect(m_service, &Service::pickEnded, this, [this] { m_picking = false; m_pickTypes.clear(); m_itemsCacheValid = false; clearSelection(); emit itemsChanged(); collapse(); });
     connect(m_service, &Service::quitRequested, qApp, &QCoreApplication::quit);
@@ -113,6 +136,7 @@ Controller::Controller(QString root, bool background, QObject *parent)
 }
 Controller::~Controller()
 {
+    m_trayHost.stop();
     m_peers.cancel();
     if (m_thread.isRunning()) { QMetaObject::invokeMethod(m_service, &Service::stop, Qt::BlockingQueuedConnection); m_thread.quit(); m_thread.wait(); }
 }
@@ -483,6 +507,51 @@ void Controller::cancelJob() { m_peers.cancel(); }
 void Controller::confirmPick() { auto ids = selectedIds(); QMetaObject::invokeMethod(m_service,[this,ids] { m_service->completePick(ids); }); }
 void Controller::cancelPick() { QMetaObject::invokeMethod(m_service,&Service::cancelPick); }
 void Controller::showSettings() { m_settingsOpen = true; show(); }
+void Controller::newCollectionFromTray() { show(); emit newCollectionRequested(); }
+void Controller::restart() { QMetaObject::invokeMethod(m_service, &Service::restartResident); }
+void Controller::exportPortableSettings()
+{
+    const QString path = QFileDialog::getSaveFileName(nullptr, QStringLiteral("Export Arcade Shelf backup"),
+        QDir::homePath() + QStringLiteral("/Arcade-Shelf-backup.arcade-shelf"),
+        QStringLiteral("Arcade Shelf backup (*.arcade-shelf)"));
+    if (path.isEmpty()) return;
+
+    bool includeOwned = false;
+    if (m_ownedContentBytes > 0) {
+        QMessageBox prompt(QMessageBox::Question, QStringLiteral("Include owned content?"),
+            QStringLiteral("Shelf currently stores %1 of owned content. Include a copy in this backup?\n\n"
+                           "Without it, collections and preferences are exported while owned items are left out. "
+                           "Referenced original files are never copied.")
+                .arg(QLocale().formattedDataSize(m_ownedContentBytes)), QMessageBox::NoButton);
+        auto *metadataOnly = prompt.addButton(QStringLiteral("Metadata only"), QMessageBox::ActionRole);
+        auto *includeButton = prompt.addButton(QStringLiteral("Include owned content"), QMessageBox::AcceptRole);
+        prompt.addButton(QMessageBox::Cancel);
+        prompt.setDefaultButton(metadataOnly);
+        prompt.exec();
+        if (prompt.clickedButton() != metadataOnly && prompt.clickedButton() != includeButton) return;
+        includeOwned = prompt.clickedButton() == includeButton;
+    }
+    QMetaObject::invokeMethod(m_service, [this, path, includeOwned] {
+        m_service->exportPortableSettings(path, includeOwned);
+    }, Qt::QueuedConnection);
+}
+void Controller::importPortableSettings()
+{
+    const QString path = QFileDialog::getOpenFileName(nullptr, QStringLiteral("Import Arcade Shelf backup"),
+        QDir::homePath(), QStringLiteral("Arcade Shelf backup (*.arcade-shelf);;All files (*)"));
+    if (path.isEmpty()) return;
+    QMessageBox confirm(QMessageBox::Warning, QStringLiteral("Replace Shelf data?"),
+        QStringLiteral("This backup replaces your current collections and portable preferences. Existing Shelf-owned content is removed after a successful restore. Referenced original files are never deleted."),
+        QMessageBox::NoButton);
+    auto *replace = confirm.addButton(QStringLiteral("Replace current data"), QMessageBox::DestructiveRole);
+    confirm.addButton(QMessageBox::Cancel);
+    confirm.setDefaultButton(QMessageBox::Cancel);
+    confirm.exec();
+    if (confirm.clickedButton() != replace) return;
+    QMetaObject::invokeMethod(m_service, [this, path] {
+        m_service->importPortableSettings(path);
+    }, Qt::QueuedConnection);
+}
 void Controller::nativeMove()
 {
     if (!m_window) return;

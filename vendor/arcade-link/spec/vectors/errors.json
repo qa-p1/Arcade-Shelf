@@ -23,6 +23,7 @@
     { "code": "version_mismatch", "app": "Arcade Wheel", "message": "Arcade Wheel needs an update to work with this app." },
     { "code": "internal", "app": "Arcade Look", "message": "Arcade Look ran into a problem." },
     { "code": "internal", "app": "Arcade Look", "reason": "disk full", "message": "Arcade Look ran into a problem: disk full." },
+    { "code": "internal", "app": "Arcade Find", "reason": "unsupported_method", "message": "Arcade Find doesn't support this method." },
     { "code": "from_the_future", "app": "Arcade Look", "message": "Arcade Look ran into a problem." }
   ],
   "limits": [
