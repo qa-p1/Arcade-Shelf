@@ -4,10 +4,19 @@
 
 Link v0.3.0 (`33650a87`) is vendored with its Qt conformance tests. Shelf
 implements the seven optional hub methods, receipt-based installation,
-portable backups, and tray hosting with disconnect hand-back. Local and
-three-platform verification for this branch is recorded below after the
-integration pass. These additions have not been exercised on a real desktop;
-Windows and macOS results are CI only.
+portable backups, and tray hosting with disconnect hand-back.
+
+- 2026-10-12: Linux build passed with Qt 6.11.2 and GCC 16.2.1.
+- CTest: 15/15 groups passed offscreen and 15/15 under Xvfb/xcb through Link
+  v0.3.0's isolated e2e runner. This includes 13 real executable process tests,
+  headless CLI validation, portable round trips and the new Link conformance
+  suites for install, tray hosting and optional methods.
+- Both source provenance sets match released commit `33650a87`: 47 Qt bundle
+  files and 12 shared assets. Shortcut data/generated Markdown, docs links,
+  shell syntax and release generator tests pass; the optional Python
+  `jsonschema` test is skipped when that package is absent.
+- Windows and macOS build/package and isolated installer CI are pending for
+  this branch. These additions have not been exercised on a real desktop.
 
 Version 0.1.1. Everything listed under "Verified for 0.1.0" was verified
 **headless only** (offscreen, Xvfb and headless Weston/Sway with software

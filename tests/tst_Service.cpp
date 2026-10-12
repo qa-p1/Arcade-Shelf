@@ -23,7 +23,7 @@ private slots:
         QCOMPARE(m["menu"].toArray(), trayMenu());
         QCOMPARE(m["docs"].toObject()["version"].toString(), Version);
         QVERIFY(QDir::isAbsolutePath(m["logs"].toString()));
-        QVERIFY(QStringList{"dev", "manual", "appimage", "macos-bundle", "windows-installer"}.contains(m["install"].toString()));
+        QVERIFY((QStringList{"dev", "manual", "appimage", "macos-bundle", "windows-installer"}.contains(m["install"].toString())));
         QCOMPARE(manifest(true, "ctrl + alt + s")["shortcuts"].toArray().first().toObject()["accelerator"].toString(), QString("Ctrl+Alt+S"));
     }
     void hubMethodsAndPortableHandoff() {

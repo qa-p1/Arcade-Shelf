@@ -172,7 +172,10 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
         if (!m_store->importPortable(path, &imported, &error)) { r.fail(ArcadeLink::Error::make("denied", error)); return; }
         m_undo.clear(); refresh();
         r.done({{"imported", true}, {"restartRequired", false}, {"items", imported}});
-        QTimer::singleShot(0, this, &Service::publish);
+        // Link's Responder queues the reply; stopping the public server aborts
+        // its sockets. Give this one reply a bounded flush grace when restore
+        // disables Link, then tear the endpoint down. There is no idle timer.
+        QTimer::singleShot(m_store->settings()["linkEnabled"].toBool(true) ? 0 : 50, this, &Service::publish);
     };
 }
 void Service::completeShortcutBinding(QJsonObject result, ArcadeLink::Error error)

@@ -102,6 +102,9 @@ jobs:
       - name: macOS package
         if: runner.os == 'macOS'
         run: scripts/package-macos.sh build ${{ steps.version.outputs.value }} dist
+      - name: macOS bundle lifecycle (isolated, CI only)
+        if: runner.os == 'macOS'
+        run: sh scripts/test-macos-installer.sh ${{ steps.version.outputs.value }} dist
       - name: Generate release manifests
         run: python scripts/arcade-release.py --id arcade.shelf --version ${{ steps.version.outputs.value }} --channel nightly --notes https://github.com/qa-p1/Arcade-Shelf/blob/${{ github.event.pull_request.head.sha || github.sha }}/CHANGELOG.md dist
       - name: Report bounded failure diagnostics
