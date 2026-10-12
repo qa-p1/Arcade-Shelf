@@ -1,41 +1,22 @@
 # Arcade Shelf
 
-A floating workspace for files, folders, images, text, and links. Collect what
-you need, keep working, then drag it into another application or send it to an
-installed Arcade tool.
-
-**Version 0.1.1.** Working C++20 and Qt 6 software, checked on a real Hyprland
-desktop; Windows, macOS and other Linux desktops are still being verified.
-On Linux, download the `.AppImage`, make it executable and run it. See [current status](docs/STATUS.md) for what is tested and what
-remains. Install it with Arcade Tools or from
-[Releases](https://github.com/qa-p1/Arcade-Shelf/releases).
+Arcade Shelf is a floating place to collect files, folders, images, text and links while you work. Keep useful references together, then drag or send selected content to another app.
 
 ![Arcade Shelf dark theme, captured from the running Qt application](docs/images/expanded.png)
 
-## Use Shelf
+## Install
 
-1. Start `arcade-shelf`. A compact capsule appears.
-2. Drop files, folders, browser links, or text on the capsule. Existing files stay
-   where they are; Shelf stores references.
-3. Click the capsule to expand. Select items, drag them to another application,
-   or use the context menu to open, reveal, copy, reorder, or remove them.
-4. Use the collection menu to create, rename, switch, pin, reorder, and delete
-   shelves. Temporary collections and named collections survive restarts.
+Install or update Shelf from **Arcade Tools → Apps**, or install it by hand using the [getting-started guide](docs/user/getting-started.md). Tools can host Shelf's tray controls in the shared Arcade tray icon; Shelf keeps its own icon when Tools is closed.
 
-Undo removes the last addition. Removing a reference never deletes its original.
-Raw images and temporary outputs are copied into private Shelf storage. Missing
-originals are marked unavailable when a shelf is refreshed.
+## Works with other Arcade apps
 
-The surface supports dark, light, and system themes, multiple selection,
-collection filtering, resizing, edge docking, reduced motion, optional topmost
-behavior, and preferences. Desktop capabilities depend on the window system:
-read the [Wayland decision](docs/ARCHITECTURE.md#wayland-surface-decision).
-Moving near an edge snaps the shelf on supported desktops. Hover over its tab
-to peek without taking keyboard focus; click to work in it, and press Escape to
-return to the tab. [Native surface notes](docs/NATIVE_SURFACES.md) describe
-fullscreen handling, system materials and compositor-specific limits.
+Add Find results to Shelf, preview items with Look, or send selected content to Box, Clipboard, Lens and Wheel. See [how the Arcade apps connect](docs/user/with-other-apps.md).
 
-## Build and run
+Read the [Arcade Shelf user guide](docs/user/) for setup, features, shortcuts and help.
+
+## Development
+
+### Build and run
 
 Requirements: CMake 3.25+, a C++20 compiler, Qt 6.8+ with Core, Gui, Widgets,
 Quick, QuickControls2, Network, Sql, Svg, Test, the SQLite driver, and runtime QML
@@ -58,6 +39,8 @@ For other platforms, use a Qt 6.8+ SDK and set `CMAKE_PREFIX_PATH` to its root.
 Windows uses MSVC; macOS uses Clang. Platform CI and package scripts are included;
 native Windows/macOS interaction still needs verification.
 
+### Command line and lifecycle
+
 ```sh
 ./build/arcade-shelf --show
 ./build/arcade-shelf --add /absolute/path/to/file
@@ -72,45 +55,21 @@ service without showing a window. `--version` and `--arcade-manifest` have no
 registration or filesystem side effects. Shelf deliberately does not implement
 one-shot `--arcade-invoke`.
 
-## Keyboard
+### Keyboard and Arcade Link
 
-| Shortcut | Action |
-|---|---|
-| Ctrl+Alt+S | Default global Shelf shortcut; configurable, platform dependent |
-| Arrows / Shift+arrows | Navigate / extend selection |
-| Ctrl/Cmd+A | Select visible items |
-| Ctrl/Cmd+C | Copy selected content |
-| Ctrl/Cmd+V | Collect explicitly pasted clipboard content |
-| Ctrl/Cmd+F | Filter the current shelf |
-| Ctrl/Cmd+Z | Undo the last addition |
-| Enter | Open an item; confirm an explicit picker selection |
-| Space | Preview through Look when its compatible action is installed |
-| Delete | Remove selected items from Shelf |
-| Escape | Clear a filter, dismiss, or cancel a picker |
-
-Standard clipboard shortcuts are used only inside Shelf. They are never
-registered globally. Global shortcut collisions are checked against cached
-Arcade Link metadata. Where the portal cannot bind a shortcut, a compositor
-binding can run `arcade-shelf --toggle`.
-
-## Arcade apps
+The default global shortcut is `Ctrl+Alt+S`; it is configurable, and clipboard
+shortcuts are used only inside Shelf. Global shortcut collisions are checked
+against cached Arcade Link metadata. Where the portal cannot bind a shortcut, a
+compositor binding can run `arcade-shelf --toggle`.
 
 Shelf exposes `shelf.add`, `shelf.show`, and `shelf.pick` through frozen Arcade
 Link v1. A picker returns only what the user explicitly selects. Installed peers
-are discovered by capabilities; unavailable integrations are hidden.
-
-Look owns preview and inspection; Lens owns capture, image recognition, and
-pins; Box owns transformations and pipelines; Clipboard owns explicit picking
-and eligible device delivery. With Arcade Find installed, Find's "Add to
-Shelf" collects search results, and an item's "Search in Find" opens Find on
-it. Since Arcade Link `v0.2.0`, Tools installs Shelf and Wheel slots can hold
-its actions.
-
-See [the contracts and ownership rules](docs/ARCADE_LINK.md),
+are discovered by capabilities; unavailable integrations are hidden. See
+[the contracts and ownership rules](docs/ARCADE_LINK.md),
 [ecosystem verification](docs/ECOSYSTEM_VERIFICATION.md), and
 [ecosystem onboarding](docs/ONBOARDING.md).
 
-## Data and limits
+### Data and limits
 
 Metadata and preferences live in SQLite under Qt's per-user application-data
 directory (`qa-p1/ArcadeShelf`). `ARCADE_SHELF_HOME` overrides Shelf's profile;
@@ -128,7 +87,7 @@ defaults to 64 MiB with at most two decoder workers. The saved
 visible textures are additional memory. There is no idle filesystem polling or
 clipboard history.
 
-## Verify and package
+### Verify and package
 
 ```sh
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
