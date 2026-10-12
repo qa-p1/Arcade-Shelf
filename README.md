@@ -19,7 +19,7 @@ Read the [Arcade Shelf user guide](docs/user/) for setup, features, shortcuts an
 ### Build and run
 
 Requirements: CMake 3.25+, a C++20 compiler, Qt 6.8+ with Core, Gui, Widgets,
-Quick, QuickControls2, Network, Sql, Svg, Test, the SQLite driver, and runtime QML
+Quick, QuickControls2, Network, Sql, Svg, Concurrent, Test, the SQLite driver, and runtime QML
 modules. Linux also uses Qt DBus and X11 when available. No Electron, bundled
 browser, account, or telemetry is used.
 
@@ -47,6 +47,7 @@ native Windows/macOS interaction still needs verification.
 ./build/arcade-shelf --background
 ./build/arcade-shelf --settings
 ./build/arcade-shelf --status
+./build/arcade-shelf --restart
 ./build/arcade-shelf --quit
 ```
 
@@ -54,6 +55,17 @@ A second launch forwards to the resident instance. `--background` starts the
 service without showing a window. `--version` and `--arcade-manifest` have no
 registration or filesystem side effects. Shelf deliberately does not implement
 one-shot `--arcade-invoke`.
+
+Packaged AppImages and macOS bundles also accept `--install [--silent]
+[--no-launch] [--channel stable|nightly]`, `--uninstall [--silent]
+[--remove-data]`, `--repair`, and `--integration-status`. Status prints JSON
+without opening a window. Development builds never install themselves.
+Windows uses its per-user installer and receipt-recorded uninstaller.
+
+Tools can open settings, restart Shelf, create a new shelf, show the active
+shelf, rebind its global shortcut and back up portable settings through Link
+v0.3.0. Its tray host returns Shelf's icon immediately when Tools disconnects;
+turning off Connected apps also returns the icon.
 
 ### Keyboard and Arcade Link
 
@@ -75,6 +87,11 @@ Metadata and preferences live in SQLite under Qt's per-user application-data
 directory (`qa-p1/ArcadeShelf`). `ARCADE_SHELF_HOME` overrides Shelf's profile;
 `ARCADE_HOME` independently overrides Link's registry, runtime, and handoffs.
 Tests must isolate both.
+
+**Settings → About → Backup and restore** exports collections and preferences.
+Shelf shows the owned-content size and asks before including it; referenced
+original files are never copied. Tools backups include metadata and preferences
+only. Restore validates the archive and backs up the current database first.
 
 The default owned-content quota is 512 MiB. Exported temporary handoffs have a
 separate budget of the same size and a 24-hour lifetime; metadata and SQLite

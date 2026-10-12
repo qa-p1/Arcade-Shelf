@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "arcade.tools",
+  "name": "Arcade Tools",
+  "version": "0.3.0-mock",
+  "actions": [],
+  "menu": [],
+  "docs": {
+    "version": "0.3.0-mock"
+  },
+  "settings": {
+    "linkEnabled": true,
+    "trayHost": {
+      "enabled": true,
+      "excluded": []
+    }
+  },
+  "methods": ["app.settings", "app.restart", "app.menu", "app.menu.invoke", "app.shortcuts.set", "app.settings.export", "app.settings.import"]
+}

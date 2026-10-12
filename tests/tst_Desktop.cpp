@@ -237,6 +237,23 @@ private slots:
         QVERIFY(!Desktop::validateShortcut(QStringLiteral("Ctrl+K, Ctrl+S")).isEmpty());
         QVERIFY(!Desktop::validateShortcut(QStringLiteral("Ctrl+NotAKey")).isEmpty());
     }
+    void hubShortcutRebindingUsesIsolatedManualFallback()
+    {
+        Desktop desktop;
+        bool answered = false;
+        QJsonObject result;
+        ArcadeLink::Error error;
+        desktop.rebindShortcut("control+alt+t", ArcadeLink::executablePath(),
+            [&](QJsonObject answer, ArcadeLink::Error failure) { result = answer; error = failure; answered = true; });
+        QTRY_VERIFY(answered);
+        QVERIFY2(!error.isError(), qPrintable(error.message));
+        QVERIFY(!result["applied"].toBool()); QCOMPARE(result["via"].toString(), QString("manual"));
+        QVERIFY(!result["hint"].toString().isEmpty());
+        answered = false;
+        desktop.rebindShortcut("Ctrl+C", ArcadeLink::executablePath(),
+            [&](QJsonObject, ArcadeLink::Error failure) { error = failure; answered = true; });
+        QVERIFY(answered); QCOMPARE(error.code, QString("denied"));
+    }
 
     void isolatedInstanceCannotInstallShortcutOrLoginEntry()
     {

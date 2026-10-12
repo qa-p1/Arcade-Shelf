@@ -9,6 +9,7 @@ namespace Shelf {
 inline const QString AppId = QStringLiteral("arcade.shelf");
 inline const QString Version = QStringLiteral(SHELF_VERSION);
 QJsonArray publicActions();
+QJsonArray trayMenu();
 QJsonObject manifest(bool enabled = true, QString shortcut = QStringLiteral("Ctrl+Alt+S"));
 QString dataRoot();
 
@@ -31,17 +32,25 @@ public:
     void pinShelf(QString id, bool pin);
     void reorderShelves(QStringList ids);
     void saveSettings(QJsonObject settings);
+    void exportPortableSettings(QString path, bool includeOwned);
+    void importPortableSettings(QString path);
+    void completeShortcutBinding(QJsonObject result, ArcadeLink::Error error = {});
+    void setTrayState(QString state);
+    void restartResident();
     void completePick(QStringList ids);
     void cancelPick();
     void selectedContents(QStringList ids, std::function<void(QJsonArray, ArcadeLink::Error)> callback);
     void retain(QStringList ids);
     void release();
 signals:
-    void snapshot(QJsonArray shelves, QJsonArray items, QString active, QJsonObject settings, bool undoAvailable);
+    void snapshot(QJsonArray shelves, QJsonArray items, QString active, QJsonObject settings,
+                  bool undoAvailable, qint64 ownedContentBytes);
     void settingsSaved(QJsonObject changes);
     void feedback(QString message, bool pulse);
     void showRequested(QString shelf, bool settings);
     void toggleRequested();
+    void newCollectionRequested();
+    void shortcutRequested(QString accelerator);
     void pickRequested(bool multiple, QStringList types);
     void pickEnded();
     void quitRequested();
@@ -49,12 +58,16 @@ signals:
 private:
     void invoke(const QJsonObject &req, const ArcadeLink::Responder &r);
     void publish();
+    void configureLifecycle(ArcadeLink::Server &server);
+    bool busy() const;
     bool target(QString id);
     void finishAdd(const AddResult &result, bool reveal);
     QString m_root;
     std::unique_ptr<Store> m_store;
     std::unique_ptr<ArcadeLink::Server> m_server, m_control;
     std::optional<ArcadeLink::Responder> m_picker;
+    std::optional<ArcadeLink::Responder> m_shortcutResponder;
+    QString m_requestedShortcut, m_trayState = QStringLiteral("own"), m_installMethod;
     QTimer m_pickTimer;
     QStringList m_pickTypes, m_undo, m_retained, m_deferredRemoval;
     bool m_multiple = false;

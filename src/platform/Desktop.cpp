@@ -191,12 +191,25 @@ struct Shortcut {
 Shortcut parseShortcut(const QString &text)
 {
     Shortcut result;
-    QStringList components = text.split(QLatin1Char('+'));
+    const QString canonical = ArcadeLink::normalizeAccelerator(text);
+    QStringList components = canonical.split(QLatin1Char('+'));
     for (QString &component : components) {
         const QString token = component.trimmed().toLower();
-        if (token == QStringLiteral("control")) component = QStringLiteral("Ctrl");
+        if (token == QStringLiteral("ctrl")) {
+#ifdef Q_OS_MACOS
+            component = QStringLiteral("Meta"); // Qt Meta is the physical Control key on macOS.
+#else
+            component = QStringLiteral("Ctrl");
+#endif
+        }
         else if (token == QStringLiteral("option")) component = QStringLiteral("Alt");
-        else if (token == QStringLiteral("super") || token == QStringLiteral("win")) component = QStringLiteral("Meta");
+        else if (token == QStringLiteral("super") || token == QStringLiteral("win")) {
+#ifdef Q_OS_MACOS
+            component = QStringLiteral("Ctrl"); // Qt Control is the physical Command key on macOS.
+#else
+            component = QStringLiteral("Meta");
+#endif
+        }
         else if (token == QStringLiteral("cmd") || token == QStringLiteral("command")) {
 #ifdef Q_OS_MACOS
             component = QStringLiteral("Ctrl"); // Qt's portable Control means Command on macOS.
@@ -502,9 +515,21 @@ void Desktop::setError(const QString &message)
 }
 void Desktop::setShortcutStatus(const QString &message)
 {
-    if (d->shortcutStatus == message) return;
+    const bool changed = d->shortcutStatus != message;
     d->shortcutStatus = message;
-    emit shortcutStatusChanged();
+    if (changed) emit shortcutStatusChanged();
+    if (!m_shortcutReply || message.startsWith(QStringLiteral("Connecting desktop shortcut"))) return;
+    auto reply = std::exchange(m_shortcutReply, {});
+    const bool applied = message.startsWith(QStringLiteral("Ready"));
+#ifdef Q_OS_LINUX
+    QJsonObject result{{"applied", applied}, {"via", applied ? (d->hyprBound ? "hyprland-runtime" : "portal") : "manual"}};
+    if (!applied) result.insert("hint", message + QStringLiteral(". Bind arcade-shelf --toggle in your desktop keyboard settings."));
+    reply(result, {});
+#else
+    if (applied) reply({{"applied", true}, {"via", "native"}}, {});
+    else if (d->isolated) reply({{"applied", false}, {"via", "manual"}, {"hint", message}}, {});
+    else reply({}, ArcadeLink::Error::make("denied", message));
+#endif
 }
 
 bool Desktop::move(QWindow *window)
@@ -1145,6 +1170,20 @@ QString Desktop::validateShortcut(const QString &accelerator)
     return {};
 }
 
+void Desktop::rebindShortcut(const QString &accelerator, const QString &executable,
+                            std::function<void(QJsonObject, ArcadeLink::Error)> reply)
+{
+    const QString canonical = ArcadeLink::normalizeAccelerator(accelerator);
+    const QString error = canonical.isEmpty() ? QStringLiteral("Invalid accelerator.") : validateShortcut(canonical);
+    if (!error.isEmpty()) { reply({}, ArcadeLink::Error::make("denied", error)); return; }
+    if (m_shortcutReply) { reply({}, ArcadeLink::Error::make("busy", "A shortcut change is in progress.")); return; }
+    const QString previous = d->accelerator;
+    m_shortcutReply = [this, previous, executable, reply = std::move(reply)](QJsonObject result, ArcadeLink::Error error) {
+        if (error.isError()) configureShortcut(previous, executable);
+        reply(result, error);
+    };
+    configureShortcut(canonical, executable);
+}
 void Desktop::configureShortcut(const QString &accelerator, const QString &executable)
 {
     clearShortcut();

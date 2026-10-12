@@ -172,6 +172,106 @@ private slots:
         { Store store(root); QVERIFY(store.open()); QVERIFY(store.items("quick").isEmpty()); }
     }
 
+    void portableBackupPreservesDisabledShortcut()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        Store source(directory.path() + "/source"); QVERIFY(source.open());
+        QVERIFY(source.saveSettings({{"shortcut", ""}}));
+        const QString backup = directory.path() + "/disabled.arcade-shelf";
+        QString error;
+        QVERIFY2(source.exportPortable(backup, false, nullptr, nullptr, &error), qPrintable(error));
+        Store target(directory.path() + "/target"); QVERIFY(target.open());
+        QVERIFY(target.saveSettings({{"shortcut", "Ctrl+Alt+S"}}));
+        QVERIFY2(target.importPortable(backup, nullptr, &error), qPrintable(error));
+        QCOMPARE(target.settings()["shortcut"].toString(), QString(""));
+    }
+    void portableSettingsRoundTripAndOptionalOwnedContent()
+    {
+        QTemporaryDir d; QVERIFY(d.isValid());
+        const QString sourceRoot = d.path() + "/source";
+        const QString external = writeFile(d.path() + "/referenced.pdf", QByteArray("reference"));
+        const QString handoff = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(handoff));
+        const QByteArray ownedBytes(300 * 1024, 'p');
+        const QString ownedPath = writeFile(handoff + "/note.txt", ownedBytes);
+        QString project;
+        {
+            Store source(sourceRoot); QVERIFY(source.open());
+            project = source.createShelf("Project"); QVERIFY(!project.isEmpty());
+            QVERIFY(source.setActiveShelf(project));
+            QVERIFY(source.saveSettings({{"theme", "dark"}, {"alwaysOnTop", false}, {"shortcut", "Ctrl+Alt+S"}}));
+            const auto added = source.add({file(external, "file/pdf"), text("small note"),
+                QJsonObject{{"type", "text/plain"}, {"path", ownedPath}, {"owner", "arcade.clipboard"}}},
+            {{"shelf", project}});
+            QVERIFY2(!added.error.isError(), qPrintable(added.error.message));
+            QCOMPARE(added.addedIds.size(), 3);
+            QCOMPARE(source.ownedBytes(), static_cast<qint64>(ownedBytes.size() + QByteArray("small note").size()));
+
+            QString error;
+            QVERIFY(!source.exportPortable(sourceRoot + "/shelf.sqlite3", false, nullptr, nullptr, &error));
+            QCOMPARE(source.items(project).size(), 3);
+            int omitted = -1;
+            qint64 included = -1;
+            const QString metadataOnly = d.path() + "/metadata.arcade-shelf";
+            QVERIFY2(source.exportPortable(metadataOnly, false, &included, &omitted, &error), qPrintable(error));
+            QCOMPARE(included, 0);
+            QCOMPARE(omitted, 2);
+
+            Store destination(d.path() + "/destination"); QVERIFY(destination.open());
+            QVERIFY(destination.saveSettings({{"theme", "light"}}));
+            int restored = -1;
+            QVERIFY2(destination.importPortable(metadataOnly, &restored, &error), qPrintable(error));
+            QCOMPARE(restored, 1);
+            QCOMPARE(destination.activeShelf(), project);
+            QCOMPARE(destination.shelves().size(), 2);
+            QCOMPARE(destination.items(project).size(), 1);
+            QCOMPARE(destination.items(project).first().toObject()["path"].toString(), external);
+            QCOMPARE(destination.settings()["theme"].toString(), QString("dark"));
+            QCOMPARE(destination.settings()["alwaysOnTop"].toBool(), false);
+
+            const QString fullBackup = d.path() + "/full.arcade-shelf";
+            QVERIFY2(source.exportPortable(fullBackup, true, &included, &omitted, &error), qPrintable(error));
+            QCOMPARE(included, source.ownedBytes());
+            QCOMPARE(omitted, 0);
+            QVERIFY2(destination.importPortable(fullBackup, &restored, &error), qPrintable(error));
+            QCOMPARE(restored, 3);
+            const auto restoredItems = destination.items(project);
+            QCOMPARE(restoredItems.size(), 3);
+            qint64 restoredOwned = 0;
+            bool foundLargeText = false;
+            for (const auto &value : restoredItems) {
+                const auto item = value.toObject();
+                if (!item["owned"].toBool()) continue;
+                restoredOwned += item["size"].toInteger();
+                if (item["size"].toInteger() == ownedBytes.size()) {
+                    QFile restoredFile(item["path"].toString());
+                    QVERIFY(restoredFile.open(QIODevice::ReadOnly));
+                    QCOMPARE(restoredFile.readAll(), ownedBytes);
+                    foundLargeText = true;
+                }
+            }
+            QCOMPARE(restoredOwned, source.ownedBytes());
+            QVERIFY(foundLargeText);
+
+            const QString sentinel = writeFile(d.path() + "/keep.txt", QByteArray("keep"));
+            const auto kept = destination.add({file(sentinel)}, {{"shelf", "quick"}});
+            QVERIFY(!kept.error.isError());
+            QFile full(fullBackup);
+            QVERIFY(full.open(QIODevice::ReadOnly));
+            QByteArray damaged = full.readAll(); full.close();
+            QVERIFY(damaged.size() > 1);
+            damaged[damaged.size() - 1] ^= 1;
+            const QString badBackup = d.path() + "/damaged.arcade-shelf";
+            QVERIFY(writeFile(badBackup, damaged) == badBackup);
+            QVERIFY(!destination.importPortable(badBackup, &restored, &error));
+            QCOMPARE(destination.items("quick").size(), 1);
+            QCOMPARE(destination.items("quick").first().toObject()["path"].toString(), sentinel);
+            QVERIFY(QFileInfo::exists(external));
+            QVERIFY(QFileInfo::exists(ownedPath));
+        }
+        QVERIFY(QDir(handoff).removeRecursively());
+    }
+
     void collectionsReorderingAndRecovery()
     {
         QTemporaryDir d; const QString root = d.path() + "/store"; QString named;

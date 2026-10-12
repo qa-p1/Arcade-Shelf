@@ -1,5 +1,9 @@
 // Conformance vectors (spec/vectors), the same files the Rust crate runs.
 #include "ArcadeLink.h"
+#include "ArcadeAccelerator.h"
+#include "ArcadeShortcuts.h"
+#include "ArcadeInstall.h"
+#include "ArcadeTrayHost.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -118,6 +122,98 @@ private slots:
             QCOMPARE(normalizeAccelerator(p.toArray().at(0).toString()), normalizeAccelerator(p.toArray().at(1).toString()));
         for (const auto &p : v.value(QStringLiteral("different")).toArray())
             QVERIFY(normalizeAccelerator(p.toArray().at(0).toString()) != normalizeAccelerator(p.toArray().at(1).toString()));
+        for (const auto &value : v.value(QStringLiteral("normalize")).toArray()) {
+            const auto item = value.toObject();
+            QCOMPARE(Accelerator::normalize(item.value(QStringLiteral("input")).toString()), item.value(QStringLiteral("expected")).toString());
+        }
+        for (const auto &value : v.value(QStringLiteral("display")).toArray()) {
+            const auto item = value.toObject();
+            const QStringList os{QStringLiteral("linux"), QStringLiteral("windows"), QStringLiteral("macos")};
+            const int i = os.indexOf(item.value(QStringLiteral("os")).toString());
+            QVERIFY(i >= 0);
+            QCOMPARE(Accelerator::display(item.value(QStringLiteral("input")).toString(), static_cast<Accelerator::Platform>(i)), item.value(QStringLiteral("expected")).toString());
+        }
+        for (const auto &value : v.value(QStringLiteral("conflicts")).toArray()) {
+            const auto item = value.toObject();
+            QCOMPARE(Accelerator::conflicts(item.value(QStringLiteral("a")).toString(), item.value(QStringLiteral("b")).toString()), item.value(QStringLiteral("expected")).toBool());
+        }
+        for (const auto &value : v.value(QStringLiteral("invalid")).toArray()) {
+            QString error;
+            QVERIFY(Accelerator::normalize(value.toString(), &error).isEmpty());
+            QVERIFY(!error.isEmpty());
+        }
+    }
+
+    void shortcuts()
+    {
+        const auto vectors = load(QStringLiteral("shortcuts.json"));
+        for (const auto &value : vectors.value(QStringLiteral("valid")).toArray()) {
+            const auto item = value.toObject();
+            const auto doc = item.value(item.contains(QStringLiteral("sheet")) ? QStringLiteral("sheet") : QStringLiteral("document")).toObject();
+            const auto manifest = item.value(QStringLiteral("manifest")).toObject();
+            QString error;
+            QVERIFY2(Shortcuts::validate(doc, &error, manifest.isEmpty() ? nullptr : &manifest), qPrintable(error));
+            QCOMPARE(Shortcuts::markdown(doc), item.value(QStringLiteral("markdown")).toString());
+        }
+        for (const auto &value : vectors.value(QStringLiteral("invalid")).toArray()) {
+            const auto item = value.toObject();
+            const auto manifest = item.value(QStringLiteral("manifest")).toObject();
+            QString error;
+            QVERIFY2(!Shortcuts::validate(item.value(item.contains(QStringLiteral("sheet")) ? QStringLiteral("sheet") : QStringLiteral("document")).toObject(), &error, manifest.isEmpty() ? nullptr : &manifest), qPrintable(item.value(QStringLiteral("name")).toString()));
+            QVERIFY(!error.isEmpty());
+        }
+    }
+
+    void receipts()
+    {
+        const auto vectors = load(QStringLiteral("receipts.json"));
+        for (const auto &value : vectors.value(QStringLiteral("valid")).toArray()) {
+            QString error;
+            QVERIFY2(validateReceipt(value.toObject().value(QStringLiteral("receipt")).toObject(), &error), qPrintable(error));
+        }
+        for (const auto &value : vectors.value(QStringLiteral("invalid")).toArray()) {
+            QString error;
+            QVERIFY2(!validateReceipt(value.toObject().value(QStringLiteral("receipt")).toObject(), &error), qPrintable(value.toObject().value(QStringLiteral("name")).toString()));
+            QVERIFY(!error.isEmpty());
+        }
+    }
+
+    void methods()
+    {
+        const auto vectors = load(QStringLiteral("methods.json"));
+        QCOMPARE(vectors.value(QStringLiteral("protocol")).toInt(), ProtocolVersion);
+        for (const auto &value : vectors.value(QStringLiteral("cases")).toArray()) {
+            const auto item = value.toObject();
+            QCOMPARE(classify(QJsonDocument(item.value(QStringLiteral("request")).toObject()).toJson(QJsonDocument::Compact)), Kind::Request);
+            const auto response = item.value(QStringLiteral("response")).toObject();
+            QCOMPARE(classify(QJsonDocument(response).toJson(QJsonDocument::Compact)), Kind::Response);
+            if (response.contains(QStringLiteral("error"))) {
+                const auto error = Error::fromJson(response.value(QStringLiteral("error")).toObject());
+                QCOMPARE(error.code, response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString());
+            }
+        }
+    }
+
+    void trayhost()
+    {
+        const auto vectors = load(QStringLiteral("trayhost.json"));
+        QCOMPARE(vectors.value(QStringLiteral("startupCapMs")).toInt(), TrayStartupCapMs);
+        QCOMPARE(vectors.value(QStringLiteral("restartGraceMs")).toInt(), TrayRestartGraceMs);
+        for (const auto &value : vectors.value(QStringLiteral("sequences")).toArray()) {
+            const auto sequence = value.toObject();
+            TrayHostStateMachine policy;
+            policy.begin(0, true);
+            for (const auto &eventValue : sequence.value(QStringLiteral("events")).toArray()) {
+                const auto event = eventValue.toObject();
+                const auto now = event.value(QStringLiteral("atMs")).toInteger();
+                policy.advance(now);
+                if (event.value(QStringLiteral("startup")).toBool()) policy.begin(now, true);
+                if (event.contains(QStringLiteral("hosted"))) policy.host(now, event.value(QStringLiteral("hosted")).toBool(), event.value(QStringLiteral("restarting")).toBool());
+                if (event.value(QStringLiteral("closed")).toBool()) policy.closed(now);
+                if (event.value(QStringLiteral("excluded")).toBool() || (event.contains(QStringLiteral("linkEnabled")) && !event.value(QStringLiteral("linkEnabled")).toBool())) policy.setAllowed(now, false);
+                QCOMPARE(policy.state(), event.value(QStringLiteral("expect")).toString());
+            }
+        }
     }
 };
 

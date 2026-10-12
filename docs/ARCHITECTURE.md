@@ -130,8 +130,8 @@ X11 test covers the delayed retrieval and original-file safety.
 ## Dependencies and evidence
 
 Arcade Link Qt source is unchanged from code commit
-`bedee71dd98475810fd43a7da23d45316389b4e5` (`v0.2.0`, which adds Shelf and Find
-to the shared app metadata). Hash checks and all protocol
+`33650a87b6999fbd553ac678cc7bde7a308cb852` (`v0.3.0`, with optional hub methods,
+tray hosting and installation). Hash checks and all protocol
 vectors are included. ShelfInvoke adapts Wheel's existing bounded lifecycle
 pattern because the shared Qt client can wait indefinitely for a noncompliant
 job. No frozen protocol or release tag is changed.

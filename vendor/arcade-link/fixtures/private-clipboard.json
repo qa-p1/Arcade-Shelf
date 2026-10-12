@@ -5,5 +5,8 @@
   "actions": [
     { "id": "clipboard.add", "title": "Send to my devices", "verb": "send", "accepts": ["text/*", "file/image", "file/any[]"],
       "effects": ["sends-to-device"], "maxBytes": 16777216, "mock": { "error": "denied", "reason": "private_mode" } }
-  ]
+  ],
+  "menu": [{"id": "private", "title": "Private mode", "kind": "toggle", "enabled": true, "checked": false}, {"id": "pause", "title": "Pause sync", "kind": "toggle", "enabled": true, "checked": false}],
+  "docs": {"version": "0.0.0-mock"},
+  "methods": ["app.settings", "app.restart", "app.menu", "app.menu.invoke", "app.shortcuts.set", "app.settings.export", "app.settings.import"]
 }
