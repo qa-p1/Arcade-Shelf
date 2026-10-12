@@ -20,8 +20,12 @@ try {
     if (!(Test-Path $Receipt.integration.cli) -or !(Test-Path $Receipt.integration.desktopEntry)) {
         throw "CLI shim or Start menu shortcut missing"
     }
-    & "$InstallDir/arcade-shelf.exe" --integration-status
-    if ($LASTEXITCODE -ne 0) { throw "Installed integration status failed" }
+    # Shelf is a GUI-subsystem executable: piping its output makes PowerShell
+    # wait for it and set $LASTEXITCODE.
+    $Status = & "$InstallDir/arcade-shelf.exe" --integration-status | Out-String
+    Write-Host $Status
+    if ($LASTEXITCODE -ne 0) { throw "Installed integration status failed ($LASTEXITCODE)" }
+    if (($Status | ConvertFrom-Json).receipt.id -ne "arcade.shelf") { throw "Integration status has no Shelf receipt" }
     $Process = Start-Process -FilePath "$InstallDir/uninstall.exe" -ArgumentList "/S", "_?=$InstallDir" -Wait -PassThru
     if ($Process.ExitCode -ne 0) { throw "Silent uninstall failed: $($Process.ExitCode)" }
     if ((Test-Path $ReceiptPath) -or (Test-Path $Receipt.integration.cli) -or (Test-Path $Receipt.integration.desktopEntry)) {
