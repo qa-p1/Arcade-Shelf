@@ -2,6 +2,7 @@
 """Validate Shelf shortcuts and ensure the generated Markdown is current."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,12 +12,12 @@ source = ROOT / "docs/user/shortcuts.json"
 rendered = ROOT / "docs/user/shortcuts.md"
 validator = ROOT / "scripts/validate_shortcuts.py"
 
-check = subprocess.run([sys.executable, str(validator), str(source)], text=True, capture_output=True)
+check = subprocess.run([sys.executable, str(validator), str(source)], encoding="utf-8", capture_output=True, env={**os.environ, "PYTHONUTF8": "1"})
 if check.returncode:
     sys.stderr.write(check.stderr or check.stdout)
     raise SystemExit(check.returncode)
 
-result = subprocess.run([sys.executable, str(validator), str(source), "--markdown"], text=True, capture_output=True)
+result = subprocess.run([sys.executable, str(validator), str(source), "--markdown"], encoding="utf-8", capture_output=True, env={**os.environ, "PYTHONUTF8": "1"})
 if result.returncode:
     sys.stderr.write(result.stderr or result.stdout)
     raise SystemExit(result.returncode)

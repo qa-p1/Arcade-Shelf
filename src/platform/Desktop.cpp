@@ -1161,9 +1161,14 @@ QString Desktop::validateShortcut(const QString &accelerator)
     if (shortcut.modifiers.testFlag(Qt::KeypadModifier)
         || shortcut.modifiers.testFlag(Qt::GroupSwitchModifier)) return QStringLiteral("This shortcut modifier is not supported");
     const auto mods = shortcut.modifiers;
+#ifdef Q_OS_MACOS
+    const auto physicalControl = Qt::MetaModifier; // "Ctrl" parses to Qt Meta on macOS.
+#else
+    const auto physicalControl = Qt::ControlModifier;
+#endif
     const bool clipboard = ((mods == Qt::ControlModifier || mods == Qt::MetaModifier)
         && (shortcut.key == Qt::Key_C || shortcut.key == Qt::Key_V || shortcut.key == Qt::Key_X))
-        || (shortcut.key == Qt::Key_Insert && (mods == Qt::ControlModifier || mods == Qt::ShiftModifier));
+        || (shortcut.key == Qt::Key_Insert && (mods == physicalControl || mods == Qt::ShiftModifier));
     if (clipboard) return QStringLiteral("Standard clipboard shortcuts cannot be used globally");
     if (mods == Qt::NoModifier && !(shortcut.key >= Qt::Key_F1 && shortcut.key <= Qt::Key_F35))
         return QStringLiteral("Use a modifier with a letter or navigation key");
