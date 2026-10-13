@@ -328,14 +328,28 @@ class ShelfProcessTests(unittest.TestCase):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             try:
-                if json.loads(self.shelf.endpoint.read_text())["pid"] != first_pid:
+                replacement = json.loads(self.shelf.endpoint.read_text())["pid"]
+                if replacement != first_pid:
                     with LinkClient(self.shelf.endpoint) as client:
                         self.assertEqual(client.call("app.status")["status"]["mode"], "background")
-                    return
+                    break
             except (OSError, ValueError, ConnectionError, LinkError):
                 pass
             time.sleep(0.01)
-        self.fail("Replacement Shelf did not become ready after app.restart")
+        else:
+            self.fail("Replacement Shelf did not become ready after app.restart")
+        # The replacement is not this test's child: quit it and wait for the
+        # process itself, so profile cleanup never races its own shutdown.
+        with LinkClient(self.shelf.endpoint) as client:
+            client.call("app.quit", {"force": True})
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(replacement, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.01)
+        self.fail("Replacement Shelf did not exit after app.quit")
 
     def test_authentication_and_malformed_wire_do_not_mutate(self):
         self.shelf.start()
