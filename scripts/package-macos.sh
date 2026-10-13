@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 SHELF_BUILD=${1:-build}
-SHELF_VERSION=${2:-0.1.0}
+SHELF_VERSION=${2:-0.2.0}
 SHELF_OUTPUT=${3:-dist}
 : "${QT_ROOT_DIR:?Set QT_ROOT_DIR to the Qt 6 installation}"
 SHELF_SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

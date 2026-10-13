@@ -1,7 +1,7 @@
 ---
 title: Fix common Arcade Shelf issues
 order: 6
-since: 0.1.1
+since: 0.2.0
 ---
 
 # Fix common Arcade Shelf issues

@@ -1,7 +1,7 @@
 ---
 title: Use Arcade Shelf with other apps
 order: 4
-since: 0.1.1
+since: 0.2.0
 ---
 
 # Use Arcade Shelf with other apps

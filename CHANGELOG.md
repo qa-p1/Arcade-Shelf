@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Arcade Tools hub support
+## 0.2.0 — Unreleased
 
 - Vendored Arcade Link v0.3.0 Qt transport, installer, tray watcher, shortcut
   helpers and shared Windows/release tools at commit `33650a87`, with hashes.

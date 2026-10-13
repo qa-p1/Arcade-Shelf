@@ -1,7 +1,7 @@
 ---
 title: Collect and use items in Shelf
 order: 3
-since: 0.1.1
+since: 0.2.0
 ---
 
 # Collect and use items in Shelf
