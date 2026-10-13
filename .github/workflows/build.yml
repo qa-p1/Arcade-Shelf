@@ -94,6 +94,12 @@ jobs:
             HOME="$RUNNER_TEMP/gl-home" XDG_DATA_HOME="$RUNNER_TEMP/gl-data" XDG_CONFIG_HOME="$RUNNER_TEMP/gl-config" XDG_CACHE_HOME="$RUNNER_TEMP/gl-cache" \
             ARCADE_SHELF_HOME="$RUNNER_TEMP/gl-profile" ARCADE_HOME="$RUNNER_TEMP/gl-arcade" ARCADE_NO_INSTALL_PROMPT=1 ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS=1
           env -u QT_QUICK_BACKEND -u LD_LIBRARY_PATH xvfb-run -a sh -c '"$APP" --show & pid=$!; sleep 4; kill -0 $pid && "$APP" --quit && wait $pid'
+      - name: Linux AppImage installer lifecycle (isolated, CI only)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: dbus-run-session -- python3 tests/appimage_lifecycle.py --appimage "dist/Arcade-Shelf-$VERSION-x86_64.AppImage"
       - name: Windows package
         if: runner.os == 'Windows'
         shell: pwsh

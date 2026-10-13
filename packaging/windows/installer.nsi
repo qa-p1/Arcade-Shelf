@@ -11,6 +11,9 @@
 !ifndef OUTPUT
   !error "Pass /DOUTPUT=..."
 !endif
+!ifndef UNINSTALL_FILES
+  !error "Pass /DUNINSTALL_FILES=... (generated from STAGE)"
+!endif
 
 !define ARCADE_ID "arcade.shelf"
 !define ARCADE_NAME "Arcade Shelf"
@@ -59,7 +62,16 @@ Section "Uninstall"
   SetShellVarContext current
   ExecWait '$"$INSTDIR\arcade-shelf.exe$" --quit'
   !insertmacro ArcadeUninstall
-  DeleteRegKey HKCU "Software\Arcade\Shelf"
-  ; User collections and original files are intentionally retained.
-  RMDir /r "$INSTDIR"
+  ${If} $ArcadeExitCode == 0
+    DeleteRegKey HKCU "Software\Arcade\Shelf"
+    ; Only delete the staged payload, then its empty directories, deepest first.
+    ; A custom install directory may contain unrelated files or user data.
+    !include "${UNINSTALL_FILES}"
+    Delete "$INSTDIR\uninstall.exe"
+    RMDir "$INSTDIR"
+  ${Else}
+    ; Exit 10 means a successor owns the receipt. Keep payload and install
+    ; metadata: that successor may live inside the old custom directory.
+    DetailPrint "A successor owns this installation; leaving application files intact."
+  ${EndIf}
 SectionEnd
