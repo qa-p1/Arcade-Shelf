@@ -99,7 +99,25 @@ jobs:
           export APP="$PWD/dist/Arcade-Shelf-$VERSION-x86_64.AppImage" APPIMAGE_EXTRACT_AND_RUN=1 \
             HOME="$RUNNER_TEMP/gl-home" XDG_DATA_HOME="$RUNNER_TEMP/gl-data" XDG_CONFIG_HOME="$RUNNER_TEMP/gl-config" XDG_CACHE_HOME="$RUNNER_TEMP/gl-cache" \
             ARCADE_SHELF_HOME="$RUNNER_TEMP/gl-profile" ARCADE_HOME="$RUNNER_TEMP/gl-arcade" ARCADE_NO_INSTALL_PROMPT=1 ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS=1
-          env -u QT_QUICK_BACKEND -u LD_LIBRARY_PATH xvfb-run -a sh -c '"$APP" --show & pid=$!; sleep 4; kill -0 $pid && "$APP" --quit && wait $pid'
+          env -u QT_QUICK_BACKEND -u LD_LIBRARY_PATH xvfb-run -a sh -ec '
+            "$APP" --show &
+            pid=$!
+            trap "kill $pid 2>/dev/null || true" EXIT
+            attempts=0
+            until [ -f "$ARCADE_SHELF_HOME/instance/run/arcade.shelf.endpoint" ]; do
+              kill -0 "$pid"
+              attempts=$((attempts + 1))
+              if [ "$attempts" -ge 30 ]; then
+                echo "Shelf did not publish its resident endpoint within 30 seconds" >&2
+                exit 1
+              fi
+              sleep 1
+            done
+            sleep 4
+            kill -0 "$pid"
+            "$APP" --quit
+            wait "$pid"
+          '
       - name: Linux AppImage installer lifecycle (isolated, CI only)
         if: runner.os == 'Linux'
         shell: bash
