@@ -1,4 +1,5 @@
 #include "platform/Desktop.h"
+#include "ArcadeInstall.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -6,6 +7,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QWindow>
@@ -264,6 +266,85 @@ private slots:
         QVERIFY(!desktop.setStartAtLogin(true, QStringLiteral("/usr/bin/arcade-shelf")));
         QVERIFY(desktop.lastError().contains(QStringLiteral("isolated")));
         QCOMPARE(activation.count(), 0);
+    }
+
+    void loginEntryTracksReceiptAndPreservesExtensions()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        QList<QPair<QByteArray, QByteArray>> environment;
+        for (const auto *key : {"ARCADE_HOME", "APPDATA", "ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS"})
+            environment.append({key, qgetenv(key)});
+        const auto restore = qScopeGuard([&] {
+            for (const auto &item : environment) {
+                if (item.second.isNull()) qunsetenv(item.first.constData());
+                else qputenv(item.first.constData(), item.second);
+            }
+        });
+        qputenv("ARCADE_HOME", directory.path().toUtf8());
+        qputenv("APPDATA", directory.filePath("appdata").toUtf8());
+        qputenv("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS", "1");
+        const auto env = ArcadeLink::ArcadeInstall::Environment::under(directory.path());
+#ifdef Q_OS_WIN
+        const QString path = QDir(env.applications).filePath("arcade-shelf.exe");
+        const QString executable = path;
+        const QString target = directory.filePath("appdata/Microsoft/Windows/Start Menu/Programs/Startup/Arcade Shelf.lnk");
+        const QString method = "windows-installer";
+#elif defined(Q_OS_MACOS)
+        const QString path = QDir(env.home).filePath("Applications/Arcade Shelf.app");
+        const QString executable = QDir(path).filePath("Contents/MacOS/arcade-shelf");
+        const QString target = QDir(env.home).filePath("Library/LaunchAgents/arcade.shelf.plist");
+        const QString method = "macos-bundle";
+#else
+        const QString path = QDir(env.applications).filePath("Arcade-Shelf.AppImage");
+        const QString executable = path;
+        const QString target = QDir(env.config).filePath("autostart/arcade.shelf.desktop");
+        const QString method = "appimage";
+#endif
+        QVERIFY(QDir().mkpath(QFileInfo(executable).absolutePath()));
+        QFile binary(executable); QVERIFY(binary.open(QIODevice::WriteOnly)); binary.write("fixture"); binary.close();
+        QVERIFY(QFile::setPermissions(executable, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QJsonObject receipt{{"schema", 1}, {"id", "arcade.shelf"}, {"version", "0.2.0"}, {"channel", "stable"},
+            {"method", method}, {"managedBy", "tools"}, {"path", path}, {"toolsExtension", QJsonObject{{"keep", true}}},
+            {"integration", QJsonObject{{"icons", QJsonArray{}}, {"autostart", QJsonValue::Null}, {"futureIntegration", "keep"}}},
+            {"installedAt", ArcadeLink::nowRfc3339()}, {"updatedAt", ArcadeLink::nowRfc3339()}};
+        QString error; QVERIFY2(env.receipts().write(receipt, &error), qPrintable(error));
+        Desktop desktop;
+        QVERIFY(!desktop.startAtLogin());
+#ifdef Q_OS_LINUX
+        // This is the marker written by the shared Link installer, without
+        // Shelf's historical comment.
+        QVERIFY(QDir().mkpath(QFileInfo(target).absolutePath()));
+        QFile shared(target); QVERIFY(shared.open(QIODevice::WriteOnly));
+        shared.write("[Desktop Entry]\nType=Application\nX-Arcade-Id=arcade.shelf\nExec=fixture --background\n"); shared.close();
+        QVERIFY(desktop.startAtLogin());
+#endif
+#ifdef Q_OS_WIN
+        const QString legacy = QFileInfo(target).absolutePath() + "/Arcade Shelf.vbs";
+        QVERIFY(QDir().mkpath(QFileInfo(legacy).absolutePath()));
+        QFile script(legacy); QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("' Arcade Shelf managed login entry\r\n"); script.close();
+        QVERIFY(desktop.startAtLogin());
+#endif
+        for (const bool enabled : {true, false, true, false, true}) {
+            QVERIFY2(desktop.setStartAtLogin(enabled, executable), qPrintable(desktop.lastError()));
+            QCOMPARE(desktop.startAtLogin(), enabled);
+            QJsonObject changed; QVERIFY2(env.receipts().read("arcade.shelf", &changed, &error), qPrintable(error));
+            QCOMPARE(changed.value("toolsExtension"), receipt.value("toolsExtension"));
+            QCOMPARE(changed.value("managedBy"), QJsonValue("tools"));
+            const auto integration = changed.value("integration").toObject();
+            QCOMPARE(integration.value("futureIntegration"), QJsonValue("keep"));
+            QCOMPARE(integration.value("autostart"), enabled ? QJsonValue(target) : QJsonValue(QJsonValue::Null));
+            QCOMPARE(QFileInfo::exists(target), enabled);
+#ifdef Q_OS_WIN
+            QVERIFY(!QFileInfo::exists(legacy));
+#endif
+        }
+        QVERIFY(desktop.setStartAtLogin(false, executable));
+        QFile foreign(target); QVERIFY(foreign.open(QIODevice::WriteOnly)); foreign.write("unrelated login entry"); foreign.close();
+        QVERIFY(!desktop.startAtLogin());
+        QVERIFY(!desktop.setStartAtLogin(true, executable));
+        QVERIFY(!desktop.setStartAtLogin(false, executable));
+        QVERIFY(foreign.open(QIODevice::ReadOnly)); QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
     }
 };
 

@@ -1,4 +1,5 @@
 #include "Desktop.h"
+#include "ArcadeInstall.h"
 
 #include <QCoreApplication>
 #include <QDesktopServices>
@@ -46,6 +47,7 @@
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shobjidl.h>
 #endif
 #ifdef Q_OS_MACOS
 #include <Carbon/Carbon.h>
@@ -137,14 +139,93 @@ QScreen *screenFor(QWindow *window, const QString &name = {}, const QRect &geome
 QString startupPath()
 {
 #ifdef Q_OS_WIN
-    return QDir(QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation))
-        .filePath(QStringLiteral("Startup/Arcade Shelf.vbs"));
+    const QString appData = qEnvironmentVariable("APPDATA");
+    const QString programs = QDir::isAbsolutePath(appData)
+        ? QDir(appData).filePath(QStringLiteral("Microsoft/Windows/Start Menu/Programs"))
+        : QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
+    return QDir(programs).filePath(QStringLiteral("Startup/Arcade Shelf.lnk"));
 #elif defined(Q_OS_MACOS)
-    return QDir::home().filePath(QStringLiteral("Library/LaunchAgents/arcade.shelf.plist"));
+    ArcadeLink::ArcadeInstall::Environment environment;
+    if (!ArcadeLink::ArcadeInstall::Environment::discover(&environment)) return {};
+    return QDir(environment.home).filePath(QStringLiteral("Library/LaunchAgents/arcade.shelf.plist"));
 #else
-    return QDir(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation))
-        .filePath(QStringLiteral("autostart/arcade.shelf.desktop"));
+    ArcadeLink::ArcadeInstall::Environment environment;
+    if (!ArcadeLink::ArcadeInstall::Environment::discover(&environment)) return {};
+    return QDir(environment.config).filePath(QStringLiteral("autostart/arcade.shelf.desktop"));
 #endif
+}
+
+#ifdef Q_OS_WIN
+QString legacyStartupPath()
+{
+    QString path = startupPath();
+    path.chop(3); return path + QStringLiteral("vbs");
+}
+
+bool windowsLoginShortcut(const QString &path, const QString &executable, bool write)
+{
+    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE) return false;
+    IShellLinkW *link = nullptr;
+    IPersistFile *file = nullptr;
+    HRESULT result = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+        IID_IShellLinkW, reinterpret_cast<void **>(&link));
+    if (SUCCEEDED(result)) result = link->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&file));
+    const QString native = QDir::toNativeSeparators(path);
+    if (write) {
+        const QString target = QDir::toNativeSeparators(executable);
+        const QString directory = QDir::toNativeSeparators(QFileInfo(executable).absolutePath());
+        if (SUCCEEDED(result)) result = link->SetPath(reinterpret_cast<LPCWSTR>(target.utf16()));
+        if (SUCCEEDED(result)) result = link->SetArguments(L"--background");
+        if (SUCCEEDED(result)) result = link->SetWorkingDirectory(reinterpret_cast<LPCWSTR>(directory.utf16()));
+        if (SUCCEEDED(result)) result = file->Save(reinterpret_cast<LPCWSTR>(native.utf16()), TRUE);
+    } else {
+        if (SUCCEEDED(result)) result = file->Load(reinterpret_cast<LPCWSTR>(native.utf16()), STGM_READ);
+        wchar_t target[32768] = {}, arguments[1024] = {};
+        if (SUCCEEDED(result)) result = link->GetPath(target, 32768, nullptr, SLGP_RAWPATH);
+        if (SUCCEEDED(result)) result = link->GetArguments(arguments, 1024);
+        if (SUCCEEDED(result) && (QDir::cleanPath(QDir::fromNativeSeparators(QString::fromWCharArray(target)))
+                .compare(QDir::cleanPath(QDir::fromNativeSeparators(executable)), Qt::CaseInsensitive) != 0
+            || QString::fromWCharArray(arguments) != QStringLiteral("--background"))) result = E_FAIL;
+    }
+    if (file) file->Release();
+    if (link) link->Release();
+    if (SUCCEEDED(initialized)) CoUninitialize();
+    return SUCCEEDED(result);
+}
+#endif
+
+QString receiptExecutable(const QJsonObject &receipt)
+{
+    QString path = receipt.value(QStringLiteral("path")).toString();
+#ifdef Q_OS_MACOS
+    if (!path.isEmpty()) path = QDir(path).filePath(QStringLiteral("Contents/MacOS/arcade-shelf"));
+#endif
+    return path;
+}
+
+bool ownedLoginEntry(const QString &path, const QString &executable)
+{
+    const QFileInfo info(path);
+    if (!info.isFile() || info.isSymLink()) return false;
+#ifdef Q_OS_WIN
+    if (path.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)) return windowsLoginShortcut(path, executable, false);
+#else
+    Q_UNUSED(executable)
+#endif
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return false;
+    const QByteArray bytes = file.read(65536);
+    if (bytes.contains("Arcade Shelf managed login entry")) return true;
+#ifndef Q_OS_WIN
+    bool main = false;
+    for (const QByteArray &raw : bytes.split('\n')) {
+        const QByteArray line = raw.trimmed();
+        if (line.startsWith('[')) main = line == "[Desktop Entry]";
+        if (main && line == "X-Arcade-Id=arcade.shelf") return true;
+    }
+#endif
+    return false;
 }
 
 bool stableExecutable(const QString &path)
@@ -1479,38 +1560,82 @@ void Desktop::installHyprlandShortcut(quint64 generation)
 
 bool Desktop::startAtLogin() const
 {
-    const QFileInfo file(startupPath());
-    if (!file.isFile() || file.isSymLink()) return false;
-    QFile entry(file.filePath());
-    return entry.open(QIODevice::ReadOnly) && entry.read(65536).contains("Arcade Shelf managed login entry");
+    QJsonObject receipt;
+    if (!ArcadeLink::ReceiptStore::discover().read(QStringLiteral("arcade.shelf"), &receipt)) return false;
+    const QString executable = receipt.isEmpty() ? ArcadeLink::executablePath() : receiptExecutable(receipt);
+    if (ownedLoginEntry(startupPath(), executable)) return true;
+#ifdef Q_OS_WIN
+    return ownedLoginEntry(legacyStartupPath(), executable);
+#else
+    return false;
+#endif
 }
 
 bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
 {
-    if (d->isolated) { setError(QStringLiteral("Login changes are disabled in isolated instances")); return false; }
+    const bool testingLogin = qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") == 1
+        && QDir::isAbsolutePath(qEnvironmentVariable("ARCADE_HOME"));
+    if (d->isolated && !testingLogin) { setError(QStringLiteral("Login changes are disabled in isolated instances")); return false; }
+    const auto receipts = ArcadeLink::ReceiptStore::discover();
+    QJsonObject receipt; QString error;
+    if (!receipts.read(QStringLiteral("arcade.shelf"), &receipt, &error)
+        || (!receipt.isEmpty() && !ArcadeLink::validateNativeReceiptPaths(receipt, &error))) {
+        setError(error); return false;
+    }
     const QString target = startupPath();
+    if (target.isEmpty()) { setError(QStringLiteral("The per-user login directory is unavailable")); return false; }
+    const QString oldExecutable = receipt.isEmpty() ? executable : receiptExecutable(receipt);
+    const QString recorded = receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("autostart")).toString();
+    if (!recorded.isEmpty() && QDir::cleanPath(recorded) != QDir::cleanPath(target)
+#ifdef Q_OS_WIN
+        && QDir::cleanPath(recorded) != QDir::cleanPath(legacyStartupPath())
+#endif
+    ) { setError(QStringLiteral("The receipt names a different login entry; it was kept")); return false; }
+    const auto syncReceipt = [&] {
+        if (receipt.isEmpty()) return true; // A manual run must not invent an install receipt.
+        auto integration = receipt.value(QStringLiteral("integration")).toObject();
+        integration.insert(QStringLiteral("autostart"), enabled ? QJsonValue(target) : QJsonValue(QJsonValue::Null));
+        receipt.insert(QStringLiteral("integration"), integration);
+        receipt.insert(QStringLiteral("updatedAt"), ArcadeLink::nowRfc3339());
+        if (receipts.write(receipt, &error)) return true;
+        setError(error); return false;
+    };
+    const auto removeLegacy = [&] {
+#ifdef Q_OS_WIN
+        const QString legacy = legacyStartupPath();
+        if (ownedLoginEntry(legacy, oldExecutable) && !QFile::remove(legacy)) {
+            setError(QStringLiteral("Could not remove Shelf's legacy login entry")); return false;
+        }
+#endif
+        return true;
+    };
     const QFileInfo existing(target);
     if (existing.isSymLink()) { setError(QStringLiteral("The login entry is a symlink; Shelf will not replace it")); return false; }
     if (existing.exists()) {
-        QFile file(target);
-        if (!file.open(QIODevice::ReadOnly) || !file.read(65536).contains("Arcade Shelf managed login entry")) {
+        if (!ownedLoginEntry(target, oldExecutable)) {
             setError(QStringLiteral("An unrelated login entry already uses Shelf's name")); return false;
         }
     }
     if (!enabled) {
-        if (!existing.exists() || QFile::remove(target)) return true;
+        if (!existing.exists() || QFile::remove(target)) return removeLegacy() && syncReceipt();
         setError(QStringLiteral("Could not remove Shelf's login entry")); return false;
     }
-    if (!stableExecutable(executable)) {
+    const QFileInfo installed(executable);
+    const bool receiptOwned = !receipt.isEmpty() && receiptExecutable(receipt) == executable
+        && installed.isFile() && installed.isExecutable() && !executable.contains(QChar::Null)
+        && !executable.contains(QLatin1Char('\n')) && !executable.contains(QLatin1Char('\r'));
+    if (!stableExecutable(executable) && !receiptOwned) {
         setError(QStringLiteral("Install Shelf in a permanent location before enabling start at login")); return false;
     }
     if (!QDir().mkpath(existing.absolutePath())) { setError(QStringLiteral("Could not create the per-user login directory")); return false; }
     QByteArray bytes;
 #ifdef Q_OS_WIN
-    QString command = executable;
-    command.replace(QStringLiteral("\""), QStringLiteral("\"\""));
-    bytes = (QStringLiteral("' Arcade Shelf managed login entry\r\nSet shell = CreateObject(\"WScript.Shell\")\r\n")
-        + QStringLiteral("shell.Run Chr(34) & \"%1\" & Chr(34) & \" --background\", 0, False\r\n").arg(command)).toUtf8();
+    const QString pending = target + QStringLiteral(".pending-%1.lnk").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    if (!windowsLoginShortcut(pending, executable, true)
+        || (existing.exists() && !QFile::remove(target)) || !QFile::rename(pending, target)) {
+        QFile::remove(pending); setError(QStringLiteral("Could not save Shelf's login shortcut")); return false;
+    }
+    return removeLegacy() && syncReceipt();
 #elif defined(Q_OS_MACOS)
     QXmlStreamWriter xml(&bytes);
     xml.setAutoFormatting(true); xml.writeStartDocument();
@@ -1525,14 +1650,16 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
     xml.writeEndElement(); xml.writeEndElement(); xml.writeEndDocument();
 #else
     bytes = (QStringLiteral("# Arcade Shelf managed login entry\n[Desktop Entry]\nType=Application\nName=Arcade Shelf\n")
-        + QStringLiteral("Exec=%1 --background\nTerminal=false\nX-GNOME-Autostart-enabled=true\n").arg(quotedDesktopExec(executable))).toUtf8();
+        + QStringLiteral("Exec=%1 --background\nTerminal=false\nX-GNOME-Autostart-enabled=true\nX-Arcade-Id=arcade.shelf\n").arg(quotedDesktopExec(executable))).toUtf8();
 #endif
+#ifndef Q_OS_WIN
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
         setError(QStringLiteral("Could not save Shelf's login entry")); return false;
     }
     QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    return true;
+    return removeLegacy() && syncReceipt();
+#endif
 }
 
 } // namespace Shelf

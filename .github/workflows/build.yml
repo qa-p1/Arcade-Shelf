@@ -56,7 +56,13 @@ jobs:
         # CMakeLists.txt is the one place the version is written.
         run: echo "value=$(sed -nE 's/^project\(ArcadeShelf VERSION ([^ ]+).*/\1/p' CMakeLists.txt)" >> "$GITHUB_OUTPUT"
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+        shell: bash
+        run: |
+          args=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            args+=('-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' '-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0')
+          fi
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON "${args[@]}"
       - name: Build
         run: cmake --build build --parallel 2
       - name: Check immutable vendor source
@@ -110,7 +116,7 @@ jobs:
         run: scripts/test-windows-installer.ps1 -Version ${{ steps.version.outputs.value }} -Output dist
       - name: macOS package
         if: runner.os == 'macOS'
-        run: scripts/package-macos.sh build ${{ steps.version.outputs.value }} dist
+        run: scripts/package-macos.sh build ${{ steps.version.outputs.value }} dist universal
       - name: macOS bundle lifecycle (isolated, CI only)
         if: runner.os == 'macOS'
         run: sh scripts/test-macos-installer.sh ${{ steps.version.outputs.value }} dist
