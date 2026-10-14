@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Publish bounded failed-test diagnostics as GitHub check annotations.
 
-This reads only CTest's log and the pinned dependency files. It never prints
+This reads only CTest/QtTest logs and the pinned dependency files. It never prints
 environment variables, credentials, endpoint files, or entire build logs.
 It is intended for an Actions ``if: failure()`` step where artifact/log downloads
 may be unavailable to the reviewer. The original failed check remains failed.
@@ -17,7 +17,7 @@ import re
 MAX_LOG_BYTES = 1024 * 1024
 MAX_MESSAGE_BYTES = 6000
 MAX_ANNOTATIONS = 20
-FAILURE = re.compile(r"FAIL!|Test Failed\.|Test timed out|\*\*\*Exception|Segmentation fault|Traceback \(most recent call last\)")
+FAILURE = re.compile(r'FAIL!|QFATAL|Test Failed\.|Test timed out|\*\*\*Exception|Segmentation fault|Traceback \(most recent call last\)|<Incident type="(?:fail|fatal)"')
 TEST_START = re.compile(r"(?m)^\d+/\d+ Testing: (.+)$")
 
 
@@ -54,22 +54,30 @@ def failure_context(block: str) -> str:
     return "\n".join(selected)
 
 
-def ctest_failures(build: Path) -> list[tuple[str, str]]:
-    log = build / "Testing/Temporary/LastTest.log"
+def read_log(log: Path) -> str:
     if not log.is_file():
-        return []
+        return ""
     with log.open("rb") as source:
         source.seek(0, 2)
         size = source.tell()
         source.seek(max(0, size - MAX_LOG_BYTES))
-        contents = source.read(MAX_LOG_BYTES).decode("utf-8", errors="replace")
+        return source.read(MAX_LOG_BYTES).decode("utf-8", errors="replace")
+
+
+def ctest_failures(build: Path) -> list[tuple[str, str]]:
+    contents = read_log(build / "Testing/Temporary/LastTest.log")
     starts = list(TEST_START.finditer(contents))
     results = []
     for index, start in enumerate(starts):
         end = starts[index + 1].start() if index + 1 < len(starts) else len(contents)
         block = contents[start.start():end]
         if FAILURE.search(block):
-            results.append((start.group(1).strip(), failure_context(block)))
+            name = start.group(1).strip()
+            if name == "Desktop":
+                # A Windows GUI executable can lose its redirected stdout.
+                # QtTest's independent file logger still records assertions.
+                block += read_log(build / "Desktop.qt-test.xml")
+            results.append((name, failure_context(block)))
     # A runner/CTest crash can leave a diagnostic without a normal test block.
     if not results and FAILURE.search(contents):
         results.append(("runner", failure_context(contents)))
