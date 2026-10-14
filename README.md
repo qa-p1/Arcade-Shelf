@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" width="96" alt="Arcade Shelf logo">
+  <img src="packaging/arcade-shelf.svg" width="112" alt="Arcade Shelf icon">
 </p>
 
 <h1 align="center">Arcade Shelf</h1>
