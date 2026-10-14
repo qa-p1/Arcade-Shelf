@@ -155,6 +155,17 @@ QString startupPath()
 #endif
 }
 
+bool loginEntryExists(const QString &path)
+{
+#ifdef Q_OS_WIN
+    // QFileInfo can resolve .lnk files and report malformed shortcuts as missing.
+    const QString native = QDir::toNativeSeparators(path);
+    return GetFileAttributesW(reinterpret_cast<LPCWSTR>(native.utf16())) != INVALID_FILE_ATTRIBUTES;
+#else
+    return QFileInfo::exists(path);
+#endif
+}
+
 #ifdef Q_OS_WIN
 QString legacyStartupPath()
 {
@@ -1611,14 +1622,15 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
         return true;
     };
     const QFileInfo existing(target);
+    const bool targetExists = loginEntryExists(target);
     if (existing.isSymbolicLink()) { setError(QStringLiteral("The login entry is a symlink; Shelf will not replace it")); return false; }
-    if (existing.exists()) {
+    if (targetExists) {
         if (!ownedLoginEntry(target, oldExecutable)) {
             setError(QStringLiteral("An unrelated login entry already uses Shelf's name")); return false;
         }
     }
     if (!enabled) {
-        if (!existing.exists() || QFile::remove(target)) return removeLegacy() && syncReceipt();
+        if (!targetExists || QFile::remove(target)) return removeLegacy() && syncReceipt();
         setError(QStringLiteral("Could not remove Shelf's login entry")); return false;
     }
     const QFileInfo installed(executable);
@@ -1633,7 +1645,7 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
 #ifdef Q_OS_WIN
     const QString pending = target + QStringLiteral(".pending-%1.lnk").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     if (!windowsLoginShortcut(pending, executable, true)
-        || (existing.exists() && !QFile::remove(target)) || !QFile::rename(pending, target)) {
+        || (targetExists && !QFile::remove(target)) || !QFile::rename(pending, target)) {
         QFile::remove(pending); setError(QStringLiteral("Could not save Shelf's login shortcut")); return false;
     }
     return removeLegacy() && syncReceipt();

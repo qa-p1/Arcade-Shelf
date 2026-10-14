@@ -345,10 +345,17 @@ private slots:
 #endif
         }
         QVERIFY(desktop.setStartAtLogin(false, executable));
+        QJsonObject beforeForeign;
+        QVERIFY2(env.receipts().read("arcade.shelf", &beforeForeign, &error), qPrintable(error));
         QFile foreign(target); QVERIFY(foreign.open(QIODevice::WriteOnly)); foreign.write("unrelated login entry"); foreign.close();
         QVERIFY(!desktop.startAtLogin());
         QVERIFY(!desktop.setStartAtLogin(true, executable));
+        QVERIFY(desktop.lastError().contains("unrelated"));
         QVERIFY(!desktop.setStartAtLogin(false, executable));
+        QVERIFY(desktop.lastError().contains("unrelated"));
+        QJsonObject afterForeign;
+        QVERIFY2(env.receipts().read("arcade.shelf", &afterForeign, &error), qPrintable(error));
+        QCOMPARE(afterForeign, beforeForeign);
         QVERIFY(foreign.open(QIODevice::ReadOnly)); QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
         foreign.close();
 #ifdef Q_OS_UNIX
