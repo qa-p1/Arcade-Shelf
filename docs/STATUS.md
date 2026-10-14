@@ -1,5 +1,12 @@
 # Status — 2026-10-12
 
+## Release status (2026-10-15)
+
+- Released: [v0.2.0](https://github.com/qa-p1/Arcade-Shelf/releases/tag/v0.2.0) with a Linux self-installing AppImage, a per-user Windows installer, a macOS dmg, `arcade-release.json` and `SHA256SUMS.txt`.
+- Merged to `main` from PR #3 (f3dafd4) after CI passed on Linux, Windows and macOS: [run 38601744132](https://github.com/qa-p1/Arcade-Shelf/actions/runs/38601744132). That covers the build, tests, clippy or analyzers, installer smoke tests on each OS, and the Linux AppImage install, repair and uninstall check in a temporary profile.
+- Ecosystem e2e (Arcade Link `tools/e2e.py`, real CI builds of all eight apps): install, tray hosting (hosted by Tools, own icon back within 1 s after Tools is killed, no flash on restart) and shortcuts pass. Tools 0.2.0 backs up and restores Shelf's settings (the backup incompatibility found by the e2e matrix was fixed in Tools, cf8f0c5).
+- Not yet verified: a real Windows or macOS desktop (CI runners only), and the owner's real-desktop checks. Builds are unsigned, so SmartScreen and Gatekeeper ask for approval.
+
 ## Arcade Tools hub integration
 
 Shelf 0.2.0 vendors Link v0.3.0 (`33650a87`) with its Qt conformance tests. It
