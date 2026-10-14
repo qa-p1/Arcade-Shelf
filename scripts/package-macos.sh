@@ -16,7 +16,7 @@ if [ "$SHELF_APP" != "$SHELF_STAGE/Arcade Shelf.app" ]; then
 fi
 SHELF_APP="$SHELF_STAGE/Arcade Shelf.app"
 if [ "$SHELF_ARCH" = universal ]; then
-  lipo -verify_arch arm64 x86_64 "$SHELF_APP/Contents/MacOS/arcade-shelf"
+  lipo "$SHELF_APP/Contents/MacOS/arcade-shelf" -verify_arch arm64 x86_64
 fi
 "$QT_ROOT_DIR/bin/macdeployqt" "$SHELF_APP" "-qmldir=$SHELF_SOURCE/ui" -always-overwrite
 mkdir -p "$SHELF_APP/Contents/Resources/licenses"
