@@ -207,7 +207,8 @@ QString receiptExecutable(const QJsonObject &receipt)
 bool ownedLoginEntry(const QString &path, const QString &executable)
 {
     const QFileInfo info(path);
-    if (!info.isFile() || info.isSymLink()) return false;
+    // isSymLink() also matches Windows .lnk files; only reject filesystem symlinks.
+    if (!info.isFile() || info.isSymbolicLink()) return false;
 #ifdef Q_OS_WIN
     if (path.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)) return windowsLoginShortcut(path, executable, false);
 #else
@@ -1610,7 +1611,7 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
         return true;
     };
     const QFileInfo existing(target);
-    if (existing.isSymLink()) { setError(QStringLiteral("The login entry is a symlink; Shelf will not replace it")); return false; }
+    if (existing.isSymbolicLink()) { setError(QStringLiteral("The login entry is a symlink; Shelf will not replace it")); return false; }
     if (existing.exists()) {
         if (!ownedLoginEntry(target, oldExecutable)) {
             setError(QStringLiteral("An unrelated login entry already uses Shelf's name")); return false;

@@ -323,9 +323,14 @@ private slots:
         QVERIFY(QDir().mkpath(QFileInfo(legacy).absolutePath()));
         QFile script(legacy); QVERIFY(script.open(QIODevice::WriteOnly));
         script.write("' Arcade Shelf managed login entry\r\n"); script.close();
+        auto legacyReceipt = receipt;
+        auto legacyIntegration = legacyReceipt.value("integration").toObject();
+        legacyIntegration.insert("autostart", legacy);
+        legacyReceipt.insert("integration", legacyIntegration);
+        QVERIFY2(env.receipts().write(legacyReceipt, &error), qPrintable(error));
         QVERIFY(desktop.startAtLogin());
 #endif
-        for (const bool enabled : {true, false, true, false, true}) {
+        for (const bool enabled : {true, true, false, false, true, false, true}) {
             QVERIFY2(desktop.setStartAtLogin(enabled, executable), qPrintable(desktop.lastError()));
             QCOMPARE(desktop.startAtLogin(), enabled);
             QJsonObject changed; QVERIFY2(env.receipts().read("arcade.shelf", &changed, &error), qPrintable(error));
@@ -345,6 +350,19 @@ private slots:
         QVERIFY(!desktop.setStartAtLogin(true, executable));
         QVERIFY(!desktop.setStartAtLogin(false, executable));
         QVERIFY(foreign.open(QIODevice::ReadOnly)); QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
+        foreign.close();
+#ifdef Q_OS_UNIX
+        QFile linked(directory.filePath("linked-login-entry"));
+        QVERIFY(linked.open(QIODevice::WriteOnly));
+        linked.write("Arcade Shelf managed login entry\n"); linked.close();
+        QVERIFY(QFile::remove(target));
+        QVERIFY(QFile::link(linked.fileName(), target));
+        QVERIFY(!desktop.startAtLogin());
+        QVERIFY(!desktop.setStartAtLogin(true, executable));
+        QVERIFY(!desktop.setStartAtLogin(false, executable));
+        QVERIFY(linked.open(QIODevice::ReadOnly));
+        QCOMPARE(linked.readAll(), QByteArray("Arcade Shelf managed login entry\n"));
+#endif
     }
 };
 
