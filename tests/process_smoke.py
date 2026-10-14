@@ -134,14 +134,14 @@ def isolated_env(root: Path) -> dict[str, str]:
     for name in ("ARCADE_HOME", "ARCADE_SHELF_HOME", "APPIMAGE", "APPDIR", "OWD", "ARGV0",
                  "HYPRLAND_INSTANCE_SIGNATURE", "SWAYSOCK"):
         env.pop(name, None)
-    for name in ("data", "config", "cache", "runtime", "arcade", "shelf"):
+    for name in ("home", "data", "config", "cache", "runtime", "arcade", "shelf"):
         (root / name).mkdir(mode=0o700, parents=True, exist_ok=True)
     # Preserve a caller's Wayland runtime/socket: it belongs to the test compositor.
     runtime = env.get("XDG_RUNTIME_DIR") if env.get("QT_QPA_PLATFORM") == "wayland" else str(root / "runtime")
-    env.update({"ARCADE_HOME": str(root / "arcade"), "ARCADE_SHELF_HOME": str(root / "shelf"),
+    env.update({"HOME": str(root / "home"), "ARCADE_HOME": str(root / "arcade"), "ARCADE_SHELF_HOME": str(root / "shelf"),
                 "XDG_DATA_HOME": str(root / "data"), "XDG_CONFIG_HOME": str(root / "config"),
                 "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": runtime or str(root / "runtime"),
-                "ARCADE_SHELF_DISABLE_GLOBAL_SHORTCUT": "1", "QT_QUICK_BACKEND": "software"})
+                "ARCADE_SHELF_DISABLE_GLOBAL_SHORTCUT": "1", "ARCADE_NO_INSTALL_PROMPT": "1", "QT_QUICK_BACKEND": "software"})
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     return env
 
@@ -183,13 +183,17 @@ class IsolatedShelf:
         raise AssertionError(f"Shelf endpoint not ready in {timeout}s ({last_error}):\n{self.log_path.read_text(errors='replace')}")
 
     def stop(self):
-        if self.process is None or self.process.poll() is not None:
+        if self.process is None:
             return
         endpoint = self.endpoint if self.endpoint.exists() else self.control
         try:
             with LinkClient(endpoint) as c:
                 c.call("app.quit", {"force": True})
-            self.process.wait(timeout=3)
+            if self.process.poll() is None:
+                self.process.wait(timeout=3)
+            deadline = time.monotonic() + 3
+            while endpoint.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
         except (OSError, TimeoutError, ConnectionError, LinkError, subprocess.TimeoutExpired):
             self.process.kill()
             self.process.wait(timeout=3)
@@ -281,6 +285,71 @@ class ShelfProcessTests(unittest.TestCase):
         self.shelf.process.wait(timeout=3)
         self.assertEqual(self.shelf.process.returncode, 0)
         self.assertFalse(self.shelf.endpoint.exists())
+
+    def test_hub_methods_and_backup_restore(self):
+        self.shelf.start()
+        original = self.shelf.user_file("portable.txt")
+        with LinkClient(self.shelf.endpoint) as client:
+            methods = client.call("describe")["methods"]
+            for method in ("app.settings", "app.restart", "app.menu", "app.menu.invoke",
+                           "app.shortcuts.set", "app.settings.export", "app.settings.import"):
+                self.assertIn(method, methods)
+            self.assertEqual(client.call("app.settings"), {"opened": True})
+            self.assertEqual({item["id"] for item in client.call("app.menu")["items"]}, {"new-shelf", "show-shelf"})
+            self.assertEqual(client.call("app.menu.invoke", {"id": "new-shelf"}), {"done": True})
+            self.assert_error("denied", lambda: client.call("app.menu.invoke", {"id": "invalid"}))
+            rebound = client.call("app.shortcuts.set", {"id": "show-shelf", "accelerator": "control+alt+t"})
+            self.assertEqual(rebound["via"], "manual")
+            self.assertFalse(rebound["applied"])
+            self.assertTrue(rebound["hint"])
+            self.assert_add(client.invoke("shelf.add", [{"type": "file/any", "path": str(original)}]), 1)
+            outputs = client.call("app.settings.export")["outputs"]
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(outputs[0]["type"], "file/any")
+            self.assertTrue(Path(outputs[0]["path"]).is_file())
+            self.assert_add(client.invoke("shelf.add", [{"type": "text/plain", "text": "replace on restore"}]), 1)
+            result = client.call("app.settings.import", {"inputs": outputs})
+            self.assertTrue(result["imported"])
+            self.assertFalse(result["restartRequired"])
+            self.assertEqual(len(self.shelf.rows()), 1)
+            self.assert_error("denied", lambda: client.call("app.settings.import", {"inputs": [{"type": "file/any", "path": str(original)}]}))
+        manifest = json.loads(self.shelf.manifest.read_text())
+        self.assertEqual(manifest["shortcuts"][0]["accelerator"], "Ctrl+Alt+T")
+        self.assertEqual(manifest["docs"]["version"], manifest["version"])
+        self.assertEqual(manifest["menu"][0]["id"], "new-shelf")
+        self.assertEqual(original.read_text(), "source stays untouched")
+
+    def test_restart_acknowledges_and_preserves_background_mode(self):
+        self.shelf.start()
+        first_pid = json.loads(self.shelf.endpoint.read_text())["pid"]
+        with LinkClient(self.shelf.endpoint) as client:
+            self.assertEqual(client.call("app.restart"), {"restarting": True})
+        self.shelf.process.wait(timeout=5)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                replacement = json.loads(self.shelf.endpoint.read_text())["pid"]
+                if replacement != first_pid:
+                    with LinkClient(self.shelf.endpoint) as client:
+                        self.assertEqual(client.call("app.status")["status"]["mode"], "background")
+                    break
+            except (OSError, ValueError, ConnectionError, LinkError):
+                pass
+            time.sleep(0.01)
+        else:
+            self.fail("Replacement Shelf did not become ready after app.restart")
+        # The replacement is not this test's child: quit it and wait for the
+        # process itself, so profile cleanup never races its own shutdown.
+        with LinkClient(self.shelf.endpoint) as client:
+            client.call("app.quit", {"force": True})
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(replacement, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.01)
+        self.fail("Replacement Shelf did not exit after app.quit")
 
     def test_authentication_and_malformed_wire_do_not_mutate(self):
         self.shelf.start()

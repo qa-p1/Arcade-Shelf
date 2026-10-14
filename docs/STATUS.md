@@ -1,4 +1,35 @@
-# Status — 2026-10-11
+# Status — 2026-10-12
+
+## Arcade Tools hub integration
+
+Shelf 0.2.0 vendors Link v0.3.0 (`33650a87`) with its Qt conformance tests. It
+implements the seven optional hub methods, receipt-based installation,
+portable backups, and tray hosting with disconnect hand-back.
+
+- 2026-10-12: Linux build passed with Qt 6.11.2 and GCC 16.2.1.
+- CTest: 15/15 groups passed offscreen and 15/15 under Xvfb/xcb through Link
+  v0.3.0's isolated e2e runner. This includes 13 real executable process tests,
+  headless CLI validation, portable round trips and the new Link conformance
+  suites for install, tray hosting and optional methods.
+- Both source provenance sets match released commit `33650a87`: 47 Qt bundle
+  files and 12 shared assets. Shortcut data/generated Markdown, docs links,
+  shell syntax and release generator tests pass; the optional Python
+  `jsonschema` test is skipped when that package is absent.
+- CI run 38435099435 at `e4917f2` passed on Linux, Windows and macOS. It
+  builds and packages all three, runs the Windows silent installer lifecycle
+  (install, repair, update, uninstall in a temporary profile) and the macOS
+  bundle lifecycle. This is CI only, not a real desktop.
+- The Windows uninstaller deletes only the files the installer staged, then
+  removes the folder if it is empty. It keeps everything when a newer install
+  owns the receipt. `scripts/test-windows-installer.ps1` checks a custom folder
+  with unrelated files and a successor installed into the old folder.
+- `tests/appimage_lifecycle.py` checks the self-installing AppImage path:
+  receipt, desktop entry, icons, CLI link, repair, update with `previous`,
+  re-exec and uninstall, in an isolated home. It passed 2/2 locally against
+  the build; CI also runs it against the packaged AppImage.
+- None of these additions have been exercised on a real desktop yet.
+
+## Earlier verification
 
 Version 0.1.1. Everything listed under "Verified for 0.1.0" was verified
 **headless only** (offscreen, Xvfb and headless Weston/Sway with software

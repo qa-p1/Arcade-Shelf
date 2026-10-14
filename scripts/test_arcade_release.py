@@ -18,14 +18,28 @@ spec.loader.exec_module(ar)
 class ArcadeRelease(unittest.TestCase):
     def test_classifies_each_platforms_assets(self):
         c = lambda n, w="nsis": ar.classify(n, w)
-        self.assertEqual(c("Arcade-Look_0.4.0_amd64.AppImage"), {"os": "linux", "arch": "x64", "kind": "appimage"})
+        self.assertEqual(c("Arcade-Look_0.4.0_amd64.AppImage"), {"os": "linux", "arch": "x64", "kind": "appimage", "installArgs": ["--install", "--silent"]})
         self.assertEqual(c("Arcade-Look_0.4.0_x64-setup.exe")["silent"], ["/S"])
         self.assertEqual(c("ArcadeWheel-Setup.exe", "inno")["silent"][0], "/VERYSILENT")
-        self.assertEqual(c("Arcade-Look_0.4.0_universal.dmg"), {"os": "macos", "arch": "universal", "kind": "dmg"})
+        self.assertEqual(c("Arcade-Look_0.4.0_universal.dmg"), {"os": "macos", "arch": "universal", "kind": "dmg", "installArgs": ["--install", "--silent"]})
         self.assertEqual(c("Arcade-Clipboard-linux-x64.tar.gz")["kind"], "tarball")
         self.assertEqual(c("arcade-lens-aarch64.AppImage")["arch"], "arm64")
         self.assertIsNone(c("Arcade-Look_0.4.0_x64-setup.exe.sig"))
         self.assertIsNone(c("symbols.tar.gz"))
+        self.assertEqual(c("arcade-lens-portable-x64.exe")["kind"], "portable")
+        self.assertNotIn("silent", c("ArcadeWheel-x64.zip"))
+        self.assertEqual(ar.classify("Lens.exe", "inno", True)["kind"], "portable")
+
+    def test_portable_override_and_missing_asset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            assets = Path(directory)
+            (assets / "lens.exe").write_bytes(b"exe")
+            ar.main(["--id", "arcade.lens", "--version", "1", "--notes", "n", "--portable", "lens.exe", str(assets)])
+            m = json.loads((assets / "arcade-release.json").read_text())
+            self.assertEqual(m["assets"][0]["kind"], "portable")
+            self.assertNotIn("installArgs", m["assets"][0])
+            with self.assertRaises(SystemExit):
+                ar.main(["--id", "arcade.lens", "--version", "1", "--notes", "n", "--portable", "missing.exe", str(assets)])
 
     def test_writes_manifest_and_checksums_that_verify(self):
         with tempfile.TemporaryDirectory() as d:

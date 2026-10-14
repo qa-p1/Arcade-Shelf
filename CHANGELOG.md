@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 — Unreleased
+
+- Vendored Arcade Link v0.3.0 Qt transport, installer, tray watcher, shortcut
+  helpers and shared Windows/release tools at commit `33650a87`, with hashes.
+- Tools can open settings, restart Shelf, show or create shelves, rebind the
+  global shortcut and export/import portable settings. Manifests advertise
+  tray extras, docs version, logs and installation method.
+- Shelf hides its own tray while Tools hosts it, restores it on disconnect
+  or when connections are disabled, and waits for the startup ownership answer.
+- AppImage self-install/update/repair/uninstall, receipt-based headless CLI,
+  macOS move-to-Applications and CLI/login integration, and Windows per-user
+  installer shims and receipts. Development builds never self-install.
+- Portable collection/preferences backups with optional owned content and
+  size disclosure; validated restore with a private database backup. Tools
+  exports omit owned content and referenced originals remain untouched.
+- User guides, shortcut sheets, local docs checks, Link conformance tests,
+  real executable CLI/process tests and isolated Windows installer CI.
+
 ## 0.1.1 — 2026-10-11
 
 First release checked on a real desktop (Hyprland 0.56.2, Arch Linux, NVIDIA/Mesa

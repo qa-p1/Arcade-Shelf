@@ -1,5 +1,16 @@
 # Testing
 
+The hub integration adds Link install/tray/method conformance groups,
+`Service` tests for hub callbacks and private portable handoffs, Store backup
+round trips and `IntegrationCli` checks that run with an invalid GUI plugin to
+prove status and silent commands stay headless. `ProcessSmoke` runs 13 checks
+against the real executable, including hub methods and restart handoff.
+
+Windows CI runs `scripts/test-windows-installer.ps1` after packaging. macOS CI
+mounts the DMG and runs `scripts/test-macos-installer.sh`. Both use a private
+`ARCADE_HOME` and Shelf profile, verify receipt/integration cleanup and retain
+app data on uninstall. These checks are CI only, not real-desktop verification.
+
 Build the actual application and tests with the [README commands](../README.md).
 Tests create generated content and private profiles; they do not use the owner's
 files, clipboard history, login items, or desktop shortcuts.

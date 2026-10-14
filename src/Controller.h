@@ -4,6 +4,7 @@
 #include "platform/Desktop.h"
 #include "platform/Backdrop.h"
 #include "platform/FullscreenGuard.h"
+#include "ArcadeTrayHost.h"
 #include <QObject>
 #include <QSet>
 #include <QThread>
@@ -46,6 +47,7 @@ class Controller : public QObject {
     Q_PROPERTY(bool alwaysOnTop READ alwaysOnTop WRITE setAlwaysOnTop NOTIFY changed)
     Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY changed)
     Q_PROPERTY(bool undoAvailable READ undoAvailable NOTIFY changed)
+    Q_PROPERTY(qint64 ownedContentBytes READ ownedContentBytes NOTIFY changed)
     Q_PROPERTY(double progress READ progress NOTIFY changed)
 public:
     explicit Controller(QString root, bool background, QObject *parent = nullptr);
@@ -89,6 +91,7 @@ public:
     bool alwaysOnTop() const { return m_settings["alwaysOnTop"].toBool(false); }
     bool reducedMotion() const { return m_settings["reducedMotion"].toBool(false); }
     bool undoAvailable() const { return m_undoAvailable; }
+    qint64 ownedContentBytes() const { return m_ownedContentBytes; }
     double progress() const { return m_progress; }
     void setFilter(QString value);
     void setTheme(QString value);
@@ -128,6 +131,11 @@ public:
     Q_INVOKABLE void confirmPick();
     Q_INVOKABLE void cancelPick();
     Q_INVOKABLE void showSettings();
+    Q_INVOKABLE void newCollectionFromTray();
+    Q_INVOKABLE void restart();
+    ArcadeLink::ArcadeTrayHost *trayHost() { return &m_trayHost; }
+    Q_INVOKABLE void exportPortableSettings();
+    Q_INVOKABLE void importPortableSettings();
     Q_INVOKABLE void nativeMove();
     Q_INVOKABLE void nativeResize(int edges);
     Q_INVOKABLE void dock(QString edge);
@@ -144,6 +152,7 @@ signals:
     void shelvesChanged();
     void pulse();
     void nativeDragHoverChanged();
+    void newCollectionRequested();
 private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void stageImage(QImage image);
@@ -174,6 +183,9 @@ private:
     mutable bool m_itemsCacheValid = false;
     QJsonArray m_dragContent;
     QJsonObject m_settings, m_pendingSettings, m_analysis;
+    qint64 m_ownedContentBytes = 0;
+    ArcadeLink::ArcadeTrayHost m_trayHost{ArcadeLink::Locations::discover(), AppId, this};
+    QString m_appliedShortcut;
     QSet<QString> m_selected;
     QStringList m_pickTypes;
     bool m_expanded = false, m_focusPanel = false, m_visible = true, m_settingsOpen = false, m_picking = false, m_pickMultiple = false, m_undoAvailable = false;

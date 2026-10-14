@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/arcade-link", "crates/arcade-link-cli"]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/qa-p1/Arcade-link"
+rust-version = "1.88"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

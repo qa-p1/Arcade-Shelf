@@ -3,7 +3,7 @@
 Arcade Shelf is MIT licensed. Dependencies retain their own licenses.
 
 * **Arcade Link:** https://github.com/qa-p1/Arcade-Link, immutable annotated
-  tag `v0.2.0`, code commit `bedee71dd98475810fd43a7da23d45316389b4e5`.
+  tag `v0.3.0`, code commit `33650a87b6999fbd553ac678cc7bde7a308cb852`.
   Upstream workspace declares `MIT OR Apache-2.0`; Shelf uses the MIT option.
   The unmodified Qt implementation, conformance vectors and release metadata
   generator are tracked by `vendor/arcade-link/provenance.json`. Upstream at
@@ -13,7 +13,7 @@ Arcade Shelf is MIT licensed. Dependencies retain their own licenses.
   https://github.com/qa-p1/Arcade-wheel, MIT licensed. The upstream notice is
   preserved in `licenses/Arcade-Wheel-MIT.txt`.
 * **Qt 6:** https://www.qt.io/, dynamically linked. Core, Gui, Widgets, Network,
-  Sql, Quick, Qml, QuickControls2, Svg and Linux DBus/Wayland modules are used
+  Sql, Quick, Qml, QuickControls2, Svg, Concurrent and Linux DBus/Wayland modules are used
   under LGPL-3.0 where available (or a suitable commercial Qt license).
   Test is build-time only. See `https://doc.qt.io/qt-6/licensing.html`.
   Qt distributions may contain additional third-party components; package

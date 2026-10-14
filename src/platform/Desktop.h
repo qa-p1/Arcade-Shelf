@@ -7,6 +7,7 @@
 #include <QString>
 #include <functional>
 #include <memory>
+#include "ArcadeLink.h"
 
 class QMimeData;
 class QWindow;
@@ -62,6 +63,8 @@ public:
     QRect availableGeometry(const QString &screenName) const;
     Q_INVOKABLE void configureShortcut(const QString &accelerator,
                                        const QString &executable);
+    void rebindShortcut(const QString &accelerator, const QString &executable,
+                        std::function<void(QJsonObject, ArcadeLink::Error)> reply);
     Q_INVOKABLE bool setStartAtLogin(bool enabled, const QString &executable);
     Q_INVOKABLE bool startAtLogin() const;
 
@@ -98,6 +101,7 @@ signals:
 private:
     struct Native;
     std::unique_ptr<Native> d;
+    std::function<void(QJsonObject, ArcadeLink::Error)> m_shortcutReply;
     void setError(const QString &message);
     void setShortcutStatus(const QString &message);
     void clearShortcut();
