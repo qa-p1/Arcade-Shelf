@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.2.0 — 2026-10-14
 
 - Vendored Arcade Link v0.3.0 Qt transport, installer, tray watcher, shortcut
   helpers and shared Windows/release tools at commit `33650a87`, with hashes.
