@@ -176,6 +176,7 @@ jobs:
           python scripts/arcade-release.py --id arcade.shelf --version "$v" --channel stable \
             --notes "https://github.com/qa-p1/Arcade-Shelf/blob/$GITHUB_REF_NAME/CHANGELOG.md" dist
           python3 scripts/release-notes.py CHANGELOG.md "$v" > notes.md
+          printf '\nUser guide: https://github.com/qa-p1/Arcade-Shelf/tree/main/docs/user\n' >> notes.md
           ls -l dist
           gh release create "$GITHUB_REF_NAME" dist/*.AppImage dist/*.exe dist/*.dmg dist/arcade-release.json dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Arcade Shelf $v" --notes-file notes.md
