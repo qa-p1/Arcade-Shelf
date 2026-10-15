@@ -2,7 +2,7 @@ name: Build, test and package
 on:
   pull_request:
   push:
-    branches: [main, 'feature/**', 'arcade/**']
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 permissions:
@@ -11,8 +11,8 @@ env:
   # Windows runners default Python to cp1252; the docs and sheets are UTF-8.
   PYTHONUTF8: '1'
 concurrency:
-  group: build-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  cancel-in-progress: true
+  group: build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   build:
     strategy:
