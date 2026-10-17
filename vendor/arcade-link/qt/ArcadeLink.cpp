@@ -621,7 +621,9 @@ QString socketAddress(const Locations &locations, const QString &appId)
     const QString path = QDir(locations.runtime).filePath(appId + QStringLiteral(".sock"));
     if (path.toUtf8().size() <= 100) return path;
     const QString dir = QStringLiteral("/tmp/arcade-%1").arg(geteuid());
-    ensurePrivateDir(dir);
+    // Another local user may have created it first: never listen in a folder
+    // that is not ours and private (same rule as the Rust transport).
+    if (!ensurePrivateDir(dir)) return QString();
     return QDir(dir).filePath(shortHash(locations.runtime + QLatin1Char('|') + appId) + QStringLiteral(".sock"));
 #endif
 }
@@ -744,6 +746,10 @@ bool Server::start(QString *error)
         }
     }
     const QString address = socketAddress(m_locations, m_appId);
+    if (address.isEmpty()) {
+        if (error) *error = QStringLiteral("the socket folder in /tmp is not private to this user");
+        return false;
+    }
     QLocalServer::removeServer(address); // a dead process may leave its socket behind
     if (!m_server.listen(address)) {
         if (error) *error = m_server.errorString();

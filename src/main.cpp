@@ -220,6 +220,8 @@ int main(int argc, char **argv)
         if (trayHost->ready()) tray.setVisible(state == "own");
     });
     if (trayHost->ready()) tray.setVisible(trayHost->state() == "own");
+    // Quitting while Tools hosts the tray must not flash Shelf's own icon.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, trayHost, [trayHost] { trayHost->finish(); });
     // Off the initial QML creation path; background endpoint remains promptly available.
     QTimer::singleShot(0,&controller,[&] {
         if (!parser.isSet("background")) controller.start();

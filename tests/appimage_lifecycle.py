@@ -59,8 +59,9 @@ class AppImageLifecycleTests(unittest.TestCase):
 
             # The runtime normally sets APPIMAGE to the package and APPDIR to
             # its extracted/mounted payload, not to the package's parent.
-            download = root / "Downloads/Arcade Shelf.AppImage"
-            download.parent.mkdir()
+            # In Downloads: --silent removes the downloaded file only there.
+            download = install_home / "Downloads/Arcade Shelf.AppImage"
+            download.parent.mkdir(parents=True)
             if REAL_IMAGE:
                 env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
                 payload = download

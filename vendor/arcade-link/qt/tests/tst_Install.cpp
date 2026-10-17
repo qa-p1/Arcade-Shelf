@@ -1,6 +1,8 @@
 #include "ArcadeInstall.h"
 #include <QJsonDocument>
 #include <QSaveFile>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QtTest>
 #ifdef Q_OS_WIN
 #define NOMINMAX
@@ -531,6 +533,141 @@ private slots:
     QVERIFY(!installer.moveToApplications(bundle, {}, nullptr));
   }
 #endif
+
+#ifdef Q_OS_LINUX
+  void danglingDestinationSymlinkIsNotReplaced() {
+    QTemporaryDir root;
+    auto e = ArcadeInstall::Environment::under(root.path());
+    ArcadeInstall installer(e);
+    const auto source = root.filePath(QStringLiteral("download.AppImage"));
+    put(source, "v1");
+    QVERIFY(QDir().mkpath(e.applications));
+    const auto dest = QDir(e.applications).filePath(appInfo().filename);
+    QVERIFY(QFile::link(root.filePath(QStringLiteral("missing")), dest));
+    QJsonObject receipt;
+    QString error;
+    QVERIFY(!installer.install(options(source, QStringLiteral("1")), &receipt, &error));
+    QVERIFY(QFileInfo(dest).isSymLink());
+    QVERIFY(!QFileInfo::exists(e.receipts().path(appInfo().id)));
+  }
+  void launchersEscapeNewlinesAndRoutePercentThroughEnv() {
+    for (const auto &home : {QStringLiteral("home\nnewline"), QStringLiteral("home % percent")}) {
+      QTemporaryDir root;
+      auto e = ArcadeInstall::Environment::under(root.filePath(home));
+      ArcadeInstall installer(e);
+      const auto source = QDir(e.home).filePath(QStringLiteral("download.AppImage"));
+      put(source, "v1");
+      QJsonObject receipt;
+      QString error;
+      QVERIFY2(installer.install(options(source, QStringLiteral("1")), &receipt, &error), qPrintable(error));
+      const auto entry = receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("desktopEntry")).toString();
+      const auto text = QString::fromUtf8(get(entry));
+      for (const auto &line : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+        QVERIFY2(line.startsWith(QLatin1Char('#')) || line.startsWith(QLatin1Char('[')) || line.contains(QLatin1Char('=')), qPrintable(text));
+      QCOMPARE(text.contains(QStringLiteral("\nExec=env \"")), home.contains(QLatin1Char('%')));
+      if (!QStandardPaths::findExecutable(QStringLiteral("desktop-file-validate")).isEmpty()) {
+        QProcess validate;
+        validate.start(QStringLiteral("desktop-file-validate"), {entry});
+        QVERIFY(validate.waitForFinished());
+        QVERIFY2(!validate.readAllStandardOutput().contains("error:"), qPrintable(text));
+      }
+      QVERIFY2(installer.install(options(source, QStringLiteral("2")), &receipt, &error), qPrintable(error));
+      QVERIFY(!receipt.value(QStringLiteral("integration")).toObject().contains(QStringLiteral("skipped")));
+    }
+  }
+  void preInstallerLauncherAndLoginEntryAreTakenOver() {
+    QTemporaryDir root;
+    auto e = ArcadeInstall::Environment::under(root.path());
+    ArcadeInstall installer(e);
+    const auto legacy = root.filePath(QStringLiteral("Downloads/Arcade-Find-0.2.1-x86_64.AppImage"));
+    put(legacy, "old");
+    const auto launcher = QDir(e.data).filePath(QStringLiteral("applications/arcade-find.desktop"));
+    const auto login = QDir(e.config).filePath(QStringLiteral("autostart/arcade-find.desktop"));
+    for (const auto &path : {launcher, login})
+      put(path, QStringLiteral("[Desktop Entry]\nType=Application\nName=Arcade Find\nExec=\"%1\" --background\n").arg(legacy).toUtf8());
+    QCOMPARE(installer.legacyCopies(appInfo()), QStringList{legacy});
+    const auto source = root.filePath(QStringLiteral("Downloads/Arcade-Find-x86_64.AppImage"));
+    put(source, "new");
+    auto opts = options(source, QStringLiteral("0.3.1"));
+    opts.removeDownload = true;
+    QJsonObject receipt;
+    QString error;
+    QVERIFY2(installer.install(opts, &receipt, &error), qPrintable(error));
+    const auto integration = receipt.value(QStringLiteral("integration")).toObject();
+    QVERIFY(!integration.contains(QStringLiteral("skipped")));
+    QCOMPARE(integration.value(QStringLiteral("autostart")).toString(), login);
+    for (const auto &path : {launcher, login}) {
+      const auto text = QString::fromUtf8(get(path));
+      QVERIFY2(text.contains(receipt.value(QStringLiteral("path")).toString()) && !text.contains(u"0.2.1"), qPrintable(text));
+    }
+    QVERIFY(!QFileInfo::exists(source));
+    QVERIFY(!QFileInfo::exists(legacy));
+    QVERIFY(installer.legacyCopies(appInfo()).isEmpty());
+  }
+  void onlyDownloadsAreRemovedAndStaleStagesCleaned() {
+    QTemporaryDir root;
+    auto e = ArcadeInstall::Environment::under(root.path());
+    ArcadeInstall installer(e);
+    const auto stale = QDir(e.applications).filePath(QStringLiteral("Arcade-Find.AppImage.0123456789abcdef0123456789abcdef.stage"));
+    put(stale, "half");
+    const auto kept = root.filePath(QStringLiteral("Apps/Arcade-Find-x86_64.AppImage"));
+    put(kept, "v1");
+    auto opts = options(kept, QStringLiteral("1"));
+    opts.removeDownload = true;
+    QJsonObject receipt;
+    QString error;
+    QVERIFY2(installer.install(opts, &receipt, &error), qPrintable(error));
+    QVERIFY(QFileInfo::exists(kept));
+    QVERIFY(!QFileInfo::exists(stale));
+  }
+  void installErrorsNameTheFolder() {
+    QTemporaryDir root;
+    auto e = ArcadeInstall::Environment::under(root.path());
+    put(e.applications, "a file where the folder goes");
+    ArcadeInstall installer(e);
+    const auto source = root.filePath(QStringLiteral("download.AppImage"));
+    put(source, "v1");
+    QJsonObject receipt;
+    QString error;
+    QVERIFY(!installer.install(options(source, QStringLiteral("1")), &receipt, &error));
+    QVERIFY2(error.contains(e.applications), qPrintable(error));
+  }
+  void explicitStartAtLoginReEnablesASwitchedOffEntry() {
+    QTemporaryDir root;
+    auto e = ArcadeInstall::Environment::under(root.path());
+    ArcadeInstall installer(e);
+    const auto source = root.filePath(QStringLiteral("download.AppImage"));
+    put(source, "v1");
+    const auto login = QDir(e.config).filePath(QStringLiteral("autostart/arcade-find.desktop"));
+    put(login, "[Desktop Entry]\nType=Application\nX-Arcade-Id=arcade.find\nExec=/old/find --background\nHidden=true\n");
+    QJsonObject receipt;
+    QString error;
+    QVERIFY2(installer.install(options(source, QStringLiteral("1")), &receipt, &error), qPrintable(error));
+    QVERIFY(!ArcadeInstall::autostartEnabled(login));
+    auto opts = options(source, QStringLiteral("1"));
+    opts.startAtLogin = true;
+    QVERIFY2(installer.install(opts, &receipt, &error), qPrintable(error));
+    QVERIFY2(ArcadeInstall::autostartEnabled(login), get(login).constData());
+  }
+#endif
+  void childEnvironmentDropsTheAppImageMount() {
+    QProcessEnvironment env;
+    env.insert(QStringLiteral("APPDIR"), QStringLiteral("/tmp/.mount_ArcadeAB"));
+    env.insert(QStringLiteral("APPIMAGE"), QStringLiteral("/home/u/X.AppImage"));
+    env.insert(QStringLiteral("GTK_DATA_PREFIX"), QStringLiteral("/tmp/.mount_ArcadeAB"));
+    env.insert(QStringLiteral("GTK_THEME"), QStringLiteral("Adwaita:light"));
+    env.insert(QStringLiteral("PATH"), QStringLiteral("/tmp/.mount_ArcadeAB/usr/bin/:/usr/bin:/bin:/usr/bin"));
+    env.insert(QStringLiteral("LD_LIBRARY_PATH"), QStringLiteral("/tmp/.mount_ArcadeAB/usr/lib/"));
+    env.insert(QStringLiteral("XDG_DATA_DIRS"), QStringLiteral("/tmp/.mount_ArcadeAB/usr/share/:/usr/share:"));
+    env.insert(QStringLiteral("HOME"), QStringLiteral("/home/u"));
+    const auto clean = ArcadeInstall::childEnvironment(env);
+    QCOMPARE(clean.keys(), (QStringList{QStringLiteral("HOME"), QStringLiteral("PATH"), QStringLiteral("XDG_DATA_DIRS")}));
+    QCOMPARE(clean.value(QStringLiteral("PATH")), QStringLiteral("/usr/bin:/bin"));
+    QCOMPARE(clean.value(QStringLiteral("XDG_DATA_DIRS")), QStringLiteral("/usr/share"));
+    QProcessEnvironment plain;
+    plain.insert(QStringLiteral("GTK_THEME"), QStringLiteral("Adwaita:dark"));
+    QCOMPARE(ArcadeInstall::childEnvironment(plain).value(QStringLiteral("GTK_THEME")), QStringLiteral("Adwaita:dark"));
+  }
 };
 QTEST_GUILESS_MAIN(InstallTest)
 #include "tst_Install.moc"

@@ -425,7 +425,7 @@ Every app has the same page:
   Promotion appears only on this page, never in palettes, menus or results.
 - A diagnostics expander: registry path, endpoint state, last error.
 
-### 8.3 Tray menu and hosting
+### 8.3 Tray hosting and menu
 
 Every app that stays resident has the same tray (menu bar) icon. A click opens
 Settings (on macOS the click opens the menu). The menu is:
@@ -471,6 +471,17 @@ manifest change allows another attempt, including an identical manifest rewrite.
 Idle uses blocked reads and OS watchers only, with no polling or timers.
 The only hosting deadlines are startup 300 ms and restart 5 s.
 
+Tools renders one submenu for each installed app in catalog order from the
+manifest's cached `menu`; opening a menu never synchronously probes a peer.
+An excluded app is labeled as keeping its own icon. Selecting an action sends
+Link directly to its owner; Tools is never on any other app-to-app action path.
+Closing the Tools window keeps its native core resident while hosting or the
+cheat-sheet shortcut is enabled and destroys the webview. Clean shutdown sends
+`hosted:false`; restart/self-update announces `restarting:true` before shutdown.
+Linux uses StatusNotifierItem registration and must recover if the desktop tray
+watcher appears late or restarts. OS icon paint and `status.tray` observations
+are separate verification boundaries.
+
 ### 8.4 Naming
 
 - Entries are named as the verb ("Quick Look", "Compress for sharing", "Send
@@ -480,7 +491,7 @@ The only hosting deadlines are startup 300 ms and restart 5 s.
 - Integration surfaces use `assets/tokens.json` (per-app accent, neutrals,
   radius, motion). Existing UIs are not reskinned.
 
-### 8.5 Shortcuts
+### 8.5 Shortcut data
 
 Defaults change for new installs only; a saved shortcut is never changed.
 
@@ -651,8 +662,15 @@ in the error; repair can detach it before retrying. Integration status reports
 these conflicts without writing. Atomic writes replace the final directory
 entry itself and never follow a final symlink.
 Desktop/icon cache refresh commands, when available, are non-fatal.
-Re-exec from the installed path with original args only when launch policy
-requests it. Uninstall reverses receipt paths only, plus caller-supplied
+Install, repair and uninstall hold an exclusive advisory lock on
+`<installs>/<id>.lock` for their whole duration. Relaunch the installed path
+with original args only when launch policy requests it: from an AppImage start
+it detached with the user's environment (AppImage runtime variables and mount
+paths removed) and exit, elsewhere on Unix exec it. "Remove the downloaded
+file" applies only to files in the Downloads folder and never fails a
+committed install. Launchers written by pre-installer releases under the app's
+own desktop or autostart id, running an AppImage named after the app, are the
+app's to replace. Uninstall reverses receipt paths only, plus caller-supplied
 app data folders if removeData is requested. Repair uses receipt paths and
 an explicit moved path, never guesses. Integration status is read-only and
 offers a fish/bash/zsh PATH hint; it never edits shell profiles.

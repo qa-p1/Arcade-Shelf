@@ -1,6 +1,7 @@
 // Install/receipt helpers, mirroring arcade_link::{receipt,install}. Every path
 // is explicit. Run all I/O on a worker, after caller-owned consent. No dialogs,
-// shell profile edits, process termination or quarantine removal occur here.
+// shell profile edits or quarantine removal occur here; the only processes an
+// install stops are this app's own pre-installer copies it replaces.
 #pragma once
 #include "ArcadeLink.h"
 #include <QProcessEnvironment>
@@ -96,10 +97,26 @@ public:
   static QString formatString(const QString &pattern, const QString &app,
                               const QString &version, const QString &from,
                               const QString &to);
-  // Starts a successor with original args and APPIMAGE/APPDIR cleared. The
-  // caller exits only on success; on Unix reexec() truly replaces the process.
+  // Starts the installed copy with the original args and the user's
+  // environment (see childEnvironment). From an AppImage, and on Windows, it
+  // starts a detached successor and the caller exits on success; elsewhere on
+  // Unix it replaces the process.
   static bool reexec(const QString &path, const QStringList &originalArgs,
                      QString *error = nullptr);
+  // `environment` without an AppImage runtime's mount paths and variables.
+  static QProcessEnvironment childEnvironment(QProcessEnvironment environment);
+  // Older pre-installer copies this app's launcher or login entry still run.
+  QStringList legacyCopies(const AppInfo &app) const;
+  // Asks a running copy of `id` to quit over the Link (before its replacement
+  // starts) and waits up to timeoutMs for its endpoint to go away.
+  static bool quitRunning(const Locations &locations, const QString &id,
+                          int timeoutMs, bool *wasRunning = nullptr,
+                          QString *error = nullptr);
+  // A login entry that will start the app: present and not switched off with
+  // Hidden=true or X-GNOME-Autostart-enabled=false.
+  static bool autostartEnabled(const QString &path);
+  // Whether `path` is inside the user's Downloads folder.
+  bool isDownload(const QString &path) const;
 
   bool writeWindowsShim(const QString &cliName, const QString &executable,
                         QString *shim = nullptr,

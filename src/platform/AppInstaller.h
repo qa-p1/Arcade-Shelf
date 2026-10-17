@@ -13,7 +13,8 @@ struct InstallSpec {
     QString bundleName;   // macOS: "Arcade Shelf.app"
     QString stateDir;     // where "Don't ask again" is remembered
     QStringList dataFolders;
-    bool startAtLoginDefault = false;
+    // Like every Arcade app, a fresh install starts at login.
+    bool startAtLoginDefault = true;
     // Writes PNG/SVG icons into `dir` (a private temporary folder).
     std::function<QList<ArcadeLink::ArcadeInstall::Icon>(const QString &dir)> writeIcons;
     // Asks a running copy to quit before files are removed.
