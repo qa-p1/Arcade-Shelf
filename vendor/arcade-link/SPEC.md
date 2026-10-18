@@ -265,7 +265,7 @@ isn't running and whose manifest has `launch.invoke`.
 
 | Type | Transport |
 |---|---|
-| `text/plain`, `text/url`, `text/rich` | `text` inline up to 256 KiB, else a handoff file in `path`. `text/rich` carries `html` plus `text` as the plain fallback |
+| `text/plain`, `text/url`, `text/rich` | `text` inline up to 256 KiB, else a handoff file in `path`. `text/rich` carries `html` plus `text` as the plain fallback; when the text goes in `path`, the HTML goes in a second handoff file in `htmlPath` |
 | `file/<kind>`, `file/<kind>[]` | `path` (single) or `paths` (array) of existing files. Kinds: `image`, `video`, `audio`, `pdf`, `document`, `spreadsheet`, `presentation`, `archive`, `text`, `code`, `font`, `model`, `any` |
 | `folder/reference` | `path` of a directory |
 | `structured/<name>` | `data` (inline JSON): `color`, `barcode`, `findings`, `devices`, `table`, `file-info`, `pipelines`, `arcade-action` |

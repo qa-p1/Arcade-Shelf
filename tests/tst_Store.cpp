@@ -307,6 +307,67 @@ private slots:
         QVERIFY(!store.saveSettings({{"quotaBytes",-1}})); QVERIFY(!store.saveSettings({{"retentionDays",-1}}));
     }
 
+    void stagedRichTextBacksUp()
+    {
+        // N11: 275,000 text bytes in a handoff file plus inline HTML.
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const auto handoff = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(handoff));
+        const QByteArray textBytes(275000,'t'); const QString html = "<b>" + QString(42,'b') + "</b>";
+        const auto textPath = writeFile(handoff + "/note.txt",textBytes);
+        auto r = store.add({QJsonObject{{"type","text/rich"},{"path",textPath},{"html",html},{"owner","arcade.clipboard"}}});
+        QVERIFY2(!r.error.isError(),qPrintable(r.error.message)); QCOMPARE(r.addedIds.size(),1);
+        QVERIFY(QDir(handoff).removeRecursively());
+        const QString backup = d.path() + "/full.arcade-shelf";
+        qint64 included = -1; int omitted = -1; QString message;
+        QVERIFY2(store.exportPortable(backup,true,&included,&omitted,&message),qPrintable(message));
+        QCOMPARE(included,textBytes.size() + html.toUtf8().size());
+        Store restored(d.path() + "/restored"); QVERIFY(restored.open());
+        int count = -1; QVERIFY2(restored.importPortable(backup,&count,&message),qPrintable(message));
+        const auto back = restored.items("quick").first().toObject();
+        QCOMPARE(back["html"].toString(),html);
+        QCOMPARE(back["size"].toInteger(),textBytes.size() + html.toUtf8().size());
+    }
+
+    void largeRichTextKeepsItsHtmlFile()
+    {
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const auto handoff = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(handoff));
+        // Wheel's shape above 256 KiB: the text in path, the HTML in htmlPath.
+        const QByteArray textBytes(300 * 1024,'t'), htmlBytes = "<p>" + QByteArray(350 * 1024,'h') + "</p>";
+        const auto textPath = writeFile(handoff + "/clipboard.txt",textBytes), htmlPath = writeFile(handoff + "/clipboard.html",htmlBytes);
+        auto r = store.add({QJsonObject{{"type","text/rich"},{"path",textPath},{"htmlPath",htmlPath},{"owner","arcade.wheel"}}});
+        QVERIFY2(!r.error.isError(),qPrintable(r.error.message)); QCOMPARE(r.addedIds.size(),1);
+        const auto i = store.items("quick").first().toObject();
+        QVERIFY(i["html"].toString().startsWith("<p>hhh"));
+        QCOMPARE(i["size"].toInteger(),textBytes.size() + htmlBytes.size());
+        // A foreign HTML path is refused like a foreign text path.
+        const auto outside = writeFile(d.path() + "/outside.html",QByteArray("<b>x</b>"));
+        auto bad = store.add({QJsonObject{{"type","text/rich"},{"path",textPath},{"htmlPath",outside},{"owner","arcade.wheel"}}});
+        QCOMPARE(bad.addedIds.size(),0);
+        QVERIFY(QDir(handoff).removeRecursively());
+
+        ArcadeLink::Error error; const auto out = store.exportItems(r.addedIds,{},true,&error);
+        QVERIFY(!error.isError()); QCOMPARE(out.size(),1); const auto c = out.first().toObject();
+        // shelf.pick promises text/plain: the plain fallback leaves, the HTML stays.
+        QCOMPARE(c["type"].toString(),QString("text/plain")); QVERIFY(!c.contains("html"));
+        QFile plain(c["path"].toString()); QVERIFY(plain.open(QIODevice::ReadOnly)); QCOMPARE(plain.readAll(),textBytes);
+        plain.close();
+
+        // N11: the backup checks the staged file against the text part only.
+        const QString backup = d.path() + "/full.arcade-shelf";
+        qint64 included = -1; int omitted = -1; QString message;
+        QVERIFY2(store.exportPortable(backup,true,&included,&omitted,&message),qPrintable(message));
+        QCOMPARE(included,textBytes.size() + htmlBytes.size()); QCOMPARE(omitted,0);
+        Store restored(d.path() + "/restored"); QVERIFY(restored.open());
+        int count = -1; QVERIFY2(restored.importPortable(backup,&count,&message),qPrintable(message));
+        const auto back = restored.items("quick").first().toObject();
+        QCOMPARE(back["size"].toInteger(),textBytes.size() + htmlBytes.size());
+        QVERIFY(back["html"].toString().startsWith("<p>hhh"));
+        QVERIFY(QDir(QFileInfo(c["path"].toString()).absolutePath()).removeRecursively());
+    }
+
     void largeTextHandoffCopiedBeforeSuccess()
     {
         QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());

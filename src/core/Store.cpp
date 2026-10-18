@@ -457,7 +457,21 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
                 if (bytes.size() > MaxText || !source.atEnd()) { exceeded = true; rejectedLimit = qMin(rejectedLimit,MaxText); skip(c,QStringLiteral("quota")); continue; }
                 QStringDecoder decoder(QStringDecoder::Utf8); text = decoder(bytes);
                 if (decoder.hasError() || !safeString(text)) { skip(c,QStringLiteral("invalid_text")); continue; }
-                if (type == QStringLiteral("text/rich")) html = c.value(QStringLiteral("html")).toString();
+                if (type == QStringLiteral("text/rich") && c.contains(QStringLiteral("htmlPath"))) {
+                    // Large rich text sends its HTML as a second handoff file.
+                    const QString htmlPath = c.value(QStringLiteral("htmlPath")).toString();
+                    const auto htmlInfo = inspect(htmlPath);
+                    if (!safeString(htmlPath) || !QDir::isAbsolutePath(htmlPath) || !htmlInfo.exists || !htmlInfo.regular || !isHandoff(c,htmlPath)) { skip(c,QStringLiteral("invalid_handoff")); continue; }
+                    if (htmlInfo.size > MaxText - bytes.size() || bytes.size() + htmlInfo.size > quota - used) { exceeded = true; if (htmlInfo.size > MaxText - bytes.size()) rejectedLimit = qMin(rejectedLimit,MaxText); skip(c,QStringLiteral("quota")); continue; }
+                    QFile htmlSource(htmlPath);
+                    if (!openRegular(htmlSource)) { skip(c,QStringLiteral("unreadable")); continue; }
+                    const QByteArray htmlBytes = htmlSource.read(MaxText + 1);
+                    if (htmlSource.error() != QFileDevice::NoError || htmlBytes.size() != htmlInfo.size || !htmlSource.atEnd()) { skip(c,QStringLiteral("copy_failed")); continue; }
+                    QStringDecoder htmlDecoder(QStringDecoder::Utf8); html = htmlDecoder(htmlBytes);
+                    if (htmlDecoder.hasError() || !safeString(html)) { skip(c,QStringLiteral("invalid_text")); continue; }
+                } else if (type == QStringLiteral("text/rich")) {
+                    html = c.value(QStringLiteral("html")).toString();
+                }
                 size = bytes.size() + html.toUtf8().size();
             }
         } else {

@@ -82,6 +82,11 @@ Error ShelfInvoke::validate(const QJsonObject &manifest, const QJsonObject &requ
             const QFileInfo info(path);
             if (!info.exists()) return Error::make("unsupported_input", {});
             if (info.isFile() && !addBytes(info.size())) return Error::make("too_large", {}, {}, MaxLineBytes);
+            if (content.contains("htmlPath")) {
+                const QFileInfo html(content.value("htmlPath").toString());
+                if (!html.isAbsolute() || !html.isFile()) return Error::make("unsupported_input", {});
+                if (!addBytes(html.size())) return Error::make("too_large", {}, {}, MaxLineBytes);
+            }
         } else if (content.contains("paths")) {
             for (const auto &path : content.value("paths").toArray()) {
                 if (!path.isString() || !QFileInfo(path.toString()).isAbsolute()

@@ -282,10 +282,14 @@ bool Store::exportPortable(const QString &path, bool includeOwned, qint64 *inclu
             if (!ownedObjectSafe(sourcePath)) return fail(QStringLiteral("Shelf could not safely read owned content for this backup."));
             qint64 size = 0;
             QByteArray digest;
-            if (!hashFile(sourcePath, &size, &digest) || size != QFileInfo(sourcePath).size() || size != itemQuery.value(7).toLongLong())
+            // Staged rich text keeps its HTML in the database; the stored
+            // size counts both, the file holds only the text.
+            const qint64 fileSize = itemQuery.value(7).toLongLong() - itemQuery.value(6).toString().toUtf8().size();
+            if (!hashFile(sourcePath, &size, &digest) || size != QFileInfo(sourcePath).size() || size != fileSize)
                 return fail(QStringLiteral("Shelf could not verify an owned file while preparing the backup."));
-            if (size > MaxOwnedBytes - contentBytes) return fail(QStringLiteral("Owned content exceeds the portable backup limit."));
-            contentBytes += size;
+            const qint64 stored = itemQuery.value(7).toLongLong();
+            if (stored > MaxOwnedBytes - contentBytes) return fail(QStringLiteral("Owned content exceeds the portable backup limit."));
+            contentBytes += stored;
             item.insert(QStringLiteral("payload"), payloads.size());
             payloads.append(QJsonObject{{QStringLiteral("name"), QFileInfo(sourcePath).fileName()},
                                         {QStringLiteral("size"), size},
@@ -443,8 +447,12 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
             if (itemSize > MaxOwnedBytes) return fail(QStringLiteral("The backup exceeds Shelf's maximum owned-content size."));
             if (item.contains(QStringLiteral("payload"))) {
                 qint64 index = -1;
+                const QString html = item.value(QStringLiteral("html")).toString();
+                if (html.contains(QChar::Null) || (!html.isEmpty() && (type != QStringLiteral("text/rich") || !safeText(html))))
+                    return fail(QStringLiteral("The backup contains invalid owned-content references."));
                 if (!numericInteger(item.value(QStringLiteral("payload")), 0, payloads.size() - 1, &index) ||
-                    ++payloadReferences[static_cast<int>(index)] != 1 || payloadSizes[static_cast<int>(index)] != itemSize)
+                    ++payloadReferences[static_cast<int>(index)] != 1 ||
+                    payloadSizes[static_cast<int>(index)] != itemSize - html.toUtf8().size())
                     return fail(QStringLiteral("The backup contains invalid owned-content references."));
             } else {
                 const QString text = item.value(QStringLiteral("text")).toString();
