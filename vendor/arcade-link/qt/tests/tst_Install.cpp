@@ -64,6 +64,22 @@ private slots:
     QVERIFY2(!seen.contains(mount), qPrintable(seen));
     QVERIFY2(seen.contains(other), qPrintable(seen));
   }
+  void childrenDoNotInheritTheKeepAlivePipe() {
+    // What the AppImage runtime does: the app inherits the read end of a pipe
+    // whose last holder exiting lets the runtime unmount.
+    int ends[2];
+    QCOMPARE(::pipe(ends), 0);
+    char target[256] = {};
+    QVERIFY(readlink(QByteArray("/proc/self/fd/" + QByteArray::number(ends[0])).constData(), target, sizeof target - 1) > 0);
+    ArcadeLink::releaseInheritedHandles();
+    QProcess shell;
+    shell.start(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral(R"(for f in /proc/$$/fd/*; do readlink "$f"; done)")});
+    QVERIFY(shell.waitForFinished());
+    const QString seen = QString::fromLocal8Bit(shell.readAllStandardOutput());
+    ::close(ends[0]);
+    ::close(ends[1]);
+    QVERIFY2(!seen.contains(QString::fromLocal8Bit(target)), qPrintable(seen));
+  }
 #endif
 #ifdef Q_OS_UNIX
   void stderrGoesToARotatedLogOnlyWhenDiscarded() {
