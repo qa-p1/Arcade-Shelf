@@ -1508,7 +1508,13 @@ void Desktop::startPortalShortcut(quint64 generation)
         if (reply.type() == QDBusMessage::ErrorMessage
             && reply.errorName() != QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod")
             && reply.errorName() != QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface")) {
-            setShortcutStatus(QStringLiteral("Desktop identity registration failed; install arcade.shelf.desktop or bind arcade-shelf --toggle manually")); return;
+            // No portal at all (common on X11 desktops) is not a missing launcher.
+            const bool noPortal = reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.ServiceUnknown")
+                || reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.NameHasNoOwner");
+            setShortcutStatus(noPortal
+                ? QStringLiteral("This desktop has no portal for global shortcuts; bind arcade-shelf --toggle in its keyboard settings")
+                : QStringLiteral("Desktop identity registration failed; install arcade.shelf.desktop or bind arcade-shelf --toggle manually"));
+            return;
         }
         d->portalRegistered = true;
         create();
