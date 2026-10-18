@@ -19,8 +19,6 @@
 #include <QSvgRenderer>
 #include <QPainter>
 #include <QImageReader>
-#include <QOffscreenSurface>
-#include <QOpenGLContext>
 #include <QSGRendererInterface>
 #include <QElapsedTimer>
 #include <QDir>
@@ -174,18 +172,13 @@ int main(int argc, char **argv)
     // A foreground launch still starts integration after creating its first surface.
     if (parser.isSet("background")) controller.start();
 #ifdef Q_OS_LINUX
-    // A host whose GL driver cannot start (missing EGL, mismatched libraries)
-    // would make Qt Quick abort. Probe first and fall back to software
-    // rendering unless the user already chose a backend.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND") && qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")
-        && QGuiApplication::platformName() != QStringLiteral("offscreen")) {
-        QOffscreenSurface surface; surface.create();
-        QOpenGLContext context;
-        if (!context.create() || !context.makeCurrent(&surface)) {
-            qWarning("OpenGL is unavailable; Arcade Shelf is using software rendering.");
-            QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
-        } else context.doneCurrent();
-    }
+    // Shelf draws a small capsule and panel without shader effects. Qt's
+    // software renderer does that without loading the GL driver, which
+    // roughly doubled Shelf's idle memory (127 against 65 MiB PSS). It also
+    // avoids aborting on hosts whose GL driver cannot start. QSG_RHI_BACKEND
+    // or QT_QUICK_BACKEND still choose another backend.
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND") && qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND"))
+        QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 #endif
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("shelf",&controller);

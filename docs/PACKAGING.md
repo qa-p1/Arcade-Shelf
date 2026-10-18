@@ -32,7 +32,9 @@ Host-integration libraries are never bundled: the C++ runtime (`libstdc++`,
 xkbcommon and D-Bus come from the OS, following the AppImage project's exclude
 list. 0.1.0 bundled Ubuntu copies of these; a host GL driver then failed to
 load next to the older `libstdc++`/`libwayland-client` and Qt Quick aborted.
-Shelf also probes OpenGL at startup and falls back to software rendering.
+On Linux, Shelf renders with Qt's software renderer, so it never loads the host
+GL driver: that halves its idle memory (65 instead of 127 MiB PSS) and avoids
+aborting on a broken driver. Set `QSG_RHI_BACKEND=opengl` to render on the GPU.
 
 Inside an AppImage, Arcade Link registers the `.AppImage` file itself (from
 `$APPIMAGE`), so peers can launch a stopped Shelf after the mount is gone.
