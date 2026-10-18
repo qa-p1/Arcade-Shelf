@@ -63,6 +63,18 @@ struct Locations {
 QString currentPlatform();                     // "linux", "windows", "macos"
 bool ensurePrivateDir(const QString &dir);     // mkpath + 0700 on Unix
 
+// ---- AppImage start (Rust: childenv::on_startup) ---------------------------
+// The type-2 AppImage runtime gives the app an open handle on its mount (fd
+// 1023) that isn't close-on-exec, so every program the app starts inherited
+// it, and one that outlives the app (the installed copy, another Arcade app)
+// kept the old mount and runtime alive. releaseMountHandles makes handles on
+// $APPDIR or any .mount_* directory close-on-exec; the launch helpers call it.
+// onStartup does that and also leaves the $APPDIR/usr working directory that
+// linuxdeploy's AppRun picks for $OWD, where the user started the app, so
+// relative command-line paths work. Call onStartup first thing in main().
+void onStartup();
+void releaseMountHandles();
+
 // ---- Logs (Rust: logs::capture_stderr) --------------------------------------
 // Started from the launcher, at login or by Tools, an app's stderr (and so
 // Qt's warnings) often goes to /dev/null, or to NUL or nowhere on Windows.

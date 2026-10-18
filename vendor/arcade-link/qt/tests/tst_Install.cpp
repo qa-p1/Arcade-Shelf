@@ -44,6 +44,27 @@ static ArcadeInstall::InstallOptions options(const QString &source,
 class InstallTest : public QObject {
   Q_OBJECT
 private slots:
+#ifdef Q_OS_LINUX
+  void childrenDoNotInheritHandlesOnAMount() {
+    QTemporaryDir root;
+    const QString mount = root.filePath(QStringLiteral(".mount_ArcadeTest"));
+    const QString other = root.filePath(QStringLiteral("elsewhere"));
+    QVERIFY(QDir().mkpath(mount) && QDir().mkpath(other));
+    // What the AppImage runtime does: an inheritable handle on the mount.
+    const int onMount = ::open(QFile::encodeName(mount).constData(), O_RDONLY | O_DIRECTORY);
+    const int elsewhere = ::open(QFile::encodeName(other).constData(), O_RDONLY | O_DIRECTORY);
+    QVERIFY(onMount > 2 && elsewhere > 2);
+    ArcadeLink::releaseMountHandles();
+    QProcess shell;
+    shell.start(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral(R"(for f in /proc/$$/fd/*; do readlink "$f"; done)")});
+    QVERIFY(shell.waitForFinished());
+    const QString seen = QString::fromLocal8Bit(shell.readAllStandardOutput());
+    ::close(onMount);
+    ::close(elsewhere);
+    QVERIFY2(!seen.contains(mount), qPrintable(seen));
+    QVERIFY2(seen.contains(other), qPrintable(seen));
+  }
+#endif
 #ifdef Q_OS_UNIX
   void stderrGoesToARotatedLogOnlyWhenDiscarded() {
     QTemporaryDir dir;
