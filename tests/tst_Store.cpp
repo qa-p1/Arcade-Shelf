@@ -307,6 +307,25 @@ private slots:
         QVERIFY(!store.saveSettings({{"quotaBytes",-1}})); QVERIFY(!store.saveSettings({{"retentionDays",-1}}));
     }
 
+    void ownedFileSizeFollowsTheFile()
+    {
+        // N29: an owned object edited out of band reports its real size.
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const auto handoff = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
+        QVERIFY(ArcadeLink::ensurePrivateDir(handoff));
+        const auto source = writeFile(handoff + "/note.png", QByteArray(17, 'a'));
+        auto r = store.add({QJsonObject{{"type","file/image"},{"path",source},{"owner","arcade.box"}}});
+        QVERIFY2(!r.error.isError(), qPrintable(r.error.message)); QCOMPARE(r.addedIds.size(), 1);
+        QVERIFY(QDir(handoff).removeRecursively());
+        const auto stored = store.items("quick").first().toObject();
+        QVERIFY(stored["owned"].toBool()); QCOMPARE(stored["size"].toInteger(), 17);
+        QFile object(stored["path"].toString()); QVERIFY(object.open(QIODevice::Append)); object.write(QByteArray(14, 'b')); object.close();
+        QCOMPARE(store.items("quick").first().toObject()["size"].toInteger(), 31);
+        ArcadeLink::Error error; const auto out = store.exportItems(r.addedIds, {}, false, &error);
+        QVERIFY(!error.isError()); QCOMPARE(out.first().toObject()["size"].toInteger(), 31);
+        QVERIFY(QDir(QFileInfo(out.first().toObject()["path"].toString()).absolutePath()).removeRecursively());
+    }
+
     void missingOriginalIsUnavailableNotUnsupported()
     {
         // N12: a reference whose original is gone is not the wrong kind of content.

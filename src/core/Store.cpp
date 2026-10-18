@@ -158,7 +158,11 @@ QJsonObject rowItem(QSqlQuery &q, bool preview = false)
                        {QStringLiteral("position"), q.value(9).toInt()},
                        {QStringLiteral("created"), q.value(10).toLongLong()}};
     const QString path = result.value(QStringLiteral("path")).toString();
-    result.insert(QStringLiteral("available"), path.isEmpty() || inspect(path).exists);
+    const auto info = path.isEmpty() ? PathInfo{} : inspect(path);
+    result.insert(QStringLiteral("available"), path.isEmpty() || info.exists);
+    // A file can change after it was added: report its size now, not then.
+    if (info.regular && result.value(QStringLiteral("type")).toString().startsWith(QStringLiteral("file/")))
+        result.insert(QStringLiteral("size"), info.size);
     if (preview) {
         const auto text = result.value(QStringLiteral("text")).toString();
         const auto html = result.value(QStringLiteral("html")).toString();
