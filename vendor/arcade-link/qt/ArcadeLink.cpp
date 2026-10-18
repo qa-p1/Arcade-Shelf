@@ -157,7 +157,10 @@ bool stderrGoesNowhere()
     return S_ISCHR(err.st_mode) && stat("/dev/null", &null) == 0 && null.st_rdev == err.st_rdev;
 #elif defined(Q_OS_WIN)
     const HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
-    return handle == nullptr || handle == INVALID_HANDLE_VALUE;
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) return true;
+    // NUL is a character device that, unlike a console, has no console mode.
+    DWORD mode = 0;
+    return GetFileType(handle) == FILE_TYPE_CHAR && !GetConsoleMode(handle, &mode);
 #else
     return false;
 #endif
