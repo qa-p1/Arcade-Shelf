@@ -9,6 +9,7 @@
 #include <windows.h>
 #endif
 #ifdef Q_OS_UNIX
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 using namespace ArcadeLink;
@@ -43,6 +44,44 @@ static ArcadeInstall::InstallOptions options(const QString &source,
 class InstallTest : public QObject {
   Q_OBJECT
 private slots:
+#ifdef Q_OS_UNIX
+  void stderrGoesToARotatedLogOnlyWhenDiscarded() {
+    QTemporaryDir dir;
+    const int saved = dup(2);
+    const auto pointStderrAt = [](const char *path) {
+      const int fd = ::open(path, O_WRONLY | O_APPEND);
+      dup2(fd, 2);
+      ::close(fd);
+    };
+    pointStderrAt("/dev/null");
+    const bool discarded = ArcadeLink::stderrGoesNowhere();
+    const QString reader = dir.filePath("someone-reads.txt");
+    QFile(reader).open(QIODevice::WriteOnly);
+    pointStderrAt(QFile::encodeName(reader).constData());
+    const bool read = ArcadeLink::stderrGoesNowhere();
+    const QString untouched = ArcadeLink::captureStderr(dir.path(), "arcade-test");
+    // An old, oversized log is kept once as .log.1.
+    QFile big(dir.filePath("arcade-test.log"));
+    QVERIFY(big.open(QIODevice::WriteOnly));
+    big.write(QByteArray(1024 * 1024 + 1, 'x'));
+    big.close();
+    const QString log = ArcadeLink::captureStderrTo(dir.path(), "arcade-test");
+    fputs("a Qt warning\n", stderr);
+    fflush(stderr);
+    dup2(saved, 2);
+    ::close(saved);
+    QVERIFY(discarded);
+    QVERIFY(!read);
+    QVERIFY(untouched.isEmpty());
+    QCOMPARE(log, dir.filePath("arcade-test.log"));
+    QFile written(log);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QByteArray text = written.readAll();
+    QVERIFY(text.startsWith("--- arcade-test started (pid "));
+    QVERIFY(text.endsWith("a Qt warning\n"));
+    QCOMPARE(QFileInfo(dir.filePath("arcade-test.log.1")).size(), 1024 * 1024 + 1);
+  }
+#endif
   void sharedStringsAndWindowsIdentity() {
     QFile strings(QStringLiteral(ARCADE_LINK_INSTALL_STRINGS));
     QVERIFY(strings.open(QIODevice::ReadOnly));

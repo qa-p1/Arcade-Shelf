@@ -21,6 +21,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
+#include <windows.h>
+#endif
 
 namespace ArcadeLink {
 
@@ -135,6 +145,54 @@ bool ensurePrivateDir(const QString &dir)
     if ((st.st_mode & 0777) != 0700 && chmod(path.constData(), 0700) != 0) return false;
 #endif
     return true;
+}
+
+// ---- Logs ------------------------------------------------------------------
+
+bool stderrGoesNowhere()
+{
+#if defined(Q_OS_UNIX)
+    struct stat err {}, null {};
+    if (fstat(2, &err) != 0) return true; // closed
+    return S_ISCHR(err.st_mode) && stat("/dev/null", &null) == 0 && null.st_rdev == err.st_rdev;
+#elif defined(Q_OS_WIN)
+    const HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
+    return handle == nullptr || handle == INVALID_HANDLE_VALUE;
+#else
+    return false;
+#endif
+}
+
+QString captureStderr(const QString &dir, const QString &name)
+{
+    return stderrGoesNowhere() ? captureStderrTo(dir, name) : QString();
+}
+
+QString captureStderrTo(const QString &dir, const QString &name)
+{
+    if (!QDir().mkpath(dir)) return {};
+    const QString path = QDir(dir).filePath(name + QStringLiteral(".log"));
+    if (QFileInfo(path).size() > 1024 * 1024) {
+        const QString older = path + QStringLiteral(".1");
+        QFile::remove(older);
+        QFile::rename(path, older);
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) return {};
+    file.write(QStringLiteral("--- %1 started (pid %2) ---\n").arg(name).arg(QCoreApplication::applicationPid()).toUtf8());
+    file.flush();
+#if defined(Q_OS_UNIX)
+    if (dup2(file.handle(), 2) < 0) return {};
+#elif defined(Q_OS_WIN)
+    // The CRT's stderr and the process handle, both onto the log; the
+    // duplicated descriptor must outlive the process's use of stderr.
+    const int fd = _dup(file.handle());
+    if (fd < 0 || _dup2(fd, 2) != 0) return {};
+    SetStdHandle(STD_ERROR_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(2)));
+#else
+    return {};
+#endif
+    return path;
 }
 
 // ---- Errors ----------------------------------------------------------------

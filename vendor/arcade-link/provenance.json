@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-link",
   "tag": "unreleased (after v0.3.0)",
-  "commit": "28551594300a65958586e15d26dd0440134b4a42",
+  "commit": "008e26202064fd28081facbb0f8b9ee3c5da996b",
   "license": "MIT OR Apache-2.0",
   "files": [
     {
@@ -12,7 +12,7 @@
     {
       "source": "SPEC.md",
       "destination": "vendor/arcade-link/SPEC.md",
-      "sha256": "f50ffd4395173980b785d6cdef3a2d6230c9fba354a418436e33d4db845cd91d"
+      "sha256": "99573ce24c325bc40c20d2ca12a66fb6902b3e4a8a94fde093aa6dbe8a7276da"
     },
     {
       "source": "assets/strings/install.json",
@@ -92,12 +92,12 @@
     {
       "source": "qt/ArcadeLink.cpp",
       "destination": "vendor/arcade-link/qt/ArcadeLink.cpp",
-      "sha256": "6b64555076531ec22d6ba2d9ea92ab8f2584c84059694f20659300688f2a39ad"
+      "sha256": "d6ff92ed141beb7c45e0c88aebcf071d8389e7e5d4981afb7bc88c2d2e97cb35"
     },
     {
       "source": "qt/ArcadeLink.h",
       "destination": "vendor/arcade-link/qt/ArcadeLink.h",
-      "sha256": "0f2c67a15d1f52d9f56c49f7ce44a954d979a8102dd519b82ea179922d8909be"
+      "sha256": "8a24899130e636e1b16ce53cda9511f38a469ea00f078b7c89b0421e39ff2ae7"
     },
     {
       "source": "qt/ArcadeShortcuts.cpp",
@@ -137,7 +137,7 @@
     {
       "source": "qt/tests/tst_Install.cpp",
       "destination": "vendor/arcade-link/qt/tests/tst_Install.cpp",
-      "sha256": "9b9fd8ddd1f92fcbc7fe10a9eb2366d84a5e7036b1777b1799f0e5a948045cdd"
+      "sha256": "54cac8b71af89a9ed273564f49c2d90115898425f2a1f8333ad77e7114b9ede5"
     },
     {
       "source": "qt/tests/tst_Methods.cpp",

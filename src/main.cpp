@@ -161,6 +161,9 @@ int main(int argc, char **argv)
         if (error.isError()) { qCritical("%s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; } return 0;
     }
     if (headless) { if (parser.isSet("status")) QTextStream(stdout) << "{\"running\":false}\n"; return 0; }
+    // Started at login or by Tools, stderr often goes to /dev/null: keep
+    // Qt's warnings in the log folder the manifest advertises instead.
+    ArcadeLink::captureStderr(root + "/logs", "arcade-shelf");
     auto *gui = qobject_cast<QApplication *>(&app);
     QImageReader::setAllocationLimit(64);
     gui->setQuitOnLastWindowClosed(false);
