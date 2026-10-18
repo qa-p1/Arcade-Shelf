@@ -307,6 +307,24 @@ private slots:
         QVERIFY(!store.saveSettings({{"quotaBytes",-1}})); QVERIFY(!store.saveSettings({{"retentionDays",-1}}));
     }
 
+    void missingOriginalIsUnavailableNotUnsupported()
+    {
+        // N12: a reference whose original is gone is not the wrong kind of content.
+        QTemporaryDir d; Store store(d.path() + "/store"); QVERIFY(store.open());
+        const QString target = writeFile(d.path() + "/report.pdf", QByteArray("pdf"));
+        const QString link = d.path() + "/report-link.pdf";
+        QVERIFY(QFile::link(target, link));
+        auto r = store.add({file(link, "file/pdf")});
+        QVERIFY2(!r.error.isError(), qPrintable(r.error.message)); QCOMPARE(r.addedIds.size(), 1);
+        QVERIFY(QFile::remove(link));
+        QVERIFY(!store.items("quick").first().toObject()["available"].toBool());
+        ArcadeLink::Error error;
+        QVERIFY(store.exportItems(r.addedIds, {"file/*"}, false, &error).isEmpty());
+        QCOMPARE(error.code, QString("unavailable"));
+        QVERIFY(store.exportItems({"no-such-item"}, {}, false, &error).isEmpty());
+        QCOMPARE(error.code, QString("unsupported_input"));
+    }
+
     void stagedRichTextBacksUp()
     {
         // N11: 275,000 text bytes in a handoff file plus inline HTML.
@@ -438,7 +456,8 @@ private slots:
         out = store.exportItems({r.addedIds[0],r.addedIds[1]}, {}, false, &error); QCOMPARE(error.code,QString("unsupported_input")); QVERIFY(out.isEmpty());
         out = store.exportItems({r.addedIds[0]}, {"text/plain"}, true, &error); QCOMPARE(error.code,QString("unsupported_input")); QVERIFY(out.isEmpty());
         QVERIFY(QFile::remove(image)); QVERIFY(!store.items("quick").first().toObject()["available"].toBool());
-        out = store.exportItems({r.addedIds[0]}, {}, true, &error); QCOMPARE(error.code,QString("unsupported_input")); QVERIFY(out.isEmpty());
+        // A missing original is unavailable, not the wrong kind of content (N12).
+        out = store.exportItems({r.addedIds[0]}, {}, true, &error); QCOMPARE(error.code,QString("unavailable")); QVERIFY(out.isEmpty());
         QCOMPARE(store.items("quick").size(),3);
     }
 

@@ -486,6 +486,17 @@ private slots:
         QTest::keyClick(m_window,Qt::Key_Escape);
         QTRY_VERIFY_WITH_TIMEOUT(thread->isFinished(),5000); delete thread;
         QCOMPARE(error.code,QString("denied")); QCOMPARE(error.reason,QString("user_cancelled"));
+        // N12: once its original is gone, the file is no longer offered.
+        QVERIFY(QFile::remove(path));
+        thread=QThread::create([&] {
+            auto client=ArcadeLink::Client::connect(ArcadeLink::Locations::discover(),AppId,"arcade.test","1",1000,&error);
+            if(client) client->invoke({{"action","shelf.pick"},{"inputs",QJsonArray{}},{"options",QJsonObject{}}},&result,&error);
+        });
+        thread->start(); QTRY_VERIFY_WITH_TIMEOUT(m_controller->picking(),5000);
+        QTRY_COMPARE(m_controller->items().size(),1);
+        QCOMPARE(m_controller->items().first().toMap()["text"].toString(),QString("Only chosen"));
+        QTest::keyClick(m_window,Qt::Key_Escape);
+        QTRY_VERIFY_WITH_TIMEOUT(thread->isFinished(),5000); delete thread;
     }
     // Shelf's own menu, not only the request it builds: pick an item, open
     // Actions, click Find's entry, and check what a Find-shaped peer

@@ -729,12 +729,14 @@ QJsonArray Store::exportItems(QStringList ids, QStringList types, bool multiple,
     qint64 fileBytes = 0;
     bool ownedFiles = false;
     qint64 inlineBytes = 0;
+    bool missingOriginal = false;
     if (ids.size() > MaxInputs || (!multiple && ids.size() > 1)) { if (error) *error = failure(QStringLiteral("unsupported_input")); return outputs; }
     QSet<QString> seen;
     for (const auto &id : ids) {
         if (seen.contains(id)) continue;
         seen.insert(id);
-        const auto i = item(id); if (i.isEmpty() || !i.value(QStringLiteral("available")).toBool()) continue;
+        const auto i = item(id); if (i.isEmpty()) continue;
+        if (!i.value(QStringLiteral("available")).toBool()) { missingOriginal = true; continue; }
         const QString storedType = i.value(QStringLiteral("type")).toString();
         // shelf.pick v1 promises text/plain, not text/rich. Preserve its plain
         // fallback; the HTML stays private metadata available to the owner UI.
@@ -804,7 +806,10 @@ QJsonArray Store::exportItems(QStringList ids, QStringList types, bool multiple,
         if (error) *error = failure(QStringLiteral("too_large"),{},ArcadeLink::MaxLineBytes);
         return {};
     }
-    if (outputs.isEmpty() && error) *error = failure(QStringLiteral("unsupported_input"));
+    // Only missing originals is not the wrong kind of content.
+    if (outputs.isEmpty() && error)
+        *error = missingOriginal ? failure(QStringLiteral("unavailable"),QStringLiteral("the original is no longer available"))
+                                 : failure(QStringLiteral("unsupported_input"));
     return outputs;
 }
 
