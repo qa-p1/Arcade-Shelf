@@ -213,7 +213,10 @@ bool Controller::eventFilter(QObject *watched, QEvent *event)
 QString Controller::activeName() const { for (auto v : m_shelves) if (v.toObject()["id"] == m_active) return v.toObject()["name"].toString(); return "Quick Shelf"; }
 bool Controller::eligible(const QJsonObject &o) const
 {
-    if (!m_picking || m_pickTypes.isEmpty()) return true;
+    if (!m_picking) return true;
+    // A missing original can't be handed to the app that asked.
+    if (!o["available"].toBool(true)) return false;
+    if (m_pickTypes.isEmpty()) return true;
     const QJsonObject content{{"type", o["type"]}};
     for (const auto &pattern : m_pickTypes) if (ArcadeLink::contentMatches(pattern, content)) return true;
     return false;

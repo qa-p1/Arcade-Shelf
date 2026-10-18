@@ -11,6 +11,9 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QHBoxLayout>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QTemporaryDir>
 #include <QTextStream>
 #include <QVBoxLayout>
@@ -74,7 +77,8 @@ Options defaults(const InstallSpec &spec, const ArcadeInstall::Environment &env)
     env.receipts().read(spec.app.id, &receipt);
     o.channel = receipt.value(QStringLiteral("channel")).toString(QStringLiteral("stable"));
     const QString autostart = receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("autostart")).toString();
-    o.startAtLogin = receipt.isEmpty() ? spec.startAtLoginDefault : (!autostart.isEmpty() && QFileInfo::exists(autostart));
+    // An existing install reflects whether its entry will really run.
+    o.startAtLogin = receipt.isEmpty() ? spec.startAtLoginDefault : (!autostart.isEmpty() && ArcadeInstall::autostartEnabled(autostart));
     return o;
 }
 
@@ -256,7 +260,19 @@ bool installCopy(const InstallSpec &spec, const ArcadeInstall &install, const Ar
                  const Options &options, QJsonObject *receipt, QString *error)
 {
 #ifdef Q_OS_LINUX
-    if (!runtime.isAppImage()) { *error = QStringLiteral("--install requires a real AppImage, not an ordinary or development binary"); return false; }
+    if (!runtime.isAppImage()) {
+        // A second install window, after the first one installed (and removed) this download.
+        QJsonObject current;
+        install.environment().receipts().read(spec.app.id, &current);
+        if (!runtime.appimage.isEmpty() && !QFileInfo::exists(runtime.appimage)) {
+            if (current.value(QStringLiteral("version")).toString() == spec.version
+                && QFileInfo(current.value(QStringLiteral("path")).toString()).isFile()) { *receipt = current; return true; }
+            *error = QStringLiteral("This downloaded file is gone (it may have been installed from another window). Open %1 from the app launcher.").arg(spec.app.name);
+            return false;
+        }
+        *error = QStringLiteral("--install requires a real AppImage, not an ordinary or development binary");
+        return false;
+    }
     QTemporaryDir stage;
     if (!stage.isValid()) { *error = QStringLiteral("Could not stage the icons"); return false; }
     QJsonObject old;
@@ -284,15 +300,20 @@ bool installCopy(const InstallSpec &spec, const ArcadeInstall &install, const Ar
 
 // The install/update/open dialog. Returns the clicked button index (-1 on
 // close) and updates the options from the checkboxes.
-int ask(const InstallSpec &spec, Dialog kind, const QString &installedVersion, bool managed, Options *options)
+int ask(const InstallSpec &spec, Dialog kind, const QString &installedVersion, bool managed, Options *options,
+        const QStringList &legacy = {})
 {
     const auto strings = ArcadeInstall::strings();
+    // Say so when this file is the older one, not just "already installed".
+    const bool newerInstalled = kind == Dialog::OpenInstalled && strings.contains(QStringLiteral("newerInstalled"))
+        && QVersionNumber::fromString(installedVersion) > QVersionNumber::fromString(spec.version);
     const QString key = kind == Dialog::Install ? QStringLiteral("notInstalled")
         : kind == Dialog::Update ? QStringLiteral("older")
+        : newerInstalled ? QStringLiteral("newerInstalled")
         : kind == Dialog::OpenInstalled ? QStringLiteral("sameOrNewer") : QStringLiteral("macos");
     const auto text = strings.value(key).toObject();
     const QString version = kind == Dialog::OpenInstalled ? installedVersion : spec.version;
-    const QString from = kind == Dialog::Update ? installedVersion : QString();
+    const QString from = kind == Dialog::Update ? installedVersion : newerInstalled ? spec.version : QString();
     QDialog dialog;
     dialog.setWindowTitle(QStringLiteral("%1 — Installation").arg(spec.app.name));
     auto *layout = new QVBoxLayout(&dialog);
@@ -309,6 +330,12 @@ int ask(const InstallSpec &spec, Dialog kind, const QString &installedVersion, b
         note->setWordWrap(true);
         layout->addWidget(note);
     }
+    const QString note = strings.value(QStringLiteral("replacesLegacy")).toString();
+    if (!legacy.isEmpty() && !note.isEmpty() && (kind == Dialog::Install || kind == Dialog::Update)) {
+        auto *replaces = new QLabel(format(spec, note, spec.version, legacy.first()));
+        replaces->setWordWrap(true);
+        layout->addWidget(replaces);
+    }
     const auto labels = strings.value(QStringLiteral("notInstalled")).toObject().value(QStringLiteral("options")).toArray();
     QCheckBox login(labels.at(0).toString()), remove(labels.at(1).toString());
     QCheckBox cli(QStringLiteral("Add the %1 terminal command").arg(spec.app.cliName));
@@ -324,15 +351,22 @@ int ask(const InstallSpec &spec, Dialog kind, const QString &installedVersion, b
         layout->addWidget(&cli);
 #endif
     }
-    auto *buttons = new QDialogButtonBox;
+    // The main action sits rightmost and is the default, as in every Arcade
+    // prompt, whatever button layout the Qt platform theme prefers.
+    auto *row = new QHBoxLayout;
+    row->addStretch();
     int clicked = -1;
     const auto names = text.value(QStringLiteral("buttons")).toArray();
-    for (int i = 0; i < names.size(); ++i) {
-        auto *button = buttons->addButton(names.at(i).toString(), i == 0 ? QDialogButtonBox::AcceptRole : QDialogButtonBox::ActionRole);
+    for (int i = int(names.size()) - 1; i >= 0; --i) {
+        auto *button = new QPushButton(names.at(i).toString());
         if (i == 0) button->setDefault(true);
+        row->addWidget(button);
         QObject::connect(button, &QPushButton::clicked, &dialog, [&dialog, &clicked, i] { clicked = i; dialog.accept(); });
     }
-    layout->addWidget(buttons);
+    layout->addLayout(row);
+    dialog.adjustSize();
+    if (const auto *screen = QGuiApplication::primaryScreen())
+        dialog.move(screen->availableGeometry().center() - dialog.rect().center());
     dialog.exec();
     options->startAtLogin = login.isChecked();
     options->removeDownload = remove.isChecked();
@@ -364,7 +398,7 @@ QStringList launchArgs(const QStringList &args)
     for (int i = 0; i < args.size(); ++i) {
         if (args[i] == u"--channel") { ++i; continue; }
         if (args[i].startsWith(QStringLiteral("--channel="))) continue;
-        if (args[i] == u"--install" || args[i] == u"--silent" || args[i] == u"--no-launch") continue;
+        if (args[i] == u"--install" || args[i] == u"--silent" || args[i] == u"--no-launch" || args[i] == u"--keep-download") continue;
         out << args[i];
     }
     return out;
@@ -499,10 +533,14 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args)
     const int channelAt = args.indexOf(QStringLiteral("--channel"));
     if (channelAt >= 0 && channelAt + 1 < args.size()) options.channel = args[channelAt + 1];
     for (const auto &arg : args) if (arg.startsWith(QStringLiteral("--channel="))) options.channel = arg.mid(10);
+    const bool keepDownload = args.contains(QStringLiteral("--keep-download"));
+    if (keepDownload) options.removeDownload = false;
     if (!headless) {
         const auto kind = dialogFor(spec, detection).value_or(Dialog::Install);
         const bool managed = io([&] { return toolsManages(env, detection.receipt); });
-        if (ask(spec, kind, detection.receipt.value(QStringLiteral("version")).toString(), managed, &options) != 0) return 0;
+        const auto legacy = io([&] { return install.legacyCopies(spec.app); });
+        if (ask(spec, kind, detection.receipt.value(QStringLiteral("version")).toString(), managed, &options, legacy) != 0) return 0;
+        if (keepDownload) options.removeDownload = false;
         if (kind == Dialog::OpenInstalled) {
             if (args.contains(QStringLiteral("--no-launch"))) return 0;
             return ArcadeInstall::reexec(launchPath(spec, detection.receipt), launchArgs(args), &error) ? 0 : 1;
@@ -519,6 +557,8 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args)
     }
     const QString launch = finishInstall(spec, install, receipt, headless);
     if (headless) json(receipt);
+    // The installed copy replaces an older one still running.
+    if (!args.contains(QStringLiteral("--no-launch")) && spec.quitRunning) io([&] { QString ignored; return spec.quitRunning(&ignored); });
     if (!args.contains(QStringLiteral("--no-launch")) && !ArcadeInstall::reexec(launch, launchArgs(args), &error)) {
         err(spec.app.cliName + QStringLiteral(": relaunch: ") + error);
         return 1;
@@ -563,8 +603,11 @@ bool offerInstall(const InstallSpec &spec, const QStringList &args)
     if (!kind) return false;
     const bool managed = io([&] { return toolsManages(env, detection.receipt); });
     Options options = io([&] { return defaults(spec, env); });
-    const int button = ask(spec, *kind, detection.receipt.value(QStringLiteral("version")).toString(), managed, &options);
+    const auto legacy = io([&] { return install.legacyCopies(spec.app); });
+    const int button = ask(spec, *kind, detection.receipt.value(QStringLiteral("version")).toString(), managed, &options, legacy);
     if (button == 2 && kind == Dialog::Install) { io([&] { dismiss(spec, downloaded); return true; }); return false; }
+    // Closing the question answers nothing: don't install, don't start.
+    if (button == -1) return true;
     if (button != 0) return false;
     QString error;
     if (kind == Dialog::OpenInstalled)
@@ -579,7 +622,10 @@ bool offerInstall(const InstallSpec &spec, const QStringList &args)
         message(spec, errorText(spec, QStringLiteral("install"), error), false);
         return false;
     }
-    if (ArcadeInstall::reexec(finishInstall(spec, install, receipt, false), args, &error)) return true;
+    const QString launch = finishInstall(spec, install, receipt, false);
+    // The installed copy replaces an older one still running.
+    if (spec.quitRunning) io([&] { QString ignored; return spec.quitRunning(&ignored); });
+    if (ArcadeInstall::reexec(launch, args, &error)) return true;
     message(spec, error, false);
     return false;
 }

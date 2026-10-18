@@ -1575,7 +1575,13 @@ bool Desktop::startAtLogin() const
     QJsonObject receipt;
     if (!ArcadeLink::ReceiptStore::discover().read(QStringLiteral("arcade.shelf"), &receipt)) return false;
     const QString executable = receipt.isEmpty() ? ArcadeLink::executablePath() : receiptExecutable(receipt);
-    if (ownedLoginEntry(startupPath(), executable)) return true;
+    // An entry switched off in the desktop's startup settings won't run.
+    if (ownedLoginEntry(startupPath(), executable))
+#ifdef Q_OS_LINUX
+        return ArcadeLink::ArcadeInstall::autostartEnabled(startupPath());
+#else
+        return true;
+#endif
 #ifdef Q_OS_WIN
     return ownedLoginEntry(legacyStartupPath(), executable);
 #else

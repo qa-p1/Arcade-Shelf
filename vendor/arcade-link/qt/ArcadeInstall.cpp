@@ -8,13 +8,17 @@
 #include <QJsonDocument>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QElapsedTimer>
 #include <QSaveFile>
+#include <QThread>
 #include <QSet>
 #include <QRandomGenerator>
 #include <functional>
 #ifdef Q_OS_UNIX
 #include <cerrno>
 #include <cstring>
+#include <csignal>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -23,6 +27,7 @@
 #define NOMINMAX
 #endif
 #include <aclapi.h>
+#include <io.h>
 #include <sddl.h>
 #include <windows.h>
 #endif
@@ -569,16 +574,27 @@ static bool appValid(const ArcadeInstall::AppInfo &app, QString *error) {
   return true;
 }
 static QString execQuote(QString value) {
-  // Desktop Entry escaping then Exec escaping. Percent is never a field code.
-  value.replace(QStringLiteral("\\"), QStringLiteral("\\\\\\\\"))
-      .replace(QStringLiteral("\""), QStringLiteral("\\\\\""))
-      .replace(QStringLiteral("`"), QStringLiteral("\\\\`"))
-      .replace(QStringLiteral("$"), QStringLiteral("\\\\$"))
+  // Exec escaping then Desktop Entry string escaping. Percent is never a field
+  // code; control characters use the string escapes (a raw newline would end
+  // the key).
+  value.replace(QStringLiteral("\\"), QStringLiteral("\\\\"))
+      .replace(QStringLiteral("\""), QStringLiteral("\\\""))
+      .replace(QStringLiteral("`"), QStringLiteral("\\`"))
+      .replace(QStringLiteral("$"), QStringLiteral("\\$"))
       .replace(QStringLiteral("%"), QStringLiteral("%%"));
+  value.replace(QStringLiteral("\\"), QStringLiteral("\\\\"))
+      .replace(QStringLiteral("\n"), QStringLiteral("\\n"))
+      .replace(QStringLiteral("\t"), QStringLiteral("\\t"))
+      .replace(QStringLiteral("\r"), QStringLiteral("\\r"));
   return QLatin1Char('"') + value + QLatin1Char('"');
 }
 static QString execLine(const QString &path, const QStringList &args = {}) {
-  QStringList parts{execQuote(path)};
+  QStringList parts;
+  // GLib looks the program up before expanding "%%", so a '%' in the path
+  // (e.g. in HOME) breaks every launcher; `env` takes it as an argument.
+  if (path.contains(QLatin1Char('%')))
+    parts << QStringLiteral("env");
+  parts << execQuote(path);
   for (const auto &arg : args)
     parts << execQuote(arg);
   return parts.join(QLatin1Char(' '));
@@ -647,8 +663,8 @@ bool arcadeInstallSymlink(const QString &path, const QString &target,
   return symlink(path, target, error);
 }
 static bool autostart(const QString &path, const ArcadeInstall::AppInfo &app,
-                      const QString &executable, bool create, bool *written,
-                      QString *error) {
+                      const QString &executable, bool create, bool enable,
+                      bool *written, QString *error) {
   if (written)
     *written = false;
   QFile file(path);
@@ -670,12 +686,28 @@ static bool autostart(const QString &path, const ArcadeInstall::AppInfo &app,
   if (!lines.isEmpty() && lines.last().isEmpty())
     lines.removeLast();
   bool main = false, replaced = false;
-  for (auto &line : lines) {
+  // A login entry taken over from an older copy becomes recognizably ours.
+  const bool marked = old.contains(QStringLiteral("\nX-Arcade-Id=")) ||
+                      old.startsWith(QStringLiteral("X-Arcade-Id="));
+  for (qsizetype i = 0; i < lines.size(); ++i) {
+    auto &line = lines[i];
     if (line.startsWith(QLatin1Char('[')))
       main = line == u"[Desktop Entry]";
-    if (main && line.startsWith(u"Exec=")) {
+    // An explicit "Start at login" re-enables an entry the desktop's startup
+    // settings switched off; a repair leaves that choice alone.
+    if (enable && main && line.trimmed() == u"Hidden=true") {
+      lines.removeAt(i--);
+      continue;
+    }
+    if (enable && main && line.trimmed() == u"X-GNOME-Autostart-enabled=false") {
+      line = QStringLiteral("X-GNOME-Autostart-enabled=true");
+      continue;
+    }
+    if (main && line.startsWith(u"Exec=") && !replaced) {
       line = QStringLiteral("Exec=") + execLine(executable, app.backgroundArgs);
       replaced = true;
+      if (!marked)
+        lines.insert(++i, QStringLiteral("X-Arcade-Id=") + app.id);
     }
   }
   if (!replaced)
@@ -699,6 +731,40 @@ static QString entryValue(const QString &text, const QString &key) {
       return line.mid(equal + 1);
   }
   return {};
+}
+// One Exec argument of an already string-unescaped value, from *pos on.
+static QString execToken(const QString &decoded, qsizetype *pos) {
+  qsizetype i = *pos;
+  while (i < decoded.size() && decoded[i].isSpace())
+    ++i;
+  const bool quoted = i < decoded.size() && decoded[i] == QLatin1Char('"');
+  bool closed = !quoted;
+  QString token;
+  for (i += quoted ? 1 : 0; i < decoded.size(); ++i) {
+    auto c = decoded[i];
+    if (quoted && c == QLatin1Char('"')) {
+      closed = true;
+      if (i + 1 < decoded.size() && !decoded[i + 1].isSpace())
+        return {};
+      ++i;
+      break;
+    }
+    if (!quoted && c.isSpace())
+      break;
+    if (quoted && c == QLatin1Char('\\')) {
+      if (++i == decoded.size() ||
+          !QStringLiteral("\"`$\\").contains(decoded[i]))
+        return {};
+      c = decoded[i];
+    } else if (c == QLatin1Char('%')) {
+      if (++i == decoded.size() || decoded[i] != QLatin1Char('%'))
+        return {};
+    } else if (!quoted && (c == QLatin1Char('"') || c == QLatin1Char('\\')))
+      return {};
+    token += c;
+  }
+  *pos = i;
+  return closed ? token : QString();
 }
 static QString desktopExecutable(const QString &text) {
   const auto value = entryValue(text, QStringLiteral("Exec"));
@@ -730,36 +796,32 @@ static QString desktopExecutable(const QString &text) {
     }
     decoded += c;
   }
-  decoded = decoded.trimmed();
-  const bool quoted = decoded.startsWith(QLatin1Char('"'));
-  bool closed = !quoted;
-  QString token;
-  for (qsizetype i = quoted ? 1 : 0; i < decoded.size(); ++i) {
-    auto c = decoded[i];
-    if (quoted && c == QLatin1Char('"')) {
-      closed = true;
-      if (i + 1 < decoded.size() && !decoded[i + 1].isSpace())
-        return {};
-      break;
-    }
-    if (!quoted && c.isSpace())
-      break;
-    if (quoted && c == QLatin1Char('\\')) {
-      if (++i == decoded.size() ||
-          !QStringLiteral("\"`$\\").contains(decoded[i]))
-        return {};
-      c = decoded[i];
-    } else if (c == QLatin1Char('%')) {
-      if (++i == decoded.size() || decoded[i] != QLatin1Char('%'))
-        return {};
-    } else if (!quoted && (c == QLatin1Char('"') || c == QLatin1Char('\\')))
-      return {};
-    token += c;
-  }
-  return closed && !token.contains(
-                       QRegularExpression(QStringLiteral("[=\\r\\n\\x{0}]")))
-             ? token
-             : QString();
+  qsizetype pos = 0;
+  auto token = execToken(decoded, &pos);
+  // Launchers for paths containing '%' run the program through `env`.
+  if (token == u"env")
+    token = execToken(decoded, &pos);
+  return token.contains(QRegularExpression(QStringLiteral("[=\\r\\n\\x{0}]")))
+             ? QString()
+             : token;
+}
+// Releases before the self-installer ran from wherever they were saved and
+// wrote their own launcher, e.g. ArcadeWheel-0.2.0-Linux-x86_64.AppImage.
+static bool legacyAppImageName(const ArcadeInstall::AppInfo &app,
+                               const QString &name) {
+  if (name == app.filename || name == app.cliName)
+    return false;
+  const auto normalize = [](const QString &s) {
+    QString out;
+    for (const auto c : s)
+      if (c.isLetterOrNumber() && c.unicode() < 128)
+        out += c.toLower();
+    return out;
+  };
+  const auto appName = normalize(app.name);
+  return !appName.isEmpty() &&
+         name.endsWith(QStringLiteral(".appimage"), Qt::CaseInsensitive) &&
+         normalize(name).startsWith(appName);
 }
 static bool desktopOwned(const QString &path, const ArcadeInstall::AppInfo &app,
                          bool recorded) {
@@ -782,7 +844,8 @@ static bool desktopOwned(const QString &path, const ArcadeInstall::AppInfo &app,
   const bool known = id == app.desktopId || id == app.autostartId ||
                      app.legacyDesktopIds.contains(id);
   return known && (QFileInfo(exe).fileName() == app.filename ||
-                   QFileInfo(exe).fileName() == app.cliName);
+                   QFileInfo(exe).fileName() == app.cliName ||
+                   legacyAppImageName(app, QFileInfo(exe).fileName()));
 }
 static bool availableEntry(const QString &path, bool owned) {
   const QFileInfo info(path);
@@ -896,6 +959,172 @@ static QStringList duplicates(const ArcadeInstall::Environment &e,
   return result;
 }
 
+
+// Held for the whole of an install, repair or uninstall of one app, across
+// processes: Rust and Qt lock the same <installs>/<id>.lock. A second
+// installer waits (up to two minutes) instead of interleaving with the first.
+class AppLock {
+public:
+  bool acquire(const ReceiptStore &store, const QString &id, QString *error) {
+    if (!ensurePrivateDir(store.directory()))
+      return fail(error, QStringLiteral("Couldn't create %1").arg(store.directory()));
+    const auto json = store.path(id);
+    if (json.isEmpty())
+      return fail(error, QStringLiteral("invalid receipt id"));
+    m_file.setFileName(json.left(json.size() - 4) + QStringLiteral("lock"));
+    if (!m_file.open(QIODevice::ReadWrite))
+      return fail(error, QStringLiteral("Couldn't open %1: %2").arg(m_file.fileName(), m_file.errorString()));
+    QElapsedTimer timer;
+    timer.start();
+    for (;;) {
+#ifdef Q_OS_UNIX
+      if (::flock(m_file.handle(), LOCK_EX | LOCK_NB) == 0)
+        return true;
+      if (errno != EWOULDBLOCK)
+        return fail(error, QString::fromLocal8Bit(std::strerror(errno)));
+#else
+      OVERLAPPED overlapped{};
+      if (LockFileEx(reinterpret_cast<HANDLE>(_get_osfhandle(m_file.handle())),
+                     LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0,
+                     MAXDWORD, MAXDWORD, &overlapped))
+        return true;
+      if (GetLastError() != ERROR_LOCK_VIOLATION)
+        return fail(error, QStringLiteral("cannot lock %1").arg(m_file.fileName()));
+#endif
+      if (timer.elapsed() > 120000)
+        return fail(error, QStringLiteral("another install, update or uninstall of this app is still running"));
+      QThread::msleep(100);
+    }
+  }
+
+private:
+  QFile m_file; // closing it releases the lock
+};
+
+#ifdef Q_OS_LINUX
+// $XDG_DOWNLOAD_DIR from user-dirs.dirs, else ~/Downloads.
+static QString downloadDir(const ArcadeInstall::Environment &e) {
+  QFile dirs(QDir(e.config).filePath(QStringLiteral("user-dirs.dirs")));
+  if (dirs.open(QIODevice::ReadOnly))
+    for (const auto &raw : QString::fromUtf8(dirs.readAll()).split(QLatin1Char('\n'))) {
+      auto line = raw.trimmed();
+      if (!line.startsWith(u"XDG_DOWNLOAD_DIR="))
+        continue;
+      auto value = line.mid(17).trimmed();
+      if (value.startsWith(QLatin1Char('"')) && value.endsWith(QLatin1Char('"')))
+        value = value.mid(1, value.size() - 2);
+      if (value.startsWith(u"$HOME"))
+        value = QDir(e.home).filePath(value.mid(5).remove(0, value.mid(5).startsWith(QLatin1Char('/')) ? 1 : 0));
+      if (QDir::isAbsolutePath(value))
+        return value;
+    }
+  return QDir(e.home).filePath(QStringLiteral("Downloads"));
+}
+// Asks this user's processes started from the AppImage `path` to quit, so an
+// older copy doesn't keep running beside its replacement.
+static void stopProcessesRunning(const QString &path) {
+  const auto target = canonical(path).toLocal8Bit();
+  const auto me = QCoreApplication::applicationPid();
+  for (const auto &pid : QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+    bool ok = false;
+    const auto number = pid.toLongLong(&ok);
+    if (!ok || number == me)
+      continue;
+    QFile environ(QStringLiteral("/proc/%1/environ").arg(pid));
+    if (!environ.open(QIODevice::ReadOnly))
+      continue;
+    for (const auto &var : environ.readAll().split('\0'))
+      if (var.startsWith("APPIMAGE=") &&
+          canonical(QString::fromLocal8Bit(var.mid(9))).toLocal8Bit() == target)
+        ::kill(pid_t(number), SIGTERM);
+  }
+}
+// <filename>.<token>.stage copies left by a killed installer. Called with the
+// app's lock held, so no other installer owns them.
+static void removeStaleStages(const QString &applications, const QString &filename) {
+  static const QRegularExpression token(QStringLiteral("^[0-9a-f]{16,}$"));
+  for (const auto &name : QDir(applications).entryList({filename + QStringLiteral(".*.stage")}, QDir::Files)) {
+    const auto middle = name.mid(filename.size() + 1, name.size() - filename.size() - 7);
+    if (token.match(middle).hasMatch())
+      QFile::remove(QDir(applications).filePath(name));
+  }
+}
+#endif
+QStringList ArcadeInstall::legacyCopies(const AppInfo &app) const {
+  QStringList copies;
+#ifdef Q_OS_LINUX
+  QStringList entries;
+  for (const auto &id : QStringList{app.desktopId} + app.legacyDesktopIds)
+    entries << QDir(m_environment.data).filePath(QStringLiteral("applications/") + id + QStringLiteral(".desktop"));
+  entries << QDir(m_environment.config).filePath(QStringLiteral("autostart/") + app.autostartId + QStringLiteral(".desktop"));
+  for (const auto &entry : entries) {
+    QFile file(entry);
+    if (!file.open(QIODevice::ReadOnly))
+      continue;
+    const auto text = QString::fromUtf8(file.readAll());
+    const auto exe = desktopExecutable(text);
+    if (!exe.isEmpty() && legacyAppImageName(app, QFileInfo(exe).fileName()) &&
+        entryValue(text, QStringLiteral("X-Arcade-Id")).isEmpty() &&
+        QFileInfo(exe).isFile() && !copies.contains(exe))
+      copies << exe;
+  }
+#else
+  Q_UNUSED(app);
+#endif
+  return copies;
+}
+bool ArcadeInstall::quitRunning(const Locations &locations, const QString &id,
+                                int timeoutMs, bool *wasRunning, QString *error) {
+  if (wasRunning)
+    *wasRunning = false;
+  Endpoint endpoint;
+  if (!Endpoint::read(locations, id, &endpoint))
+    return true;
+  Error linkError;
+  auto client = Client::connect(locations, id, id + QStringLiteral(".installer"),
+                                QStringLiteral("1"), 2000, &linkError);
+  if (!client)
+    return true; // a stale endpoint file
+  client->call(QStringLiteral("app.quit"), {}, &linkError, 5000);
+  if (!linkError.code.isEmpty())
+    return fail(error, linkError.message);
+  client.reset();
+  if (wasRunning)
+    *wasRunning = true;
+  QElapsedTimer timer;
+  timer.start();
+  while (timer.elapsed() < timeoutMs) {
+    Endpoint current;
+    const bool replaced = !Endpoint::read(locations, id, &current) || current.token != endpoint.token;
+#ifdef Q_OS_LINUX
+    // An app that exits without removing its endpoint is gone too.
+    const bool exited = !QFileInfo::exists(QStringLiteral("/proc/%1").arg(endpoint.pid));
+#else
+    const bool exited = false;
+#endif
+    if (replaced || exited)
+      return true;
+    QThread::msleep(50);
+  }
+  return fail(error, QStringLiteral("%1 did not quit").arg(id));
+}
+bool ArcadeInstall::autostartEnabled(const QString &path) {
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly))
+    return false;
+  const auto text = QString::fromUtf8(file.readAll());
+  return entryValue(text, QStringLiteral("Hidden")).trimmed() != u"true" &&
+         entryValue(text, QStringLiteral("X-GNOME-Autostart-enabled")).trimmed() != u"false";
+}
+bool ArcadeInstall::isDownload(const QString &path) const {
+#ifdef Q_OS_LINUX
+  return inside(canonical(path), canonical(downloadDir(m_environment)));
+#else
+  Q_UNUSED(path);
+  return false;
+#endif
+}
+
 struct SavedEntry {
   QString path, target;
   QByteArray bytes;
@@ -993,6 +1222,12 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
       (opts.managedBy != u"self" && opts.managedBy != u"tools"))
     return fail(error,
                 QStringLiteral("version, channel and managedBy are required"));
+  // Refusals above leave no trace; everything below runs under the lock,
+  // starting from a fresh read of the receipt.
+  AppLock lock;
+  if (!lock.acquire(m_environment.receipts(), opts.app.id, error) ||
+      !detect(opts.app.id, opts.runtime, &d, error))
+    return false;
   const auto source = d.runningFrom;
   if (!QDir::isAbsolutePath(source) || !QFileInfo(source).isFile())
     return fail(error, QStringLiteral("source must be an absolute file"));
@@ -1000,7 +1235,9 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   const auto dest = QDir(e.applications).filePath(opts.app.filename);
   const bool same = canonical(source) == canonical(dest);
   const auto old = d.receipt;
-  if (!same && QFileInfo::exists(dest) &&
+  // A dangling symlink is still somebody's entry.
+  const bool destPresent = QFileInfo::exists(dest) || QFileInfo(dest).isSymLink();
+  if (!same && destPresent &&
       old.value(QStringLiteral("path")).toString() != dest)
     return fail(
         error, QStringLiteral("destination exists without this app's receipt"));
@@ -1105,6 +1342,7 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   }
   if (!skipped.isEmpty())
     integration.insert(QStringLiteral("skipped"), skipped);
+  const auto legacy = legacyCopies(opts.app);
   InstallRollback rollback;
   rollback.dest = dest;
   rollback.stage =
@@ -1128,11 +1366,13 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   auto previous = old.value(QStringLiteral("previous"));
   if (!same) {
     if (!QDir().mkpath(e.applications))
-      return fail(error, QStringLiteral("cannot create apps folder"));
+      return fail(error, QStringLiteral("Couldn't create %1").arg(e.applications));
+    removeStaleStages(e.applications, opts.app.filename);
     // Copy before any replacement. QFile::copy closes/flushed output before
     // rename; the rollback journal never holds AppImage bytes in memory.
-    if (!QFile::copy(source, rollback.stage))
-      return fail(error, QStringLiteral("cannot stage AppImage"));
+    QFile input(source);
+    if (!input.copy(rollback.stage))
+      return fail(error, QStringLiteral("Couldn't write to %1: %2").arg(e.applications, input.errorString()));
 #ifdef Q_OS_UNIX
     QFile staged(rollback.stage);
     if (!staged.open(QIODevice::ReadWrite) || !staged.flush() ||
@@ -1146,7 +1386,7 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
                                 QFileDevice::ExeGroup | QFileDevice::ReadOther |
                                 QFileDevice::ExeOther))
       return fail(error, QStringLiteral("cannot chmod AppImage"));
-    if (QFileInfo::exists(dest)) {
+    if (destPresent) {
       const auto ownedPrevious = old.value(QStringLiteral("previous"))
                                      .toObject()
                                      .value(QStringLiteral("path"))
@@ -1203,7 +1443,8 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
       !symlink(cli, dest, error))
     return false;
   if (integration.value(QStringLiteral("autostart")).isString() &&
-      !autostart(autoPath, opts.app, dest, opts.startAtLogin, nullptr, error))
+      !autostart(autoPath, opts.app, dest, opts.startAtLogin, opts.startAtLogin,
+                 nullptr, error))
     return false;
   for (const auto &path : stale)
     if (!removeFile(path, error))
@@ -1229,8 +1470,17 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   rollback.committed = true;
   if (out)
     *out = receipt;
-  if (opts.removeDownload && !same && !removeFile(source, error))
-    return false;
+  // The install has happened: from here nothing turns it into a failure, and
+  // "Remove the downloaded file" only ever removes a file from Downloads.
+  if (opts.removeDownload && !same && isDownload(source))
+    removeFile(source, nullptr);
+  for (const auto &copy : legacy) {
+    if (canonical(copy) == canonical(dest) || canonical(copy) == canonical(source))
+      continue;
+    stopProcessesRunning(copy);
+    if (opts.removeDownload && isDownload(copy))
+      removeFile(copy, nullptr);
+  }
   if (opts.refreshCaches) {
     QProcess::execute(QStringLiteral("update-desktop-database"),
                       {QDir(e.data).filePath(QStringLiteral("applications"))});
@@ -1253,6 +1503,12 @@ bool ArcadeInstall::repair(const AppInfo &app, const QString &movedTo,
     return false;
   QJsonObject receipt;
   if (!m_environment.receipts().read(app.id, &receipt, error))
+    return false;
+  if (receipt.isEmpty())
+    return fail(error, QStringLiteral("no receipt"));
+  AppLock lock;
+  if (!lock.acquire(m_environment.receipts(), app.id, error) ||
+      !m_environment.receipts().read(app.id, &receipt, error))
     return false;
   if (receipt.isEmpty())
     return fail(error, QStringLiteral("no receipt"));
@@ -1300,7 +1556,7 @@ bool ArcadeInstall::repair(const AppInfo &app, const QString &movedTo,
   const auto autoPath =
       integration.value(QStringLiteral("autostart")).toString();
   if (!autoPath.isEmpty() &&
-      !autostart(autoPath, app, exe, true, nullptr, error))
+      !autostart(autoPath, app, exe, true, false, nullptr, error))
     return false;
   receipt.insert(QStringLiteral("updatedAt"), nowRfc3339());
   if (!m_environment.receipts().write(receipt, error))
@@ -1327,6 +1583,12 @@ bool ArcadeInstall::uninstall(const QString &id, const UninstallOptions &opts,
     return false;
   QJsonObject receipt;
   if (!m_environment.receipts().read(id, &receipt, error))
+    return false;
+  if (receipt.isEmpty())
+    return true;
+  AppLock lock;
+  if (!lock.acquire(m_environment.receipts(), id, error) ||
+      !m_environment.receipts().read(id, &receipt, error))
     return false;
   if (receipt.isEmpty())
     return true;
@@ -1463,39 +1725,94 @@ QJsonObject ArcadeInstall::integrationStatus(const QString &id,
        onPath ? QJsonValue(QJsonValue::Null)
               : QJsonValue(pathHint(m_environment.bin, shell))}};
 }
+// Mirrors arcade_link::childenv: drops what an AppImage's runtime, AppRun and
+// linuxdeploy's GTK hook put into the environment, so the started app gets the
+// user's environment, not this image's mount.
+QProcessEnvironment ArcadeInstall::childEnvironment(QProcessEnvironment environment) {
+  const auto appdir = environment.value(QStringLiteral("APPDIR"));
+  const bool fromAppImage = !appdir.isEmpty() || environment.contains(QStringLiteral("APPIMAGE"));
+  const auto inMount = [&](QString entry) {
+    while (entry.endsWith(QLatin1Char('/')))
+      entry.chop(1);
+    QString dir = appdir;
+    while (dir.endsWith(QLatin1Char('/')))
+      dir.chop(1);
+    if (!dir.isEmpty() && (entry == dir || entry.startsWith(dir + QLatin1Char('/'))))
+      return true;
+    for (const auto &part : entry.split(QLatin1Char('/')))
+      if (part.startsWith(QStringLiteral(".mount_")))
+        return true;
+    return false;
+  };
+  static const QStringList appImageOnly{
+      QStringLiteral("APPDIR"), QStringLiteral("APPIMAGE"), QStringLiteral("ARGV0"), QStringLiteral("OWD"),
+      QStringLiteral("GTK_DATA_PREFIX"), QStringLiteral("GTK_EXE_PREFIX"), QStringLiteral("GTK_PATH"),
+      QStringLiteral("GTK_IM_MODULE_FILE"), QStringLiteral("GDK_PIXBUF_MODULE_FILE"), QStringLiteral("GIO_MODULE_DIR"),
+      QStringLiteral("GI_TYPELIB_PATH"), QStringLiteral("PYTHONHOME"), QStringLiteral("PYTHONDONTWRITEBYTECODE"),
+      QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH")};
+  const bool gtkHook = inMount(environment.value(QStringLiteral("GTK_DATA_PREFIX"))) &&
+                       environment.contains(QStringLiteral("GTK_DATA_PREFIX"));
+  for (const auto &key : environment.keys()) {
+    if (fromAppImage && (appImageOnly.contains(key) || (key == u"GTK_THEME" && gtkHook))) {
+      environment.remove(key);
+      continue;
+    }
+    const auto entries = environment.value(key).split(QLatin1Char(':'));
+    bool touched = false;
+    for (const auto &entry : entries)
+      touched |= inMount(entry);
+    if (!touched)
+      continue;
+    QStringList kept;
+    for (const auto &entry : entries)
+      if (!entry.isEmpty() && !inMount(entry) && !kept.contains(entry))
+        kept << entry;
+    if (kept.isEmpty())
+      environment.remove(key);
+    else
+      environment.insert(key, kept.join(QLatin1Char(':')));
+  }
+  return environment;
+}
 bool ArcadeInstall::reexec(const QString &path, const QStringList &args,
                            QString *error) {
   if (!nativeAbsolute(path, error))
     return false;
+  const bool fromAppImage = qEnvironmentVariableIsSet("APPIMAGE");
+  auto environment = childEnvironment(QProcessEnvironment::systemEnvironment());
+  environment.remove(QStringLiteral("APPIMAGE"));
+  environment.remove(QStringLiteral("APPDIR"));
 #ifdef Q_OS_UNIX
-  QList<QByteArray> bytes{QFile::encodeName(path)};
-  for (const auto &arg : args)
-    bytes << arg.toLocal8Bit();
-  QList<char *> pointers;
-  for (auto &arg : bytes)
-    pointers << arg.data();
-  pointers << nullptr;
-  auto environment = QProcessEnvironment::systemEnvironment();
-  environment.remove(QStringLiteral("APPIMAGE"));
-  environment.remove(QStringLiteral("APPDIR"));
-  QList<QByteArray> envBytes;
-  for (const auto &key : environment.keys())
-    envBytes << (key + QLatin1Char('=') + environment.value(key)).toLocal8Bit();
-  QList<char *> envPointers;
-  for (auto &value : envBytes)
-    envPointers << value.data();
-  envPointers << nullptr;
-  ::execve(bytes.first().constData(), pointers.data(), envPointers.data());
-  return fail(error, QString::fromLocal8Bit(std::strerror(errno)));
-#else
+  if (!fromAppImage) {
+    QList<QByteArray> bytes{QFile::encodeName(path)};
+    for (const auto &arg : args)
+      bytes << arg.toLocal8Bit();
+    QList<char *> pointers;
+    for (auto &arg : bytes)
+      pointers << arg.data();
+    pointers << nullptr;
+    QList<QByteArray> envBytes;
+    for (const auto &key : environment.keys())
+      envBytes << (key + QLatin1Char('=') + environment.value(key)).toLocal8Bit();
+    QList<char *> envPointers;
+    for (auto &value : envBytes)
+      envPointers << value.data();
+    envPointers << nullptr;
+    ::execve(bytes.first().constData(), pointers.data(), envPointers.data());
+    return fail(error, QString::fromLocal8Bit(std::strerror(errno)));
+  }
+#endif
+  // From an AppImage (and on Windows): a detached successor, and the caller
+  // exits, so the downloaded image's mount goes away with this process.
   QProcess process;
-  auto environment = QProcessEnvironment::systemEnvironment();
-  environment.remove(QStringLiteral("APPIMAGE"));
-  environment.remove(QStringLiteral("APPDIR"));
   process.setProcessEnvironment(environment);
   process.setProgram(path);
   process.setArguments(args);
+  // Output still reaches this process's stdout and stderr, as with exec.
+  process.setStandardInputFile(QProcess::nullDevice());
+  process.setProcessChannelMode(QProcess::ForwardedChannels);
+  if (QDir::current().absolutePath().contains(QStringLiteral("/.mount_")))
+    process.setWorkingDirectory(QDir::homePath());
   return process.startDetached() || fail(error, process.errorString());
-#endif
 }
 } // namespace ArcadeLink

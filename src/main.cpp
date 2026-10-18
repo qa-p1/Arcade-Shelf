@@ -19,8 +19,6 @@
 #include <QSvgRenderer>
 #include <QPainter>
 #include <QImageReader>
-#include <QOffscreenSurface>
-#include <QOpenGLContext>
 #include <QSGRendererInterface>
 #include <QElapsedTimer>
 #include <QDir>
@@ -161,6 +159,9 @@ int main(int argc, char **argv)
         if (error.isError()) { qCritical("%s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; } return 0;
     }
     if (headless) { if (parser.isSet("status")) QTextStream(stdout) << "{\"running\":false}\n"; return 0; }
+    // Started at login or by Tools, stderr often goes to /dev/null: keep
+    // Qt's warnings in the log folder the manifest advertises instead.
+    ArcadeLink::captureStderr(root + "/logs", "arcade-shelf");
     auto *gui = qobject_cast<QApplication *>(&app);
     QImageReader::setAllocationLimit(64);
     gui->setQuitOnLastWindowClosed(false);
@@ -171,18 +172,13 @@ int main(int argc, char **argv)
     // A foreground launch still starts integration after creating its first surface.
     if (parser.isSet("background")) controller.start();
 #ifdef Q_OS_LINUX
-    // A host whose GL driver cannot start (missing EGL, mismatched libraries)
-    // would make Qt Quick abort. Probe first and fall back to software
-    // rendering unless the user already chose a backend.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND") && qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")
-        && QGuiApplication::platformName() != QStringLiteral("offscreen")) {
-        QOffscreenSurface surface; surface.create();
-        QOpenGLContext context;
-        if (!context.create() || !context.makeCurrent(&surface)) {
-            qWarning("OpenGL is unavailable; Arcade Shelf is using software rendering.");
-            QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
-        } else context.doneCurrent();
-    }
+    // Shelf draws a small capsule and panel without shader effects. Qt's
+    // software renderer does that without loading the GL driver, which
+    // roughly doubled Shelf's idle memory (127 against 65 MiB PSS). It also
+    // avoids aborting on hosts whose GL driver cannot start. QSG_RHI_BACKEND
+    // or QT_QUICK_BACKEND still choose another backend.
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND") && qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND"))
+        QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 #endif
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("shelf",&controller);
@@ -220,6 +216,8 @@ int main(int argc, char **argv)
         if (trayHost->ready()) tray.setVisible(state == "own");
     });
     if (trayHost->ready()) tray.setVisible(trayHost->state() == "own");
+    // Quitting while Tools hosts the tray must not flash Shelf's own icon.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, trayHost, [trayHost] { trayHost->finish(); });
     // Off the initial QML creation path; background endpoint remains promptly available.
     QTimer::singleShot(0,&controller,[&] {
         if (!parser.isSet("background")) controller.start();

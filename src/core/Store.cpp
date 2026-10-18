@@ -158,7 +158,11 @@ QJsonObject rowItem(QSqlQuery &q, bool preview = false)
                        {QStringLiteral("position"), q.value(9).toInt()},
                        {QStringLiteral("created"), q.value(10).toLongLong()}};
     const QString path = result.value(QStringLiteral("path")).toString();
-    result.insert(QStringLiteral("available"), path.isEmpty() || inspect(path).exists);
+    const auto info = path.isEmpty() ? PathInfo{} : inspect(path);
+    result.insert(QStringLiteral("available"), path.isEmpty() || info.exists);
+    // A file can change after it was added: report its size now, not then.
+    if (info.regular && result.value(QStringLiteral("type")).toString().startsWith(QStringLiteral("file/")))
+        result.insert(QStringLiteral("size"), info.size);
     if (preview) {
         const auto text = result.value(QStringLiteral("text")).toString();
         const auto html = result.value(QStringLiteral("html")).toString();
@@ -457,7 +461,21 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
                 if (bytes.size() > MaxText || !source.atEnd()) { exceeded = true; rejectedLimit = qMin(rejectedLimit,MaxText); skip(c,QStringLiteral("quota")); continue; }
                 QStringDecoder decoder(QStringDecoder::Utf8); text = decoder(bytes);
                 if (decoder.hasError() || !safeString(text)) { skip(c,QStringLiteral("invalid_text")); continue; }
-                if (type == QStringLiteral("text/rich")) html = c.value(QStringLiteral("html")).toString();
+                if (type == QStringLiteral("text/rich") && c.contains(QStringLiteral("htmlPath"))) {
+                    // Large rich text sends its HTML as a second handoff file.
+                    const QString htmlPath = c.value(QStringLiteral("htmlPath")).toString();
+                    const auto htmlInfo = inspect(htmlPath);
+                    if (!safeString(htmlPath) || !QDir::isAbsolutePath(htmlPath) || !htmlInfo.exists || !htmlInfo.regular || !isHandoff(c,htmlPath)) { skip(c,QStringLiteral("invalid_handoff")); continue; }
+                    if (htmlInfo.size > MaxText - bytes.size() || bytes.size() + htmlInfo.size > quota - used) { exceeded = true; if (htmlInfo.size > MaxText - bytes.size()) rejectedLimit = qMin(rejectedLimit,MaxText); skip(c,QStringLiteral("quota")); continue; }
+                    QFile htmlSource(htmlPath);
+                    if (!openRegular(htmlSource)) { skip(c,QStringLiteral("unreadable")); continue; }
+                    const QByteArray htmlBytes = htmlSource.read(MaxText + 1);
+                    if (htmlSource.error() != QFileDevice::NoError || htmlBytes.size() != htmlInfo.size || !htmlSource.atEnd()) { skip(c,QStringLiteral("copy_failed")); continue; }
+                    QStringDecoder htmlDecoder(QStringDecoder::Utf8); html = htmlDecoder(htmlBytes);
+                    if (htmlDecoder.hasError() || !safeString(html)) { skip(c,QStringLiteral("invalid_text")); continue; }
+                } else if (type == QStringLiteral("text/rich")) {
+                    html = c.value(QStringLiteral("html")).toString();
+                }
                 size = bytes.size() + html.toUtf8().size();
             }
         } else {
@@ -715,12 +733,14 @@ QJsonArray Store::exportItems(QStringList ids, QStringList types, bool multiple,
     qint64 fileBytes = 0;
     bool ownedFiles = false;
     qint64 inlineBytes = 0;
+    bool missingOriginal = false;
     if (ids.size() > MaxInputs || (!multiple && ids.size() > 1)) { if (error) *error = failure(QStringLiteral("unsupported_input")); return outputs; }
     QSet<QString> seen;
     for (const auto &id : ids) {
         if (seen.contains(id)) continue;
         seen.insert(id);
-        const auto i = item(id); if (i.isEmpty() || !i.value(QStringLiteral("available")).toBool()) continue;
+        const auto i = item(id); if (i.isEmpty()) continue;
+        if (!i.value(QStringLiteral("available")).toBool()) { missingOriginal = true; continue; }
         const QString storedType = i.value(QStringLiteral("type")).toString();
         // shelf.pick v1 promises text/plain, not text/rich. Preserve its plain
         // fallback; the HTML stays private metadata available to the owner UI.
@@ -790,7 +810,10 @@ QJsonArray Store::exportItems(QStringList ids, QStringList types, bool multiple,
         if (error) *error = failure(QStringLiteral("too_large"),{},ArcadeLink::MaxLineBytes);
         return {};
     }
-    if (outputs.isEmpty() && error) *error = failure(QStringLiteral("unsupported_input"));
+    // Only missing originals is not the wrong kind of content.
+    if (outputs.isEmpty() && error)
+        *error = missingOriginal ? failure(QStringLiteral("unavailable"),QStringLiteral("the original is no longer available"))
+                                 : failure(QStringLiteral("unsupported_input"));
     return outputs;
 }
 

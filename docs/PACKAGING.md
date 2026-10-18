@@ -18,8 +18,8 @@ Install `patchelf`, `curl` and `desktop-file-utils` (provides
 dependencies:
 
 ```sh
-python3 scripts/package-linux.py --build build --qt-prefix /path/to/Qt/6.8.3/gcc_64 --version 0.2.0 --output dist
-./dist/Arcade-Shelf-0.2.0-x86_64.AppImage
+python3 scripts/package-linux.py --build build --qt-prefix /path/to/Qt/6.8.3/gcc_64 --version 0.3.0 --output dist
+./dist/Arcade-Shelf-0.3.0-x86_64.AppImage
 ```
 
 The script downloads appimagetool once (a pinned release, SHA-256 checked) into
@@ -32,7 +32,9 @@ Host-integration libraries are never bundled: the C++ runtime (`libstdc++`,
 xkbcommon and D-Bus come from the OS, following the AppImage project's exclude
 list. 0.1.0 bundled Ubuntu copies of these; a host GL driver then failed to
 load next to the older `libstdc++`/`libwayland-client` and Qt Quick aborted.
-Shelf also probes OpenGL at startup and falls back to software rendering.
+On Linux, Shelf renders with Qt's software renderer, so it never loads the host
+GL driver: that halves its idle memory (65 instead of 127 MiB PSS) and avoids
+aborting on a broken driver. Set `QSG_RHI_BACKEND=opengl` to render on the GPU.
 
 Inside an AppImage, Arcade Link registers the `.AppImage` file itself (from
 `$APPIMAGE`), so peers can launch a stopped Shelf after the mount is gone.
@@ -54,7 +56,7 @@ requiring a system Qt installation, with no claim of runtime bundling.
 Windows: install NSIS and run from PowerShell:
 
 ```powershell
-scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version 0.2.0 -Output dist
+scripts/package-windows.ps1 -Build build -QtPrefix $env:QT_ROOT_DIR -Version 0.3.0 -Output dist
 ```
 
 This runs `windeployqt`, smokes the staged executable, and builds a per-user
@@ -66,7 +68,7 @@ program files, and preserves collections. CPack ZIP is a developer artifact.
 macOS:
 
 ```sh
-QT_ROOT_DIR=/path/to/Qt/6.8.3/macos scripts/package-macos.sh build 0.2.0 dist
+QT_ROOT_DIR=/path/to/Qt/6.8.3/macos scripts/package-macos.sh build 0.3.0 dist
 ```
 
 This deploys Qt into `Arcade Shelf.app` and creates a DMG. The app is copied to
@@ -77,8 +79,8 @@ quarantine as an installation workaround.
 Create Tools-compatible metadata once actual package files exist:
 
 ```sh
-python3 scripts/arcade-release.py --id arcade.shelf --version 0.2.0 --channel stable \
-  --notes https://github.com/qa-p1/Arcade-Shelf/blob/v0.2.0/CHANGELOG.md dist
+python3 scripts/arcade-release.py --id arcade.shelf --version 0.3.0 --channel stable \
+  --notes https://github.com/qa-p1/Arcade-Shelf/blob/v0.3.0/CHANGELOG.md dist
 ```
 
 The generator is unmodified Arcade Link `v0.3.0` code and writes

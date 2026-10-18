@@ -29,7 +29,7 @@ Download the file for your system from [Releases](https://github.com/qa-p1/Arcad
 | Windows x64 | `Arcade-Shelf-<version>-windows-x64.exe` | Run the per-user installer; no admin needed. Adds a Start menu entry, an optional desktop shortcut and start at login, and puts `arcade-shelf` on PATH. |
 | macOS (universal) | `Arcade-Shelf-<version>-macos-universal.dmg` | Open the dmg and drag Arcade Shelf to Applications. Run from the dmg or Downloads, it offers to move itself to Applications. |
 
-- Scripted install: `arcade-shelf --install --silent` (add `--no-launch`, or `--channel stable|nightly`). `--repair` repairs the integration; `--integration-status` prints it as JSON.
+- Scripted install: `arcade-shelf --install --silent` (add `--no-launch`, or `--channel stable|nightly`). `--repair` repairs the integration; `--integration-status` prints it as JSON. A silent install removes the AppImage it was started from only when that file is in your Downloads folder; add `--keep-download` to keep it there too. Files elsewhere are never removed.
 - If `~/.local/bin` is not on your PATH, Shelf shows the exact line to add for your shell.
 - Builds are unsigned. On Windows, SmartScreen may warn: choose **More info → Run anyway**. On macOS the app is not notarized: Control-click or right-click it and choose **Open** the first time.
 - If FUSE is missing on Linux, run the AppImage with `--appimage-extract-and-run`.
@@ -102,7 +102,7 @@ arcade-shelf --quit
 
 A second launch forwards to the resident instance. `--background` starts the service without showing a window. `--status` prints JSON without opening a window. `--version` and `--arcade-manifest` have no registration or filesystem side effects. Shelf deliberately does not implement one-shot `--arcade-invoke`.
 
-Packaged AppImages and macOS bundles also accept `--install [--silent] [--no-launch] [--channel stable|nightly]`, `--uninstall [--silent] [--remove-data]`, `--repair`, and `--integration-status`. Development builds never install themselves. Windows uses its per-user installer and receipt-recorded uninstaller.
+Packaged AppImages and macOS bundles also accept `--install [--silent] [--no-launch] [--keep-download] [--channel stable|nightly]`, `--uninstall [--silent] [--remove-data]`, `--repair`, and `--integration-status`. Development builds never install themselves. Windows uses its per-user installer and receipt-recorded uninstaller.
 
 ## Settings and data
 

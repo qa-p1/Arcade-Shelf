@@ -41,6 +41,9 @@ public:
   void start(bool linkEnabled = true, bool hasTray = true);
   void setLinkEnabled(bool enabled);
   void stop();                              // asynchronous; no thread join
+  // The app is quitting: stop without restoring "own", so a hosted app does
+  // not flash its own icon on the way out.
+  void finish();
   QString state() const { return m_state; } // "own", "hosted", "none"
   bool ready() const { return m_ready; }
 signals:
@@ -52,6 +55,7 @@ signals:
 private:
   friend class TrayHostWorker;
   void publish(const QString &state, bool ready, quint64 generation);
+  void shutdownWorker(bool restoreOwn);
   Locations m_locations;
   QString m_appId, m_state = QStringLiteral("none");
   bool m_ready = false;

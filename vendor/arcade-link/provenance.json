@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-link",
-  "tag": "v0.3.0",
-  "commit": "33650a87b6999fbd553ac678cc7bde7a308cb852",
+  "tag": "unreleased (after v0.3.0)",
+  "commit": "2fc7c91b7578ca424264627b82174bedc176e511",
   "license": "MIT OR Apache-2.0",
   "files": [
     {
@@ -12,12 +12,12 @@
     {
       "source": "SPEC.md",
       "destination": "vendor/arcade-link/SPEC.md",
-      "sha256": "03ad0ccc9d124d7c0f389ef418e42ff69fb3a8a99d005827781950c2b61f789d"
+      "sha256": "99573ce24c325bc40c20d2ca12a66fb6902b3e4a8a94fde093aa6dbe8a7276da"
     },
     {
       "source": "assets/strings/install.json",
       "destination": "vendor/arcade-link/assets/strings/install.json",
-      "sha256": "2943f9f8459a0c2299bf7650a4beeb812b88d5097624483fdc252dc9d4342829"
+      "sha256": "0c829174d2dd5e15930cd2c4c5cb791ab6f744a3dab13ed557161aabcacf5fce"
     },
     {
       "source": "fixtures/box.json",
@@ -77,12 +77,12 @@
     {
       "source": "qt/ArcadeInstall.cpp",
       "destination": "vendor/arcade-link/qt/ArcadeInstall.cpp",
-      "sha256": "e9f87ad4f36924238a30d331ecbf17fe1ea345f96c8572af8391d4ff51c552f9"
+      "sha256": "61a1718132968bde3caeb530612277836b7f3da74866223db0dcda186998647f"
     },
     {
       "source": "qt/ArcadeInstall.h",
       "destination": "vendor/arcade-link/qt/ArcadeInstall.h",
-      "sha256": "f03a54bf65178c17e942406dcf4d7928f286e47c318af8dba159d5f0c901cf0a"
+      "sha256": "0b6e8358a7f7fd52ca3125a2f270fdf1008d165aa838a0b9346a6bf24279a283"
     },
     {
       "source": "qt/ArcadeInstallPlatform.cpp",
@@ -92,12 +92,12 @@
     {
       "source": "qt/ArcadeLink.cpp",
       "destination": "vendor/arcade-link/qt/ArcadeLink.cpp",
-      "sha256": "63a30e3bbdf047e23f415eadd14d14edda567ff4d3c7a0b087eda2917445805c"
+      "sha256": "63ca857f5200b238a23e734e947b254e260d93e5b734686445ba543fcf362c24"
     },
     {
       "source": "qt/ArcadeLink.h",
       "destination": "vendor/arcade-link/qt/ArcadeLink.h",
-      "sha256": "0f2c67a15d1f52d9f56c49f7ce44a954d979a8102dd519b82ea179922d8909be"
+      "sha256": "b273e47f1f6231731cb3185054c9fa8d1c03fc3738e5a0ddb1d11ed557114cd6"
     },
     {
       "source": "qt/ArcadeShortcuts.cpp",
@@ -112,17 +112,17 @@
     {
       "source": "qt/ArcadeTrayHost.cpp",
       "destination": "vendor/arcade-link/qt/ArcadeTrayHost.cpp",
-      "sha256": "af4d1a6050d03be50d7b0b21b4ca7e767bea2b44c72f05531823c48f1c6d8002"
+      "sha256": "69496e9db6b70e33b38cd8d95f0fd2094893a37bb879e5bfa02806fbea1db799"
     },
     {
       "source": "qt/ArcadeTrayHost.h",
       "destination": "vendor/arcade-link/qt/ArcadeTrayHost.h",
-      "sha256": "9faaa170dbaa05bbc60cae27db694606ed817ccb96e47bd89e00a405196d94e2"
+      "sha256": "acbe58b459328f12ebd46337fa22960c438d1600a17c53c71206fdfc8864c0b8"
     },
     {
       "source": "qt/CMakeLists.txt",
       "destination": "vendor/arcade-link/qt/CMakeLists.txt",
-      "sha256": "817031e4fe4f9d888af85bc7dced6d53a43600377114f65b73ee42813f1427ab"
+      "sha256": "42ba16712e7ee23711e208ad01b8be46408cf4445afa3b0d6c5f11ea189cdc34"
     },
     {
       "source": "qt/README.md",
@@ -132,12 +132,12 @@
     {
       "source": "qt/install-strings.inc",
       "destination": "vendor/arcade-link/qt/install-strings.inc",
-      "sha256": "b5387288b21c91d38c96d49e9cce0c86489cd711e2b427c04234ea00a22f4f68"
+      "sha256": "0c447be04c977da0fa2a335408753ea00e028cf66ff1765190238f39826e123c"
     },
     {
       "source": "qt/tests/tst_Install.cpp",
       "destination": "vendor/arcade-link/qt/tests/tst_Install.cpp",
-      "sha256": "4aaaf9c0cd74ed6ff31a55b09ca8f1be1c9772849ed5a40c577ef09715ffe248"
+      "sha256": "54cac8b71af89a9ed273564f49c2d90115898425f2a1f8333ad77e7114b9ede5"
     },
     {
       "source": "qt/tests/tst_Methods.cpp",

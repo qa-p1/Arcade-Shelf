@@ -238,6 +238,7 @@ void Service::invoke(const QJsonObject &req, const ArcadeLink::Responder &r)
         }
         m_multiple = options["multiple"].toBool(false);
         m_picker = r; r.startJob(); m_pickTimer.start();
+        refresh(); // current availability: a missing original is not offered
         emit pickRequested(m_multiple, m_pickTypes);
     } else r.fail(ArcadeLink::Error::make("unsupported_input", "Unknown Shelf action"));
 }
@@ -318,6 +319,7 @@ void Service::completePick(QStringList ids)
     if (!m_picker) return;
     ArcadeLink::Error error;
     auto outputs = m_store->exportItems(ids, m_pickTypes, m_multiple, &error);
+    if (error.code == "unavailable") { emit feedback("The original is unavailable.", false); return; }
     if (error.isError()) { emit feedback(error.userMessage("Arcade Shelf"), false); return; }
     if (outputs.isEmpty()) { emit feedback("Select an item to continue.", false); return; }
     m_picker->finish({{"outputs", outputs}, {"message", QString("Picked %1 item%2").arg(ids.size()).arg(ids.size() == 1 ? "" : "s")}});

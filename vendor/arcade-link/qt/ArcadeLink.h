@@ -63,6 +63,17 @@ struct Locations {
 QString currentPlatform();                     // "linux", "windows", "macos"
 bool ensurePrivateDir(const QString &dir);     // mkpath + 0700 on Unix
 
+// ---- Logs (Rust: logs::capture_stderr) --------------------------------------
+// Started from the launcher, at login or by Tools, an app's stderr (and so
+// Qt's warnings) often goes to /dev/null, or to NUL or nowhere on Windows.
+// captureStderr sends it to
+// <dir>/<name>.log instead, keeping one older <name>.log.1 once the log passes
+// 1 MiB. A terminal, file, pipe or the journal keeps receiving it. Returns the
+// log's path, or an empty string when stderr was left alone or on failure.
+bool stderrGoesNowhere();
+QString captureStderr(const QString &dir, const QString &name);
+QString captureStderrTo(const QString &dir, const QString &name); // no check
+
 // ---- Errors (SPEC §6) ------------------------------------------------------
 
 struct Error {

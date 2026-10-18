@@ -21,6 +21,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
+#include <windows.h>
+#endif
 
 namespace ArcadeLink {
 
@@ -135,6 +145,57 @@ bool ensurePrivateDir(const QString &dir)
     if ((st.st_mode & 0777) != 0700 && chmod(path.constData(), 0700) != 0) return false;
 #endif
     return true;
+}
+
+// ---- Logs ------------------------------------------------------------------
+
+bool stderrGoesNowhere()
+{
+#if defined(Q_OS_UNIX)
+    struct stat err {}, null {};
+    if (fstat(2, &err) != 0) return true; // closed
+    return S_ISCHR(err.st_mode) && stat("/dev/null", &null) == 0 && null.st_rdev == err.st_rdev;
+#elif defined(Q_OS_WIN)
+    const HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) return true;
+    // NUL is a character device that, unlike a console, has no console mode.
+    DWORD mode = 0;
+    return GetFileType(handle) == FILE_TYPE_CHAR && !GetConsoleMode(handle, &mode);
+#else
+    return false;
+#endif
+}
+
+QString captureStderr(const QString &dir, const QString &name)
+{
+    return stderrGoesNowhere() ? captureStderrTo(dir, name) : QString();
+}
+
+QString captureStderrTo(const QString &dir, const QString &name)
+{
+    if (!QDir().mkpath(dir)) return {};
+    const QString path = QDir(dir).filePath(name + QStringLiteral(".log"));
+    if (QFileInfo(path).size() > 1024 * 1024) {
+        const QString older = path + QStringLiteral(".1");
+        QFile::remove(older);
+        QFile::rename(path, older);
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) return {};
+    file.write(QStringLiteral("--- %1 started (pid %2) ---\n").arg(name).arg(QCoreApplication::applicationPid()).toUtf8());
+    file.flush();
+#if defined(Q_OS_UNIX)
+    if (dup2(file.handle(), 2) < 0) return {};
+#elif defined(Q_OS_WIN)
+    // The CRT's stderr and the process handle, both onto the log; the
+    // duplicated descriptor must outlive the process's use of stderr.
+    const int fd = _dup(file.handle());
+    if (fd < 0 || _dup2(fd, 2) != 0) return {};
+    SetStdHandle(STD_ERROR_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(2)));
+#else
+    return {};
+#endif
+    return path;
 }
 
 // ---- Errors ----------------------------------------------------------------
@@ -621,7 +682,9 @@ QString socketAddress(const Locations &locations, const QString &appId)
     const QString path = QDir(locations.runtime).filePath(appId + QStringLiteral(".sock"));
     if (path.toUtf8().size() <= 100) return path;
     const QString dir = QStringLiteral("/tmp/arcade-%1").arg(geteuid());
-    ensurePrivateDir(dir);
+    // Another local user may have created it first: never listen in a folder
+    // that is not ours and private (same rule as the Rust transport).
+    if (!ensurePrivateDir(dir)) return QString();
     return QDir(dir).filePath(shortHash(locations.runtime + QLatin1Char('|') + appId) + QStringLiteral(".sock"));
 #endif
 }
@@ -744,6 +807,10 @@ bool Server::start(QString *error)
         }
     }
     const QString address = socketAddress(m_locations, m_appId);
+    if (address.isEmpty()) {
+        if (error) *error = QStringLiteral("the socket folder in /tmp is not private to this user");
+        return false;
+    }
     QLocalServer::removeServer(address); // a dead process may leave its socket behind
     if (!m_server.listen(address)) {
         if (error) *error = m_server.errorString();

@@ -331,12 +331,15 @@ void ArcadeTrayHost::setLinkEnabled(bool enabled) {
         },
         Qt::QueuedConnection);
 }
-void ArcadeTrayHost::stop() {
+void ArcadeTrayHost::finish() { shutdownWorker(false); }
+void ArcadeTrayHost::stop() { shutdownWorker(true); }
+void ArcadeTrayHost::shutdownWorker(bool restoreOwn) {
   if (!m_worker)
     return;
   m_startupGate.stop();
-  publish(m_hasTray ? QStringLiteral("own") : QStringLiteral("none"), true,
-          m_generation);
+  if (restoreOwn)
+    publish(m_hasTray ? QStringLiteral("own") : QStringLiteral("none"), true,
+            m_generation);
   QMetaObject::invokeMethod(
       m_worker,
       [worker = m_worker] {
