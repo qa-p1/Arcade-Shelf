@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-10-18
+
+- Large rich text added from Arcade Wheel keeps its formatting, and backups that
+  include staged rich text work.
+- The picker hides items whose original file is gone and says so; file items
+  show their current size.
+- Lower idle memory on Linux: Shelf renders with Qt's software renderer (about
+  65 MiB instead of 127 MiB, identical output). Set `QSG_RHI_BACKEND=opengl` to
+  switch back.
+- Logs are kept when Shelf starts without a terminal.
+- Vendored Arcade Link Qt client re-vendored at commit `2fc7c91`.
+
 ## 0.2.0 — 2026-10-14
 
 - Vendored Arcade Link v0.3.0 Qt transport, installer, tray watcher, shortcut
