@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1 — 2026-10-18
+
+- Updating or installing from your Downloads folder, starting other Arcade apps
+  no longer leave the old AppImage mounted and its runtime (about 20 MB)
+  running. A program the app started inherited an open handle on its AppImage
+  mount and kept it busy.
+- Preferences shows whether Shelf really starts at login (for example after
+  installing it from Arcade Tools), not only what was last set there.
+- A file item's size updates when you come back to the open shelf, not only when
+  it opens.
+
 ## 0.3.0 — 2026-10-18
 
 - Large rich text added from Arcade Wheel keeps its formatting, and backups that

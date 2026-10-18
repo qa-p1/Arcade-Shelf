@@ -77,6 +77,7 @@ ArcadeApp::InstallSpec installSpec()
 
 int main(int argc, char **argv)
 {
+    ArcadeLink::onStartup();
     QStringList arguments;
     for (int i = 1; i < argc; ++i) arguments << QString::fromLocal8Bit(argv[i]);
     QCoreApplication::setOrganizationName("qa-p1");

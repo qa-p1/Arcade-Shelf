@@ -171,6 +171,7 @@ QVariantMap Controller::preferences() const
     preferences["runtimePath"] = locations.runtime;
     preferences["handoffPath"] = locations.handoff;
     preferences["version"] = Version;
+    preferences["startAtLogin"] = m_startAtLogin;
     preferences["license"] = "MIT · Qt under LGPLv3 (dynamic linking)";
     return preferences;
 }
@@ -180,6 +181,9 @@ bool Controller::eventFilter(QObject *watched, QEvent *event)
     // Hover/drag edge reveals stay noninteractive. A deliberate press promotes
     // the panel before normal QML dispatch, preserving the same click's action.
     if (event->type() == QEvent::MouseButtonPress && m_expanded && !m_focusPanel) show();
+    // A file can grow, shrink or go away while the panel stays open: coming
+    // back to it shows its size and availability now, as opening it does.
+    if (event->type() == QEvent::WindowActivate && m_expanded) QMetaObject::invokeMethod(m_service, &Service::refresh);
     if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
         auto *drag = static_cast<QDragMoveEvent *>(event);
         const bool image = drag->mimeData()->hasImage() && !drag->mimeData()->hasUrls();
@@ -287,7 +291,7 @@ void Controller::setFilter(QString value) { if (m_filter == value) return; m_fil
 void Controller::setTheme(QString value) { if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value); }
 void Controller::setShortcut(QString value) { if (value.size() > 100) return; saveSetting("shortcut", value); if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(value, ArcadeLink::executablePath()); else feedback(shortcutWarning()); }
 void Controller::setExpanded(bool value) { if (value) show(); else collapse(); }
-void Controller::setSettingsOpen(bool value) { m_settingsOpen = value; if (value) show(); emit changed(); }
+void Controller::setSettingsOpen(bool value) { m_settingsOpen = value; if (value) { refreshStartAtLogin(); show(); } emit changed(); }
 void Controller::setLinkEnabled(bool value) { saveSetting("linkEnabled", value); m_peers.setEnabled(value); }
 void Controller::setAlwaysOnTop(bool value) { saveSetting("alwaysOnTop", value); if (m_window) m_desktop.setAlwaysOnTop(m_window, value); }
 void Controller::setReducedMotion(bool value) { saveSetting("reducedMotion", value); }
@@ -509,7 +513,7 @@ void Controller::runSource(QString app, QString action)
 void Controller::cancelJob() { m_peers.cancel(); }
 void Controller::confirmPick() { auto ids = selectedIds(); QMetaObject::invokeMethod(m_service,[this,ids] { m_service->completePick(ids); }); }
 void Controller::cancelPick() { QMetaObject::invokeMethod(m_service,&Service::cancelPick); }
-void Controller::showSettings() { m_settingsOpen = true; show(); }
+void Controller::showSettings() { m_settingsOpen = true; refreshStartAtLogin(); show(); emit changed(); }
 void Controller::newCollectionFromTray() { show(); emit newCollectionRequested(); }
 void Controller::restart() { QMetaObject::invokeMethod(m_service, &Service::restartResident); }
 void Controller::exportPortableSettings()
@@ -595,5 +599,8 @@ void Controller::getPeer(QString id) {
 }
 void Controller::setRetention(int days) { if (days >= 0 && days <= 3650) saveSetting("retentionDays",days); }
 void Controller::setQuota(int mib) { if (mib >= 1 && mib <= 4096) saveSetting("quotaBytes",qint64(mib)*1024*1024); }
-void Controller::setStartAtLogin(bool value) { if (m_desktop.setStartAtLogin(value,ArcadeLink::executablePath())) saveSetting("startAtLogin",value); else feedback(m_desktop.lastError()); }
+void Controller::setStartAtLogin(bool value) { if (m_desktop.setStartAtLogin(value,ArcadeLink::executablePath())) { m_startAtLogin = value; saveSetting("startAtLogin",value); emit changed(); } else { refreshStartAtLogin(); feedback(m_desktop.lastError()); } }
+// The login entry, not the saved preference: Tools and the installer set it
+// without touching Shelf's settings, and the desktop can switch it off.
+void Controller::refreshStartAtLogin() { m_startAtLogin = m_desktop.startAtLogin(); }
 }

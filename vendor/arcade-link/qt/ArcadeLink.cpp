@@ -18,6 +18,7 @@
 #include <cmath>
 
 #ifdef Q_OS_UNIX
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -145,6 +146,44 @@ bool ensurePrivateDir(const QString &dir)
     if ((st.st_mode & 0777) != 0700 && chmod(path.constData(), 0700) != 0) return false;
 #endif
     return true;
+}
+
+// ---- AppImage start --------------------------------------------------------
+
+static bool inAppImageMount(QString entry)
+{
+    while (entry.endsWith(QLatin1Char('/'))) entry.chop(1);
+    QString dir = qEnvironmentVariable("APPDIR");
+    while (dir.endsWith(QLatin1Char('/'))) dir.chop(1);
+    if (!dir.isEmpty() && (entry == dir || entry.startsWith(dir + QLatin1Char('/')))) return true;
+    for (const auto &part : entry.split(QLatin1Char('/')))
+        if (part.startsWith(QStringLiteral(".mount_"))) return true;
+    return false;
+}
+
+void releaseMountHandles()
+{
+#ifdef Q_OS_LINUX
+    const QDir fds(QStringLiteral("/proc/self/fd"));
+    for (const auto &name : fds.entryList(QDir::AllEntries | QDir::System | QDir::NoDotAndDotDot)) {
+        bool ok = false;
+        const int fd = name.toInt(&ok);
+        if (!ok || fd <= 2) continue;
+        char target[4096];
+        const QByteArray link = QFile::encodeName(fds.filePath(name));
+        const ssize_t length = readlink(link.constData(), target, sizeof target);
+        if (length <= 0 || !inAppImageMount(QFile::decodeName(QByteArray(target, int(length))))) continue;
+        const int flags = fcntl(fd, F_GETFD);
+        if (flags >= 0 && !(flags & FD_CLOEXEC)) fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    }
+#endif
+}
+
+void onStartup()
+{
+    releaseMountHandles();
+    const QString owd = qEnvironmentVariable("OWD");
+    if (!owd.isEmpty() && inAppImageMount(QDir::currentPath())) QDir::setCurrent(owd);
 }
 
 // ---- Logs ------------------------------------------------------------------
@@ -1286,6 +1325,7 @@ static bool runOneShot(const QJsonObject &manifest, const QJsonObject &request, 
 {
     QStringList args;
     for (const auto &a : manifest.value(QStringLiteral("launch")).toObject().value(QStringLiteral("invoke")).toArray()) args << a.toString();
+    releaseMountHandles();
     QProcess p;
     p.setProcessChannelMode(QProcess::SeparateChannels);
     p.setStandardErrorFile(QProcess::nullDevice());
@@ -1367,6 +1407,7 @@ bool invokeAction(const Locations &locations, const QString &myId, const QString
     if (onLaunching) onLaunching();
     QStringList args;
     for (const auto &a : manifest.value(QStringLiteral("launch")).toObject().value(QStringLiteral("background")).toArray()) args << a.toString();
+    releaseMountHandles();
     if (!QProcess::startDetached(exe, args)) {
         if (error) *error = Error::make(QStringLiteral("launch_failed"), QStringLiteral("could not start %1").arg(name));
         return false;

@@ -168,6 +168,7 @@ private:
     QJsonObject item(QString id) const;
     void peerCall(QString app, QString action, QJsonArray inputs, QJsonObject options);
     bool eligible(const QJsonObject &item) const;
+    void refreshStartAtLogin();
     QThread m_thread;
     Service *m_service;
     PeerHub m_peers;
@@ -188,6 +189,7 @@ private:
     QString m_appliedShortcut;
     QSet<QString> m_selected;
     QStringList m_pickTypes;
+    bool m_startAtLogin = false;
     bool m_expanded = false, m_focusPanel = false, m_visible = true, m_settingsOpen = false, m_picking = false, m_pickMultiple = false, m_undoAvailable = false;
     bool m_nativeDragHover = false;
     int m_selectionRevision = 0;

@@ -1778,6 +1778,7 @@ bool ArcadeInstall::reexec(const QString &path, const QStringList &args,
                            QString *error) {
   if (!nativeAbsolute(path, error))
     return false;
+  releaseMountHandles();
   const bool fromAppImage = qEnvironmentVariableIsSet("APPIMAGE");
   auto environment = childEnvironment(QProcessEnvironment::systemEnvironment());
   environment.remove(QStringLiteral("APPIMAGE"));
