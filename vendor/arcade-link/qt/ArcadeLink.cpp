@@ -188,14 +188,19 @@ void releaseMountHandles()
     setCloseOnExec(inAppImageMount);
 }
 
-void releaseInheritedHandles()
+void detachFromImage(QProcess &process)
 {
-    setCloseOnExec([](const QString &) { return true; });
+#ifdef Q_OS_LINUX
+    // Closes every descriptor above stdio in the child before exec.
+    process.setUnixProcessParameters(QProcess::UnixProcessFlag::CloseFileDescriptors);
+#else
+    Q_UNUSED(process)
+#endif
 }
 
 void onStartup()
 {
-    releaseInheritedHandles();
+    releaseMountHandles();
     const QString owd = qEnvironmentVariable("OWD");
     if (!owd.isEmpty() && inAppImageMount(QDir::currentPath())) QDir::setCurrent(owd);
 }
@@ -1343,6 +1348,7 @@ static bool runOneShot(const QJsonObject &manifest, const QJsonObject &request, 
     QProcess p;
     p.setProcessChannelMode(QProcess::SeparateChannels);
     p.setStandardErrorFile(QProcess::nullDevice());
+    detachFromImage(p);
     p.start(manifest.value(QStringLiteral("executable")).toString(), args);
     if (!p.waitForStarted(LaunchTimeoutMs)) {
         if (error) *error = Error::make(QStringLiteral("launch_failed"), p.errorString());
@@ -1422,7 +1428,11 @@ bool invokeAction(const Locations &locations, const QString &myId, const QString
     QStringList args;
     for (const auto &a : manifest.value(QStringLiteral("launch")).toObject().value(QStringLiteral("background")).toArray()) args << a.toString();
     releaseMountHandles();
-    if (!QProcess::startDetached(exe, args)) {
+    QProcess launch;
+    launch.setProgram(exe);
+    launch.setArguments(args);
+    detachFromImage(launch);
+    if (!launch.startDetached()) {
         if (error) *error = Error::make(QStringLiteral("launch_failed"), QStringLiteral("could not start %1").arg(name));
         return false;
     }
