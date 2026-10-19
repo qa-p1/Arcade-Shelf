@@ -16,6 +16,7 @@
 #include <QThread>
 #include <QTimer>
 #include <cmath>
+#include <functional>
 
 #ifdef Q_OS_UNIX
 #include <fcntl.h>
@@ -161,7 +162,8 @@ static bool inAppImageMount(QString entry)
     return false;
 }
 
-void releaseMountHandles()
+// Sets FD_CLOEXEC on each descriptor above stdio whose target `select`s.
+static void setCloseOnExec(const std::function<bool(const QString &)> &select)
 {
 #ifdef Q_OS_LINUX
     const QDir fds(QStringLiteral("/proc/self/fd"));
@@ -172,16 +174,28 @@ void releaseMountHandles()
         char target[4096];
         const QByteArray link = QFile::encodeName(fds.filePath(name));
         const ssize_t length = readlink(link.constData(), target, sizeof target);
-        if (length <= 0 || !inAppImageMount(QFile::decodeName(QByteArray(target, int(length))))) continue;
+        if (length <= 0 || !select(QFile::decodeName(QByteArray(target, int(length))))) continue;
         const int flags = fcntl(fd, F_GETFD);
         if (flags >= 0 && !(flags & FD_CLOEXEC)) fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
     }
+#else
+    Q_UNUSED(select)
 #endif
+}
+
+void releaseMountHandles()
+{
+    setCloseOnExec(inAppImageMount);
+}
+
+void releaseInheritedHandles()
+{
+    setCloseOnExec([](const QString &) { return true; });
 }
 
 void onStartup()
 {
-    releaseMountHandles();
+    releaseInheritedHandles();
     const QString owd = qEnvironmentVariable("OWD");
     if (!owd.isEmpty() && inAppImageMount(QDir::currentPath())) QDir::setCurrent(owd);
 }

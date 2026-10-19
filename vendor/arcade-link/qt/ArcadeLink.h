@@ -64,15 +64,18 @@ QString currentPlatform();                     // "linux", "windows", "macos"
 bool ensurePrivateDir(const QString &dir);     // mkpath + 0700 on Unix
 
 // ---- AppImage start (Rust: childenv::on_startup) ---------------------------
-// The type-2 AppImage runtime gives the app an open handle on its mount (fd
-// 1023) that isn't close-on-exec, so every program the app starts inherited
-// it, and one that outlives the app (the installed copy, another Arcade app)
-// kept the old mount and runtime alive. releaseMountHandles makes handles on
-// $APPDIR or any .mount_* directory close-on-exec; the launch helpers call it.
-// onStartup does that and also leaves the $APPDIR/usr working directory that
-// linuxdeploy's AppRun picks for $OWD, where the user started the app, so
-// relative command-line paths work. Call onStartup first thing in main().
+// The type-2 AppImage runtime leaves the app two inherited descriptors that
+// aren't close-on-exec: a handle on its mount (fd 1023) and the read end of
+// its keep-alive pipe; it unmounts and exits only once every holder of that
+// pipe is gone. Every program the app started inherited both, so one that
+// outlived the app (the installed copy, another Arcade app) kept the old
+// runtime and mount alive. onStartup makes every inherited descriptor above
+// stdio close-on-exec (releaseInheritedHandles) and leaves the $APPDIR/usr
+// working directory linuxdeploy's AppRun picks for $OWD, where the user
+// started the app, so relative command-line paths work. Call it first thing
+// in main(). releaseMountHandles does the mount part again before each launch.
 void onStartup();
+void releaseInheritedHandles();
 void releaseMountHandles();
 
 // ---- Logs (Rust: logs::capture_stderr) --------------------------------------
