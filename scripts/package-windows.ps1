@@ -1,4 +1,4 @@
-param([string]$Build = "build", [string]$QtPrefix = $env:QT_ROOT_DIR, [string]$Version = "0.3.2", [string]$Output = "dist")
+param([string]$Build = "build", [string]$QtPrefix = $env:QT_ROOT_DIR, [string]$Version = "0.3.3", [string]$Output = "dist")
 $ErrorActionPreference = "Stop"
 $Source = Split-Path -Parent $PSScriptRoot
 $Stage = Join-Path (Resolve-Path $Build) "package-windows"

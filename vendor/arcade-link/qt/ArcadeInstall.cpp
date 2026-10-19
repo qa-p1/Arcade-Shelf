@@ -1809,6 +1809,7 @@ bool ArcadeInstall::reexec(const QString &path, const QStringList &args,
   process.setProcessEnvironment(environment);
   process.setProgram(path);
   process.setArguments(args);
+  detachFromImage(process);
   // Output still reaches this process's stdout and stderr, as with exec.
   process.setStandardInputFile(QProcess::nullDevice());
   process.setProcessChannelMode(QProcess::ForwardedChannels);

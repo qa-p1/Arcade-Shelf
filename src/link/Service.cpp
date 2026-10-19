@@ -119,7 +119,12 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
     server.restartReady = [this](const QString &mode) {
         if (busy() && mode != "force") return ArcadeLink::Error::make("busy", "Wait for the active Shelf action before restarting.");
         const QStringList args{m_background ? "--background" : "--show", "--wait-for-exit", QString::number(QCoreApplication::applicationPid())};
-        if (!QProcess::startDetached(ArcadeLink::executablePath(), args))
+        // The replacement runs from a new mount; it mustn't keep this one alive.
+        QProcess replacement;
+        replacement.setProgram(ArcadeLink::executablePath());
+        replacement.setArguments(args);
+        ArcadeLink::detachFromImage(replacement);
+        if (!replacement.startDetached())
             return ArcadeLink::Error::make("internal", "Could not start the replacement Shelf process.");
         return ArcadeLink::Error{};
     };

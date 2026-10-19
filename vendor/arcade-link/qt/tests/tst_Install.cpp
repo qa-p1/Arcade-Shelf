@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QtTest>
+#include <QThread>
 #ifdef Q_OS_WIN
 #define NOMINMAX
 #include <windows.h>
@@ -64,21 +65,40 @@ private slots:
     QVERIFY2(!seen.contains(mount), qPrintable(seen));
     QVERIFY2(seen.contains(other), qPrintable(seen));
   }
-  void childrenDoNotInheritTheKeepAlivePipe() {
+  void onlyOtherProgramsLoseTheKeepAlivePipe() {
     // What the AppImage runtime does: the app inherits the read end of a pipe
     // whose last holder exiting lets the runtime unmount.
     int ends[2];
     QCOMPARE(::pipe(ends), 0);
     char target[256] = {};
     QVERIFY(readlink(QByteArray("/proc/self/fd/" + QByteArray::number(ends[0])).constData(), target, sizeof target - 1) > 0);
-    ArcadeLink::releaseInheritedHandles();
-    QProcess shell;
-    shell.start(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral(R"(for f in /proc/$$/fd/*; do readlink "$f"; done)")});
-    QVERIFY(shell.waitForFinished());
-    const QString seen = QString::fromLocal8Bit(shell.readAllStandardOutput());
+    const auto held = [&](bool detach) {
+      QProcess shell;
+      if (detach) ArcadeLink::detachFromImage(shell);
+      shell.start(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral(R"(for f in /proc/$$/fd/*; do readlink "$f"; done)")});
+      shell.waitForFinished();
+      return QString::fromLocal8Bit(shell.readAllStandardOutput()).contains(QString::fromLocal8Bit(target));
+    };
+    // The launch helpers and reexec use startDetached.
+    const auto heldDetached = [&]() {
+      QTemporaryDir dir;
+      const QString out = dir.filePath(QStringLiteral("fds"));
+      QProcess shell;
+      ArcadeLink::detachFromImage(shell);
+      shell.setProgram(QStringLiteral("sh"));
+      shell.setArguments({QStringLiteral("-c"), QStringLiteral(R"(for f in /proc/$$/fd/*; do readlink "$f"; done > "$0")"), out});
+      if (!shell.startDetached()) return true;
+      for (int i = 0; i < 100 && !QFileInfo(out).size(); ++i) QThread::msleep(20);
+      QThread::msleep(50);
+      QFile file(out);
+      return !file.open(QIODevice::ReadOnly) || QString::fromLocal8Bit(file.readAll()).contains(QString::fromLocal8Bit(target));
+    };
+    const bool own = held(false), other = held(true), detached = heldDetached();
     ::close(ends[0]);
     ::close(ends[1]);
-    QVERIFY2(!seen.contains(QString::fromLocal8Bit(target)), qPrintable(seen));
+    QVERIFY2(own, "an own helper must keep the pipe");
+    QVERIFY2(!other, "detachFromImage passed the pipe on");
+    QVERIFY2(!detached, "startDetached with detachFromImage passed the pipe on");
   }
 #endif
 #ifdef Q_OS_UNIX

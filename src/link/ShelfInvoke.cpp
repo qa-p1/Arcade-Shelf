@@ -229,6 +229,7 @@ bool oneShot(const QJsonObject &manifest, const QJsonObject &request, QJsonObjec
     QStringList args;
     for (const auto &arg : manifest.value("launch").toObject().value("invoke").toArray()) args << arg.toString();
     QProcess process;
+    ArcadeLink::detachFromImage(process); // another app: it mustn't keep Shelf's image mounted
     process.setStandardErrorFile(QProcess::nullDevice());
     process.start(manifest.value("executable").toString(), args);
     if (!process.waitForStarted(LaunchTimeoutMs)) { *error = Error::make("launch_failed", {}); return false; }
@@ -292,7 +293,11 @@ bool ShelfInvoke::run(const Locations &locations, const QJsonObject &manifest, c
     QStringList args;
     for (const auto &arg : launch.value("background").toArray()) args << arg.toString();
     if (progress) progress(-1, QStringLiteral("Starting %1…").arg(appName(app)));
-    if (!QProcess::startDetached(manifest.value("executable").toString(), args)) {
+    QProcess starter;
+    starter.setProgram(manifest.value("executable").toString());
+    starter.setArguments(args);
+    ArcadeLink::detachFromImage(starter); // another app: it mustn't keep Shelf's image mounted
+    if (!starter.startDetached()) {
         *error = Error::make("launch_failed", {}); return false;
     }
     QElapsedTimer clock;
