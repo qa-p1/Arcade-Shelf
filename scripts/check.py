@@ -45,7 +45,9 @@ def main():
     if not (build / "CMakeCache.txt").exists():
         run("cmake", "-S", ROOT, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
             "-DBUILD_TESTING=ON", "-DSHELF_WARNINGS_AS_ERRORS=ON")
-    run("cmake", "--build", build, "--parallel")
+    # Ninja keeps going after an error, so one run reports every warning.
+    keep_going = ["--", "-k", "0"] if "Ninja" in (build / "CMakeCache.txt").read_text(errors="replace") else []
+    run("cmake", "--build", build, "--parallel", *keep_going)
     if sys.platform.startswith("linux"):
         check_format()
     run("cmake", "--build", build, "--target", "qmllint_gate")

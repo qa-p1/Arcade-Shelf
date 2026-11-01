@@ -17,7 +17,12 @@ Arcade Shelf is a floating place to collect files, folders, images, text and lin
 
 It runs on **Linux** (x86_64; X11 and Wayland), **Windows** (x64) and **macOS** (universal: Apple Silicon and Intel). Shelf's tested desktop behavior is on Hyprland; native Windows/macOS interaction still needs verification.
 
-<p align="center"><img src="docs/user/images/shelf.png" width="720" alt="Arcade Shelf expanded Quick Shelf with a file, folder, note and saved link"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/user/images/panel-dark.png">
+    <img src="docs/user/images/panel-light.png" width="640" alt="Arcade Shelf's panel: Quick Shelf with a file, a folder, a note and a saved link">
+  </picture>
+</p>
 
 ## Download and install
 
@@ -25,7 +30,7 @@ Download the file for your system from [Releases](https://github.com/qa-p1/Arcad
 
 | Platform | File | How to install |
 |---|---|---|
-| Linux x86_64 | `Arcade-Shelf-<version>-x86_64.AppImage` | Run it. The first run asks **Install Arcade Shelf?** and installs to `~/Applications/Arcade/`, adds a menu entry, an `arcade-shelf` command in `~/.local/bin` and an optional start at login. **Just run it once** skips installing. |
+| Linux x86_64 | `Arcade-Shelf-<version>-x86_64.AppImage` | Run it. The first run asks **Install Arcade Shelf?** and installs to `~/Applications/Arcade/`, adds a menu entry, an `arcade-shelf` command in `~/.local/bin` and an optional start at login. **Just run it** skips installing. |
 | Windows x64 | `Arcade-Shelf-<version>-windows-x64.exe` | Run the per-user installer; no admin needed. Adds a Start menu entry, an optional desktop shortcut and start at login, and puts `arcade-shelf` on PATH. |
 | macOS (universal) | `Arcade-Shelf-<version>-macos-universal.dmg` | Open the dmg and drag Arcade Shelf to Applications. Run from the dmg or Downloads, it offers to move itself to Applications. |
 
@@ -48,7 +53,19 @@ A version tag publishes a GitHub release with the three packages, `arcade-releas
 
 More in [Collect and use items in Shelf](docs/user/features.md).
 
-<p align="center"><img src="docs/images/expanded.png" width="480" alt="Arcade Shelf dark theme, captured from the running Qt application"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/user/images/capsule-dark.png">
+    <img src="docs/user/images/capsule-light.png" width="216" alt="The capsule: the active collection and its item count">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/user/images/settings-dark.png">
+    <img src="docs/user/images/settings-light.png" width="640" alt="Settings, General page">
+  </picture>
+</p>
 
 ## Works with other Arcade apps
 
@@ -72,7 +89,7 @@ See [Use Arcade Shelf with other apps](docs/user/with-other-apps.md), [the contr
 
 ## Usage
 
-Start Shelf from the app launcher or run `arcade-shelf`. A compact capsule appears; click it to expand the active collection. The default global shortcut is **Ctrl+Alt+S** (⌃⌥S on macOS); change it in **Settings → Trigger**. Clipboard shortcuts are used only inside Shelf. Where the portal cannot bind a shortcut, a compositor binding can run `arcade-shelf --toggle`.
+Start Shelf from the app launcher or run `arcade-shelf`. A compact capsule appears; click it to expand the active collection. The default global shortcut is **Ctrl+Alt+S** (⌃⌥S on macOS); change it in **Settings → Shortcuts**. Clipboard shortcuts are used only inside Shelf. Where the portal cannot bind a shortcut, a compositor binding can run `arcade-shelf --toggle`.
 
 | Key | Action |
 |---|---|
@@ -108,9 +125,9 @@ Packaged AppImages and macOS bundles also accept `--install [--silent] [--no-lau
 
 Metadata and preferences live in SQLite under Qt's per-user application-data directory (`qa-p1/ArcadeShelf`). `ARCADE_SHELF_HOME` overrides Shelf's profile; `ARCADE_HOME` independently overrides Link's registry, runtime, and handoffs. Tests must isolate both.
 
-**Settings → About → Backup and restore** exports collections and preferences. Shelf shows the owned-content size and asks before including it; referenced original files are never copied. Tools backups include metadata and preferences only. Restore validates the archive and backs up the current database under the profile's `backups/` folder first. Window geometry and machine-specific login entries are not part of the portable backup.
+**Settings → Backup and restore** exports collections and preferences. Shelf shows the owned-content size and asks before including it; referenced original files are never copied. Tools backups include metadata and preferences only. Restore validates the archive and backs up the current database under the profile's `backups/` folder first. Window geometry and machine-specific login entries are not part of the portable backup.
 
-The default owned-content quota is 512 MiB. Exported temporary handoffs have a separate budget of the same size and a 24-hour lifetime; metadata and SQLite overhead are additional. Temporary shelf items expire after 30 days by default at startup; pinned collections are retained. Retention 0 disables expiration. Requests accept at most 1,000 values, 256 KiB inline text, and up to 16 MiB text through private handoffs. Thumbnails are generated lazily and their memory cache defaults to 64 MiB with at most two decoder workers. The saved `thumbnailQuotaBytes` setting bounds this cache; zero disables it. Qt Quick's visible textures are additional memory. There is no idle filesystem polling or clipboard history.
+The default owned-content quota is about 537 MB (512 MiB); Settings sets it in MB. Exported temporary handoffs have a separate budget of the same size and a 24-hour lifetime; metadata and SQLite overhead are additional. Temporary shelf items expire after 30 days by default at startup; pinned collections are retained. Retention 0 disables expiration. Requests accept at most 1,000 values, 256 KiB inline text, and up to 16 MiB text through private handoffs. Thumbnails are generated lazily and their memory cache defaults to 64 MiB with at most two decoder workers. The saved `thumbnailQuotaBytes` setting bounds this cache; zero disables it. Qt Quick's visible textures are additional memory. There is no idle filesystem polling or clipboard history.
 
 ## Uninstall
 

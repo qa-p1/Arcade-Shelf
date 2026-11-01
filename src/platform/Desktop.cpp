@@ -1372,9 +1372,9 @@ void Desktop::rebindShortcut(const QString &accelerator, const QString &executab
         return;
     }
     const QString previous = d->accelerator;
-    m_shortcutReply = [this, previous, executable, reply = std::move(reply)](QJsonObject result, ArcadeLink::Error error) {
-        if (error.isError()) configureShortcut(previous, executable);
-        reply(result, error);
+    m_shortcutReply = [this, previous, executable, reply = std::move(reply)](QJsonObject result, ArcadeLink::Error failure) {
+        if (failure.isError()) configureShortcut(previous, executable);
+        reply(result, failure);
     };
     configureShortcut(canonical, executable);
 }
@@ -1383,7 +1383,7 @@ void Desktop::configureShortcut(const QString &accelerator, const QString &execu
     clearShortcut();
     d->accelerator = accelerator.trimmed();
     d->executable = executable;
-    const quint64 generation = ++d->generation;
+    [[maybe_unused]] const quint64 generation = ++d->generation; // used where a portal or Hyprland binds the shortcut
     d->bindingToken = QStringLiteral("arcadeShelf_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
     if (d->accelerator.isEmpty()) {
         setShortcutStatus(QStringLiteral("No global shortcut"));
@@ -1547,10 +1547,10 @@ void Desktop::startPortalShortcut(quint64 generation)
                                                                                          QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Closed"),
                                                                                          d->portalSignals, SLOT(sessionClosed(QVariantMap, QDBusMessage)));
                                                    const QString bindToken = QStringLiteral("arcade_shelf_bind_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
-                                                   QString sender = QDBusConnection::sessionBus().baseService();
-                                                   sender.remove(QLatin1Char(':'));
-                                                   sender.replace(QLatin1Char('.'), QLatin1Char('_'));
-                                                   auto *binding = new ShelfPortalRequest(QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, bindToken), this,
+                                                   QString bindSender = QDBusConnection::sessionBus().baseService();
+                                                   bindSender.remove(QLatin1Char(':'));
+                                                   bindSender.replace(QLatin1Char('.'), QLatin1Char('_'));
+                                                   auto *binding = new ShelfPortalRequest(QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(bindSender, bindToken), this,
                                                                                           [this, generation](uint code, const QVariantMap &) {
                                                                                               if (generation != d->generation) return;
                                                                                               if (code != 0) {

@@ -8,7 +8,9 @@ since: 0.2.0
 
 Arcade Shelf is a small floating place to collect files, folders, links and text while you work. Existing files stay where they are; Shelf keeps references and lets you gather selected items for your next task.
 
-![Arcade Shelf expanded Quick Shelf with a file, folder, note and saved link](images/shelf.png)
+![Arcade Shelf's panel: Quick Shelf with a file, a folder, a note and a saved link](images/panel-light.png)
+
+![The same panel in the dark theme](images/panel-dark.png)
 
 ## What Shelf is best at
 

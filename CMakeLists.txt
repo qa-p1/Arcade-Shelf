@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(ArcadeShelf VERSION 0.3.3 LANGUAGES CXX)
+project(ArcadeShelf VERSION 0.4.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -109,7 +109,8 @@ foreach(target shelf_install shelf_core shelf_services shelf_desktop arcade-shel
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:/WX>)
   else()
-    target_compile_options(${target} PRIVATE -Wall -Wextra $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:-Werror>)
+    # -Wshadow (GCC) is the Linux check for MSVC's C4456-C4459.
+    target_compile_options(${target} PRIVATE -Wall -Wextra $<$<CXX_COMPILER_ID:GNU>:-Wshadow> $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:-Werror>)
   endif()
 endforeach()
 target_compile_options(shelf_core PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wpedantic>)

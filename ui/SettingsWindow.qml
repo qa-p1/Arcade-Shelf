@@ -199,7 +199,7 @@ Window {
                     NumberField {
                         objectName: "retentionField"
                         from: 0; to: 3650; unit: "days"
-                        value: Number(root.shelf.preferences.retentionDays === undefined ? 7 : root.shelf.preferences.retentionDays)
+                        value: Number(root.shelf.preferences.retentionDays === undefined ? 30 : root.shelf.preferences.retentionDays)
                         onValueModified: value => root.shelf.setRetention(value)
                     }
                 }

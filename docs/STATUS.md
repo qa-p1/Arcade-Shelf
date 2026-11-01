@@ -1,4 +1,27 @@
-# Status — 2026-10-12
+# Status — 2026-11-01
+
+## 2026-11-01: 0.4.0 (SHELF.md overhaul)
+
+- Kit: Arcade Link v0.4.15's QML kit as a compiled static module (`arcade_kit`), Inter, fuchsia.
+  qmllint runs at 0 warnings with the typed controller (`ShelfController`); the `qmllint_gate`
+  target fails on any warning (checked with a planted one). Idle memory stayed below 0.3.3's
+  (62.8 against 64.3 MB PSS): menus and dialogs are built on first use, Inter loads once.
+- Surfaces per SHELF.md §2; Settings is a separate 760×560 window. The install prompt was seen in
+  a real `--install` run on Xvfb, light and dark (the first-run prompt only appears for an AppImage
+  on Linux). Its window was pinned at its first height and showed only the title; fixed, and
+  tst_Ui covers it.
+- STANDARD §10 identity: `dev.arcade.Shelf` for the desktop file, Wayland app_id, X11 class
+  (checked with xprop), bundle id, portal id and Hyprland target. Folder move checked with the
+  real 0.3.3 build still running: it quit, both items moved, `qa-p1/ArcadeShelf` is gone. The
+  login entry move is unit-tested (Shelf's own entry, both present, switched off, someone else's).
+- Real-use checks: Link's `tools/e2e.py --only shelf` 3/3 with this build. Find's end-to-end
+  (real drags onto Shelf on Wayland and X11, add, background launch, find.show) 71/71 against
+  this build, after Find's checks learned the new app id (Find PR #15).
+- Found while checking Find against the released Shelf: a launch right after Quit could find the
+  instance lock still held and exit. Shelf now waits for it.
+- Open, for the owner: the remote branch `fix/hyprland-desktop` (two unique historical commits)
+  is left alone. Tools 0.4.2 still computes the pre-0.4 login entry names for Shelf, Lens and
+  Find; its Start-at-login switch should learn `dev.arcade.<App>`.
 
 ## Release status (2026-10-18)
 

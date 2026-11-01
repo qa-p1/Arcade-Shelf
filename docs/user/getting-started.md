@@ -16,7 +16,7 @@ Download the current build from [Arcade Shelf releases](https://github.com/qa-p1
 
 ### Linux
 
-Download the Arcade Shelf AppImage and run it. On first run, Shelf asks **“Install Arcade Shelf?”** Choose **Install** to add it to the app launcher, place it in `~/Applications/Arcade/`, add the `arcade-shelf` command in `~/.local/bin`, and optionally start Shelf at login. Choose **Just run it once** to use Shelf without installing it.
+Download the Arcade Shelf AppImage and run it. On first run, Shelf asks **“Install Arcade Shelf?”** Choose **Install** to add it to the app launcher, place it in `~/Applications/Arcade/`, add the `arcade-shelf` command in `~/.local/bin`, and optionally start Shelf at login. Choose **Just run it** to use Shelf without installing it.
 
 If `~/.local/bin` is not on your `PATH`, Shelf shows the exact line to add for your shell. To remove the installation, run `arcade-shelf --uninstall`, use the launcher's **Uninstall** action, or remove Shelf in Arcade Tools. Your settings stay unless you choose to remove them.
 
@@ -32,7 +32,7 @@ Open the disk image and drag Arcade Shelf to Applications. If you run it from th
 
 Start Shelf from the app launcher or run `arcade-shelf`. A compact capsule appears. Click it to expand the active collection. You can start or toggle the resident app with `arcade-shelf --toggle`, open settings with `arcade-shelf --settings`, or add a path with `arcade-shelf --add /path/to/file`.
 
-The default global shortcut is **Ctrl+Alt+S**. You can change it from **Settings → Trigger**. Linux may ask you to approve the shortcut. If your desktop cannot bind it, the status message explains the available alternative.
+The default global shortcut is **Ctrl+Alt+S**. You can change it from **Settings → Shortcuts**. Linux may ask you to approve the shortcut. If your desktop cannot bind it, the status message explains the available alternative.
 
 ## Try this first
 

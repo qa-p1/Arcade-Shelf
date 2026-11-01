@@ -616,11 +616,11 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
         const QString type = item.value(QStringLiteral("type")).toString();
         QString text = item.value(QStringLiteral("text")).toString(QStringLiteral(""));
         QString html = item.value(QStringLiteral("html")).toString(QStringLiteral(""));
-        QString path = owned ? stagedPaths[i] : item.value(QStringLiteral("path")).toString();
-        if (path.isNull()) path = QStringLiteral("");
+        QString itemPath = owned ? stagedPaths[i] : item.value(QStringLiteral("path")).toString();
+        if (itemPath.isNull()) itemPath = QStringLiteral("");
         QString refkey;
-        if (!owned) refkey = QStringLiteral("path:") + referenceKey(path);
-        else if (path.isEmpty()) {
+        if (!owned) refkey = QStringLiteral("path:") + referenceKey(itemPath);
+        else if (itemPath.isEmpty()) {
             const QByteArray source = type.toUtf8() + '\0' + text.toUtf8() + '\0' + html.toUtf8();
             refkey = QStringLiteral("text:") + QString::fromLatin1(QCryptographicHash::hash(source, QCryptographicHash::Sha256).toHex());
         }
@@ -630,7 +630,7 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
         insert.addBindValue(item.value(QStringLiteral("shelf")).toString());
         insert.addBindValue(type);
         insert.addBindValue(item.value(QStringLiteral("name")).toString());
-        insert.addBindValue(path);
+        insert.addBindValue(itemPath);
         insert.addBindValue(text);
         insert.addBindValue(html);
         insert.addBindValue(item.value(QStringLiteral("size")).toInteger());
