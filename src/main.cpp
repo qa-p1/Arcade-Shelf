@@ -23,7 +23,6 @@
 #include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
-#include <QFontDatabase>
 #include <QtQml/QQmlExtensionPlugin>
 
 // The Arcade design kit, compiled in as a static QML module.
@@ -173,13 +172,7 @@ int main(int argc, char **argv)
     gui->setQuitOnLastWindowClosed(false);
     gui->setDesktopFileName("arcade.shelf");
     QQuickStyle::setStyle("Basic");
-    // Inter at 13 px (the kit's body size) for every window, including Qt Widgets dialogs.
-    const int inter = QFontDatabase::addApplicationFont(QStringLiteral(":/qt/fonts/InterVariable.ttf"));
-    if (inter >= 0 && !QFontDatabase::applicationFontFamilies(inter).isEmpty()) {
-        QFont font(QFontDatabase::applicationFontFamilies(inter).first());
-        font.setPixelSize(13);
-        gui->setFont(font);
-    }
+
     Shelf::Controller controller(root,parser.isSet("background"));
     // A stopped app must accept Link requests promptly, even while QML imports.
     // A foreground launch still starts integration after creating its first surface.
@@ -205,6 +198,14 @@ int main(int argc, char **argv)
     QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{ QCoreApplication::exit(1); },Qt::QueuedConnection);
     engine.loadFromModule("ArcadeShelf","Main");
     if (engine.rootObjects().isEmpty()) return 1;
+    // Inter at 13 px (the kit's body size) for every window, Qt Widgets dialogs
+    // included. The kit's Fonts singleton has already loaded it from the
+    // resources; loading it again here would hold a second copy.
+    if (auto *fonts = engine.singletonInstance<QObject *>("Arcade", "Fonts")) {
+        QFont font(fonts->property("sans").toString());
+        font.setPixelSize(13);
+        gui->setFont(font);
+    }
     auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
     controller.attachWindow(window);
     QPixmap glyph(64,64); glyph.fill(Qt::transparent);

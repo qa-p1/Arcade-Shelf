@@ -58,6 +58,7 @@ Window {
     property string contextItem: ""
     property string collectionToEdit: ""
     property string collectionMode: "new"
+    property string collectionDraft: ""
     property var pendingOffer: ({})
     property bool restoring: true
     property bool resizing: false
@@ -105,14 +106,12 @@ Window {
         const confirm = ["network", "uploads-content", "sends-to-device", "persists", "clipboard", "writes-files", "overwrites-files", "deletes-files"];
         if (effects.some(effect => confirm.indexOf(effect) >= 0)) {
             pendingOffer = offer;
-            confirmAction.open();
+            (confirmActionLoader.get() as Dialog).open();
         } else shelf.runPeer(offer.app, offer.action || offer.id);
     }
     function editCollection(id: string, name: string, mode: string) {
-        collectionToEdit = id; collectionMode = mode; collectionName.text = name;
-        temporaryToggle.checked = false;
-        collectionDialog.open();
-        collectionName.forceActiveFocus();
+        collectionToEdit = id; collectionMode = mode; collectionDraft = name;
+        (collectionDialogLoader.get() as Dialog).open();
     }
     // A deliberate close (Escape, the collapse button) leaves the pointer on
     // the edge tab; without a pause, hovering would peek the panel straight back.
@@ -155,6 +154,12 @@ Window {
         restoring = false;
         shelf.setBackdropDark(dark);
     }
+    // Menus and dialogs are built the first time they open (they are most of
+    // the window's objects), then kept, so idle memory stays at 0.3's level.
+    component Lazy: Loader {
+        active: false
+        function get(): QtObject { active = true; return item; }
+    }
     Timer { id: geometryTimer; interval: 250; onTriggered: window.savePosition() }
     Connections {
         target: window.shelf
@@ -166,7 +171,7 @@ Window {
             }
             if (window.shelf.focusPanel || !window.shelf.expanded) peekDismissTimer.stop();
             window.cursorIndex = Math.min(window.cursorIndex, window.shelf.items.length - 1);
-            if (window.shelf.analysisResult && Object.keys(window.shelf.analysisResult).length > 0 && !analysisDialog.visible) analysisDialog.open();
+            if (window.shelf.analysisResult && Object.keys(window.shelf.analysisResult).length > 0) { const d = analysisDialogLoader.get() as Dialog; if (!d.visible) d.open(); }
         }
         function onPulse() { window.pulsing = true; pulseTimer.restart(); }
         function onNewCollectionRequested() {
@@ -304,7 +309,7 @@ Window {
                         }
                     }
                     onClicked: function(event) {
-                        if (event.button === Qt.RightButton) capsuleMenu.popup();
+                        if (event.button === Qt.RightButton) (capsuleMenuLoader.get() as Menu).popup();
                         else if (!moved) window.shelf.toggle();
                     }
                     cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
@@ -405,7 +410,7 @@ Window {
                             iconName: "chevronDown"
                             tooltip: "Collections"
                             Layout.maximumWidth: Math.max(120, header.width * 0.34)
-                            onClicked: { collectionMenu.populated = true; collectionMenu.popup(collectionButton, 0, collectionButton.height + Theme.space4); }
+                            onClicked: (collectionMenuLoader.get() as Menu).popup(collectionButton, 0, collectionButton.height + Theme.space4)
                         }
                         Badge { text: Format.formatCount(window.shelf.count) }
                         Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
@@ -441,13 +446,13 @@ Window {
                             enabled: window.selectedCount > 0
                             small: true
                             text: "Actions"; iconName: "chevronDown"
-                            onClicked: { actionsMenu.populated = true; actionsMenu.popup(actionsButton, 0, actionsButton.height + Theme.space4); }
+                            onClicked: (actionsMenuLoader.get() as Menu).popup(actionsButton, 0, actionsButton.height + Theme.space4)
                         }
                         Button {
                             id: moreButton
                             small: true; variant: "ghost"
                             iconName: "more"; tooltip: "Shelf options"
-                            onClicked: surfaceMenu.popup(moreButton, 0, moreButton.height + Theme.space4)
+                            onClicked: (surfaceMenuLoader.get() as Menu).popup(moreButton, 0, moreButton.height + Theme.space4)
                         }
                         Button {
                             small: true; variant: "ghost"
@@ -574,7 +579,7 @@ Window {
                                     pressX = event.x; pressY = event.y; startedDrag = false; window.cursorIndex = tile.index;
                                     if (event.button === Qt.RightButton) {
                                         if (!tile.chosen) window.shelf.select(tile.modelData.id, false, false);
-                                        window.contextItem = tile.modelData.id; itemMenu.popup();
+                                        window.contextItem = tile.modelData.id; (itemMenuLoader.get() as Menu).popup();
                                     } else if (!tile.chosen || (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)))
                                         window.shelf.select(tile.modelData.id, !!(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)), !!(event.modifiers & Qt.ShiftModifier));
                                     interaction.forceActiveFocus();
@@ -708,208 +713,257 @@ Window {
     }
 
     // Capsule and tab menu (right click).
-    Menu {
-        id: capsuleMenu
-        MenuItem { text: "Open " + window.shelf.activeName; onTriggered: window.shelf.show() }
-        MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; onTriggered: window.shelf.paste() }
-        MenuItem { text: "Undo"; iconName: "undo"; shortcut: "Ctrl+Z"; enabled: window.shelf.undoAvailable; onTriggered: window.shelf.undo() }
-        MenuSeparator {}
-        DockMenu { shelf: window.shelf; onDockRequested: edge => window.dockTo(edge) }
-        MenuSeparator {}
-        MenuItem { text: "Settings"; iconName: "settings"; shortcut: "Ctrl+,"; onTriggered: window.shelf.showSettings() }
+    Lazy {
+        id: capsuleMenuLoader
+        sourceComponent: Component {
+            Menu {
+                id: capsuleMenu
+                MenuItem { text: "Open " + window.shelf.activeName; onTriggered: window.shelf.show() }
+                MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; onTriggered: window.shelf.paste() }
+                MenuItem { text: "Undo"; iconName: "undo"; shortcut: "Ctrl+Z"; enabled: window.shelf.undoAvailable; onTriggered: window.shelf.undo() }
+                MenuSeparator {}
+                DockMenu { shelf: window.shelf; onDockRequested: edge => window.dockTo(edge) }
+                MenuSeparator {}
+                MenuItem { text: "Settings"; iconName: "settings"; shortcut: "Ctrl+,"; onTriggered: window.shelf.showSettings() }
+            }
+        }
     }
     // The panel's window menu (⋯).
-    Menu {
-        id: surfaceMenu
-        MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; shortcut: "Ctrl+V"; onTriggered: window.shelf.paste() }
-        MenuItem { text: "Select all"; shortcut: "Ctrl+A"; enabled: window.shelf.items.length > 0; onTriggered: window.shelf.selectAll() }
-        MenuSeparator {}
-        DockMenu { shelf: window.shelf; onDockRequested: edge => window.dockTo(edge) }
-        MenuItem { text: "Always on top"; iconName: "pin"; checkable: true; checked: window.shelf.alwaysOnTop; onTriggered: window.shelf.alwaysOnTop = !window.shelf.alwaysOnTop }
-        MenuSeparator {}
-        MenuItem { text: "Settings"; iconName: "settings"; shortcut: "Ctrl+,"; onTriggered: window.shelf.showSettings() }
+    Lazy {
+        id: surfaceMenuLoader
+        sourceComponent: Component {
+            Menu {
+                id: surfaceMenu
+                MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; shortcut: "Ctrl+V"; onTriggered: window.shelf.paste() }
+                MenuItem { text: "Select all"; shortcut: "Ctrl+A"; enabled: window.shelf.items.length > 0; onTriggered: window.shelf.selectAll() }
+                MenuSeparator {}
+                DockMenu { shelf: window.shelf; onDockRequested: edge => window.dockTo(edge) }
+                MenuItem { text: "Always on top"; iconName: "pin"; checkable: true; checked: window.shelf.alwaysOnTop; onTriggered: window.shelf.alwaysOnTop = !window.shelf.alwaysOnTop }
+                MenuSeparator {}
+                MenuItem { text: "Settings"; iconName: "settings"; shortcut: "Ctrl+,"; onTriggered: window.shelf.showSettings() }
+            }
+        }
     }
     // Collections: switch, then manage the open one.
-    Menu {
-        id: collectionMenu
-        // Filled just before it opens, so it has its final size when shown.
-        property bool populated: false
-        onClosed: populated = false
-        Instantiator {
-            model: collectionMenu.populated ? window.shelf.shelves : []
-            delegate: MenuItem {
-                required property var modelData
-                text: modelData.name + "  ·  " + Format.formatCount(modelData.count || 0)
-                iconName: modelData.pinned ? "pin" : ""
-                checkable: true
-                checked: modelData.id === window.shelf.activeShelf
-                onTriggered: window.shelf.switchShelf(modelData.id)
+    Lazy {
+        id: collectionMenuLoader
+        sourceComponent: Component {
+            Menu {
+                id: collectionMenu
+                // Filled just before it opens, so it has its final size when shown.
+                property bool populated: false
+                onAboutToShow: populated = true
+                onClosed: populated = false
+                Instantiator {
+                    model: collectionMenu.populated ? window.shelf.shelves : []
+                    delegate: MenuItem {
+                        required property var modelData
+                        text: modelData.name + "  ·  " + Format.formatCount(modelData.count || 0)
+                        iconName: modelData.pinned ? "pin" : ""
+                        checkable: true
+                        checked: modelData.id === window.shelf.activeShelf
+                        onTriggered: window.shelf.switchShelf(modelData.id)
+                    }
+                    onObjectAdded: (index, object) => collectionMenu.insertItem(index, object as MenuItem)
+                    onObjectRemoved: (index, object) => collectionMenu.removeItem(object as MenuItem)
+                }
+                MenuSeparator {}
+                MenuItem { text: "New collection…"; iconName: "plus"; onTriggered: window.editCollection("", "", "new") }
+                MenuItem { text: "Rename collection…"; iconName: "edit"; onTriggered: window.editCollection(window.shelf.activeShelf, window.shelf.activeName, "rename") }
+                MenuItem {
+                    readonly property bool pinned: window.shelf.shelves.some(s => s.id === window.shelf.activeShelf && s.pinned)
+                    text: pinned ? "Unpin collection" : "Pin collection"
+                    iconName: "pin"
+                    onTriggered: window.shelf.pinShelf(window.shelf.activeShelf, !pinned)
+                }
+                MenuItem { text: "Move up"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1) }
+                MenuItem { text: "Move down"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1) }
+                MenuSeparator {}
+                MenuItem {
+                    text: "Delete collection…"; iconName: "trash"; danger: true
+                    enabled: window.shelf.shelves.length > 1
+                    onTriggered: { window.collectionToEdit = window.shelf.activeShelf; (deleteCollectionLoader.get() as Dialog).open(); }
+                }
             }
-            onObjectAdded: (index, object) => collectionMenu.insertItem(index, object as MenuItem)
-            onObjectRemoved: (index, object) => collectionMenu.removeItem(object as MenuItem)
-        }
-        MenuSeparator {}
-        MenuItem { text: "New collection…"; iconName: "plus"; onTriggered: window.editCollection("", "", "new") }
-        MenuItem { text: "Rename collection…"; iconName: "edit"; onTriggered: window.editCollection(window.shelf.activeShelf, window.shelf.activeName, "rename") }
-        MenuItem {
-            readonly property bool pinned: window.shelf.shelves.some(s => s.id === window.shelf.activeShelf && s.pinned)
-            text: pinned ? "Unpin collection" : "Pin collection"
-            iconName: "pin"
-            onTriggered: window.shelf.pinShelf(window.shelf.activeShelf, !pinned)
-        }
-        MenuItem { text: "Move up"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1) }
-        MenuItem { text: "Move down"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1) }
-        MenuSeparator {}
-        MenuItem {
-            text: "Delete collection…"; iconName: "trash"; danger: true
-            enabled: window.shelf.shelves.length > 1
-            onTriggered: { window.collectionToEdit = window.shelf.activeShelf; deleteCollection.open(); }
         }
     }
     // One item (right click), acting on the selection.
-    Menu {
-        id: itemMenu
-        MenuItem { text: "Open"; shortcut: "Enter"; onTriggered: window.shelf.openItem(window.contextItem) }
-        MenuItem { text: "Show in folder"; iconName: "showInFolder"; onTriggered: window.shelf.revealItem(window.contextItem) }
-        MenuItem { text: "Preview in Look"; iconName: "eye"; shortcut: "Space"; visible: !!window.lookPreview; height: visible ? implicitHeight : 0; onTriggered: window.runOffer(window.lookPreview) }
-        MenuSeparator {}
-        MenuItem { text: "Copy"; iconName: "copy"; shortcut: "Ctrl+C"; onTriggered: window.shelf.copySelected("content") }
-        MenuItem { text: "Copy path"; onTriggered: window.shelf.copySelected("paths") }
-        MenuSeparator {}
-        MenuItem { text: "Move earlier"; onTriggered: window.moveItem(-1) }
-        MenuItem { text: "Move later"; onTriggered: window.moveItem(1) }
-        MenuSeparator {}
-        MenuItem { text: "Remove from Shelf"; iconName: "trash"; shortcut: "Del"; danger: true; onTriggered: window.shelf.removeSelected() }
+    Lazy {
+        id: itemMenuLoader
+        sourceComponent: Component {
+            Menu {
+                id: itemMenu
+                MenuItem { text: "Open"; shortcut: "Enter"; onTriggered: window.shelf.openItem(window.contextItem) }
+                MenuItem { text: "Show in folder"; iconName: "showInFolder"; onTriggered: window.shelf.revealItem(window.contextItem) }
+                MenuItem { text: "Preview in Look"; iconName: "eye"; shortcut: "Space"; visible: !!window.lookPreview; height: visible ? implicitHeight : 0; onTriggered: window.runOffer(window.lookPreview) }
+                MenuSeparator {}
+                MenuItem { text: "Copy"; iconName: "copy"; shortcut: "Ctrl+C"; onTriggered: window.shelf.copySelected("content") }
+                MenuItem { text: "Copy path"; onTriggered: window.shelf.copySelected("paths") }
+                MenuSeparator {}
+                MenuItem { text: "Move earlier"; onTriggered: window.moveItem(-1) }
+                MenuItem { text: "Move later"; onTriggered: window.moveItem(1) }
+                MenuSeparator {}
+                MenuItem { text: "Remove from Shelf"; iconName: "trash"; shortcut: "Del"; danger: true; onTriggered: window.shelf.removeSelected() }
+            }
+        }
     }
     // Actions (header): the selection, then what other Arcade apps offer.
-    Menu {
-        id: actionsMenu
-        property bool populated: false
-        onClosed: populated = false
-        MenuItem { text: "Copy"; iconName: "copy"; shortcut: "Ctrl+C"; onTriggered: window.shelf.copySelected("content") }
-        MenuItem { text: "Copy path"; onTriggered: window.shelf.copySelected("paths") }
-        MenuSeparator { visible: window.shelf.offers.length > 0 }
-        Instantiator {
-            model: actionsMenu.populated ? window.shelf.offers : []
-            delegate: MenuItem {
-                required property var modelData
-                text: modelData.title
-                enabled: modelData.enabled !== false && !window.shelf.busy
-                onTriggered: window.runOffer(modelData)
+    Lazy {
+        id: actionsMenuLoader
+        sourceComponent: Component {
+            Menu {
+                id: actionsMenu
+                property bool populated: false
+                onAboutToShow: populated = true
+                onClosed: populated = false
+                MenuItem { text: "Copy"; iconName: "copy"; shortcut: "Ctrl+C"; onTriggered: window.shelf.copySelected("content") }
+                MenuItem { text: "Copy path"; onTriggered: window.shelf.copySelected("paths") }
+                MenuSeparator { visible: window.shelf.offers.length > 0 }
+                Instantiator {
+                    model: actionsMenu.populated ? window.shelf.offers : []
+                    delegate: MenuItem {
+                        required property var modelData
+                        text: modelData.title
+                        enabled: modelData.enabled !== false && !window.shelf.busy
+                        onTriggered: window.runOffer(modelData)
+                    }
+                    onObjectAdded: (index, object) => actionsMenu.insertItem(3 + index, object as MenuItem)
+                    onObjectRemoved: (index, object) => actionsMenu.removeItem(object as MenuItem)
+                }
+                MenuSeparator {}
+                MenuItem { text: "Remove from Shelf"; iconName: "trash"; shortcut: "Del"; danger: true; onTriggered: window.shelf.removeSelected() }
             }
-            onObjectAdded: (index, object) => actionsMenu.insertItem(3 + index, object as MenuItem)
-            onObjectRemoved: (index, object) => actionsMenu.removeItem(object as MenuItem)
         }
-        MenuSeparator {}
-        MenuItem { text: "Remove from Shelf"; iconName: "trash"; shortcut: "Del"; danger: true; onTriggered: window.shelf.removeSelected() }
     }
 
-    Dialog {
-        id: collectionDialog
-        title: window.collectionMode === "new" ? "New collection" : "Rename collection"
-        Column {
-            width: parent.width
-            spacing: Theme.space12
-            TextField {
-                id: collectionName
-                width: parent.width
-                placeholderText: "Collection name"
-                maximumLength: 80
-                onAccepted: if (text.trim().length) collectionSave.clicked()
-            }
-            CheckBox {
-                id: temporaryToggle
-                visible: window.collectionMode === "new"
-                text: "Temporary: unpinned items follow your retention setting"
-            }
-        }
-        actions: [
-            Button { text: "Cancel"; onClicked: collectionDialog.close() },
-            Button {
-                id: collectionSave
-                variant: "primary"
-                text: window.collectionMode === "new" ? "Create" : "Save"
-                enabled: collectionName.text.trim().length > 0
-                onClicked: {
-                    if (window.collectionMode === "new") window.shelf.createShelf(collectionName.text.trim(), temporaryToggle.checked);
-                    else window.shelf.renameShelf(window.collectionToEdit, collectionName.text.trim());
-                    collectionDialog.close();
-                }
-            }
-        ]
-    }
-    Dialog {
-        id: deleteCollection
-        title: "Delete this collection?"
-        body: "Its items leave Shelf. The original files stay where they are."
-        destructive: true
-        actions: [
-            Button { text: "Keep"; onClicked: deleteCollection.close() },
-            Button {
-                variant: "destructive"
-                text: "Delete collection"
-                onClicked: { window.shelf.deleteShelf(window.collectionToEdit); deleteCollection.close(); }
-            }
-        ]
-    }
-    Dialog {
-        id: confirmAction
-        title: window.pendingOffer.title || "Send selection"
-        body: (window.selectedCount === 1 ? "1 selected item goes to " : Format.formatCount(window.selectedCount) + " selected items go to ")
-            + (window.pendingOffer.appName || window.pendingOffer.app || "this app") + ". This action:"
-        Column {
-            width: parent.width
-            spacing: Theme.space4
-            Repeater {
-                model: window.pendingOffer.effects || []
-                delegate: Row {
-                    id: effectRow
-                    required property string modelData
-                    spacing: Theme.space8
-                    Dot { anchors.verticalCenter: parent.verticalCenter; tone: "warn" }
-                    Label {
-                        kind: "small"
-                        text: ({ "network": "Uses the network", "uploads-content": "Uploads the content", "sends-to-device": "Sends it to another device",
-                                 "persists": "Keeps a copy", "clipboard": "Changes the clipboard", "writes-files": "Writes files",
-                                 "overwrites-files": "Can overwrite files", "deletes-files": "Can delete files" })[effectRow.modelData] || effectRow.modelData
+    Lazy {
+        id: collectionDialogLoader
+        sourceComponent: Component {
+            Dialog {
+                id: collectionDialog
+                title: window.collectionMode === "new" ? "New collection" : "Rename collection"
+                onAboutToShow: { collectionName.text = window.collectionDraft; temporaryToggle.checked = false; }
+                onOpened: collectionName.forceActiveFocus()
+                Column {
+                    width: parent.width
+                    spacing: Theme.space12
+                    TextField {
+                        id: collectionName
+                        width: parent.width
+                        placeholderText: "Collection name"
+                        maximumLength: 80
+                        onAccepted: if (text.trim().length) collectionSave.clicked()
+                    }
+                    CheckBox {
+                        id: temporaryToggle
+                        visible: window.collectionMode === "new"
+                        text: "Temporary: unpinned items follow your retention setting"
                     }
                 }
+                actions: [
+                    Button { text: "Cancel"; onClicked: collectionDialog.close() },
+                    Button {
+                        id: collectionSave
+                        variant: "primary"
+                        text: window.collectionMode === "new" ? "Create" : "Save"
+                        enabled: collectionName.text.trim().length > 0
+                        onClicked: {
+                            if (window.collectionMode === "new") window.shelf.createShelf(collectionName.text.trim(), temporaryToggle.checked);
+                            else window.shelf.renameShelf(window.collectionToEdit, collectionName.text.trim());
+                            collectionDialog.close();
+                        }
+                    }
+                ]
             }
         }
-        actions: [
-            Button { text: "Cancel"; onClicked: confirmAction.close() },
-            Button {
-                variant: "primary"
-                text: "Continue"
-                onClicked: { const offer = window.pendingOffer; confirmAction.close(); window.shelf.runPeer(offer.app, offer.action || offer.id); }
-            }
-        ]
     }
-    Dialog {
-        id: analysisDialog
-        title: window.shelf.analysisResult.title || "Inspection results"
-        body: window.shelf.analysisResult.message || ""
-        onClosed: window.shelf.dismissAnalysis()
-        Flickable {
-            width: parent.width
-            height: Math.min(260, analysisText.implicitHeight + Theme.space16)
-            contentHeight: analysisText.implicitHeight + Theme.space16
-            clip: true
-            ScrollBar.vertical: ScrollBar {}
-            Rectangle { anchors.fill: parent; radius: Theme.radiusMd; color: Theme.sunken; z: -1 }
-            TextEdit {
-                id: analysisText
-                x: Theme.space8; y: Theme.space8
-                width: parent.width - Theme.space16
-                readOnly: true; selectByMouse: true
-                text: window.shelf.analysisResult.formatted || ""
-                textFormat: TextEdit.PlainText
-                color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.accentText
-                wrapMode: TextEdit.Wrap
-                font.family: Theme.fontMono; font.pixelSize: Theme.monoSize
+    Lazy {
+        id: deleteCollectionLoader
+        sourceComponent: Component {
+            Dialog {
+                id: deleteCollection
+                title: "Delete this collection?"
+                body: "Its items leave Shelf. The original files stay where they are."
+                destructive: true
+                actions: [
+                    Button { text: "Keep"; onClicked: deleteCollection.close() },
+                    Button {
+                        variant: "destructive"
+                        text: "Delete collection"
+                        onClicked: { window.shelf.deleteShelf(window.collectionToEdit); deleteCollection.close(); }
+                    }
+                ]
             }
         }
-        actions: [Button { variant: "primary"; text: "Done"; onClicked: analysisDialog.close() }]
+    }
+    Lazy {
+        id: confirmActionLoader
+        sourceComponent: Component {
+            Dialog {
+                id: confirmAction
+                title: window.pendingOffer.title || "Send selection"
+                body: (window.selectedCount === 1 ? "1 selected item goes to " : Format.formatCount(window.selectedCount) + " selected items go to ")
+                    + (window.pendingOffer.appName || window.pendingOffer.app || "this app") + ". This action:"
+                Column {
+                    width: parent.width
+                    spacing: Theme.space4
+                    Repeater {
+                        model: window.pendingOffer.effects || []
+                        delegate: Row {
+                            id: effectRow
+                            required property string modelData
+                            spacing: Theme.space8
+                            Dot { anchors.verticalCenter: parent.verticalCenter; tone: "warn" }
+                            Label {
+                                kind: "small"
+                                text: ({ "network": "Uses the network", "uploads-content": "Uploads the content", "sends-to-device": "Sends it to another device",
+                                         "persists": "Keeps a copy", "clipboard": "Changes the clipboard", "writes-files": "Writes files",
+                                         "overwrites-files": "Can overwrite files", "deletes-files": "Can delete files" })[effectRow.modelData] || effectRow.modelData
+                            }
+                        }
+                    }
+                }
+                actions: [
+                    Button { text: "Cancel"; onClicked: confirmAction.close() },
+                    Button {
+                        variant: "primary"
+                        text: "Continue"
+                        onClicked: { const offer = window.pendingOffer; confirmAction.close(); window.shelf.runPeer(offer.app, offer.action || offer.id); }
+                    }
+                ]
+            }
+        }
+    }
+    Lazy {
+        id: analysisDialogLoader
+        sourceComponent: Component {
+            Dialog {
+                id: analysisDialog
+                title: window.shelf.analysisResult.title || "Inspection results"
+                body: window.shelf.analysisResult.message || ""
+                onClosed: window.shelf.dismissAnalysis()
+                Flickable {
+                    width: parent.width
+                    height: Math.min(260, analysisText.implicitHeight + Theme.space16)
+                    contentHeight: analysisText.implicitHeight + Theme.space16
+                    clip: true
+                    ScrollBar.vertical: ScrollBar {}
+                    Rectangle { anchors.fill: parent; radius: Theme.radiusMd; color: Theme.sunken; z: -1 }
+                    TextEdit {
+                        id: analysisText
+                        x: Theme.space8; y: Theme.space8
+                        width: parent.width - Theme.space16
+                        readOnly: true; selectByMouse: true
+                        text: window.shelf.analysisResult.formatted || ""
+                        textFormat: TextEdit.PlainText
+                        color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.accentText
+                        wrapMode: TextEdit.Wrap
+                        font.family: Theme.fontMono; font.pixelSize: Theme.monoSize
+                    }
+                }
+                actions: [Button { variant: "primary"; text: "Done"; onClicked: analysisDialog.close() }]
+            }
+        }
     }
 
     // Settings: its own normal window, created while open.
