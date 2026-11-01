@@ -12,7 +12,8 @@ add_library(arcade_link STATIC
   vendor/arcade-link/qt/ArcadeShortcuts.cpp vendor/arcade-link/qt/ArcadeShortcuts.h
   vendor/arcade-link/qt/ArcadeTrayHost.cpp vendor/arcade-link/qt/ArcadeTrayHost.h
   vendor/arcade-link/qt/ArcadeInstall.cpp vendor/arcade-link/qt/ArcadeInstall.h
-  vendor/arcade-link/qt/ArcadeInstallPlatform.cpp)
+  vendor/arcade-link/qt/ArcadeInstallPlatform.cpp
+  vendor/arcade-link/qt/ArcadePaths.cpp vendor/arcade-link/qt/ArcadePaths.h vendor/arcade-link/qt/ArcadeAppDirsTable.inc)
 target_include_directories(arcade_link PUBLIC vendor/arcade-link/qt)
 target_link_libraries(arcade_link PUBLIC Qt6::Core Qt6::Network)
 if(MSVC)
@@ -76,7 +77,7 @@ if(BUILD_TESTING)
     add_test(NAME ${test} COMMAND tst_${test})
   endforeach()
   target_compile_definitions(tst_PeerHub PRIVATE SHELF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
-  foreach(test IN ITEMS Vectors Server Install TrayHost Methods)
+  foreach(test IN ITEMS Vectors Server Install TrayHost Methods Paths)
     add_executable(tst_Link${test} vendor/arcade-link/qt/tests/tst_${test}.cpp)
     target_link_libraries(tst_Link${test} PRIVATE arcade_link Qt6::Test)
     target_compile_definitions(tst_Link${test} PRIVATE ARCADE_LINK_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/spec/vectors" ARCADE_LINK_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/fixtures" ARCADE_LINK_INSTALL_STRINGS="${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/assets/strings/install.json")

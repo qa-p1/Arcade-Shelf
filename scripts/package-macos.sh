@@ -23,7 +23,7 @@ mkdir -p "$SHELF_APP/Contents/Resources/licenses"
 cp "$SHELF_SOURCE/LICENSE" "$SHELF_SOURCE/THIRD_PARTY_NOTICES.md" "$SHELF_APP/Contents/Resources/licenses/"
 cp -R "$SHELF_SOURCE/licenses/." "$SHELF_APP/Contents/Resources/licenses/"
 cp -R "$SHELF_SOURCE/vendor/arcade-link/LICENSE-MIT" "$SHELF_APP/Contents/Resources/licenses/Arcade-Link-MIT.txt"
-cp "$SHELF_SOURCE/vendor/arcade-link/provenance.json" "$SHELF_SOURCE/vendor/arcade-link/shared-provenance.json" "$SHELF_APP/Contents/Resources/licenses/"
+cp "$SHELF_SOURCE/vendor/arcade-link/VENDORED.json" "$SHELF_SOURCE/vendor/arcade-link/design/fonts/OFL.txt" "$SHELF_SOURCE/vendor/arcade-link/shared-provenance.json" "$SHELF_APP/Contents/Resources/licenses/"
 mkdir -p "$SHELF_APP/Contents/Resources/docs"
 cp -R "$SHELF_SOURCE/docs/user" "$SHELF_APP/Contents/Resources/docs/user"
 if [ -d "$QT_ROOT_DIR/licenses" ]; then cp -R "$QT_ROOT_DIR/licenses" "$SHELF_APP/Contents/Resources/licenses/Qt"; fi

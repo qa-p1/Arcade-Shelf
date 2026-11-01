@@ -49,6 +49,8 @@ QStringList apps();
 QString appName(const QString &id);
 QString appPitch(const QString &id);
 QString releasesUrl(const QString &id);
+// The app's OS identifier (STANDARD.md §10), e.g. dev.arcade.Box; empty for an unknown id.
+QString osIdentifier(const QString &id);
 
 // ---- Locations (SPEC §2) ---------------------------------------------------
 

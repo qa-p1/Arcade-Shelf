@@ -36,6 +36,8 @@ private slots:
         QCOMPARE(releasesUrl(Ids::Find), QStringLiteral("https://github.com/qa-p1/Arcade-Find/releases"));
         QVERIFY(!appPitch(Ids::Shelf).isEmpty());
         QVERIFY(!appPitch(Ids::Find).isEmpty());
+        QCOMPARE(osIdentifier(Ids::Box), QStringLiteral("dev.arcade.Box"));
+        QVERIFY(osIdentifier(QStringLiteral("other.app")).isEmpty());
     }
     void wire()
     {
