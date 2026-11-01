@@ -21,7 +21,7 @@ does not prove desktop drag-and-drop, focus, compositor behavior, or platform UI
 | Arcade Find feature/find-v0.1 | `9a9c9892e72a3fb8acceabdaaee2794e19dbdd30` | Resident Link service with `find.search` (also one-shot) and `find.show`; generic peer offers. |
 
 Shared onboarding changes were reviewed as separate pull requests, now merged
-([ONBOARDING.md](ONBOARDING.md)); `v0.1.0` was not changed, and Link `v0.2.0` adds Shelf and Find.
+([ONBOARDING.md](ecosystem-onboarding.md)); `v0.1.0` was not changed, and Link `v0.2.0` adds Shelf and Find.
 The baseline results below came from a detached checkout of the release code,
 independent of those patches.
 
@@ -88,7 +88,7 @@ arcade-link quit arcade.shelf
 ```
 
 Create the generated example files first; isolate XDG directories as in
-[TESTING.md](TESTING.md). Native runs can omit the offscreen variables.
+[TESTING.md](../testing.md). Native runs can omit the offscreen variables.
 
 ## Reference and mock tests
 
@@ -166,7 +166,7 @@ interactive desktop shell were exercised against each other.
 
 The Link, Tools and Wheel branches now register Find as implemented as well
 as Shelf. Their checks, rerun on 2026-10-10, are recorded with the exact heads
-in [ONBOARDING.md](ONBOARDING.md#verification-before-merging):
+in [ONBOARDING.md](ecosystem-onboarding.md#verification-before-merging):
 Link Rust 36 and Qt 2/2; the ecosystem runner's shelf 3/3 and find 3/3 with
 real binaries; Tools 15/15 focused plus lifecycle 4/4 and 3/3 through the
 isolated runner; Wheel's full CTest 9/9. Tools' checks use generated fixtures

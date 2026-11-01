@@ -152,5 +152,5 @@ ecosystem capability, and provides no bypass to disabled public actions.
 data and its instance lock. The effective global shortcut is in the manifest.
 Per-peer toggles hide and deny outbound calls without changing peer preferences.
 
-See [real client and mock evidence](ECOSYSTEM_VERIFICATION.md),
-[ecosystem onboarding](ONBOARDING.md), and [test commands](TESTING.md).
+See [real client and mock evidence](history/ecosystem-verification.md),
+[ecosystem onboarding](history/ecosystem-onboarding.md), and [test commands](testing.md).

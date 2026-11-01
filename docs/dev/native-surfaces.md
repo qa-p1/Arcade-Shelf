@@ -73,7 +73,7 @@ surface lifetime, physical monitor coverage, Hyprland monitor/workspace/ownershi
 filtering, named workspace visibility, malformed/oversized snapshots and the
 interactive/user-hidden exemption. These tests validate policy and lifetime
 logic. They do not establish native blur appearance or real fullscreen behavior.
-Build/test results belong in [TESTING.md](TESTING.md) and [STATUS.md](STATUS.md).
+Build/test results belong in [TESTING.md](testing.md) and [STATUS.md](../STATUS.md).
 
 Final native validation still requires:
 

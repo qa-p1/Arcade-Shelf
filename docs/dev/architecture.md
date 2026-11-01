@@ -108,7 +108,7 @@ absolute restore, forced edge position, and forced topmost behavior remain under
 compositor control. The UI reports that limitation. Linux blur remains compositor
 controlled. macOS uses a noninteractive system material behind Qt's original
 content view; Windows preserves the transparent capsule when the official DWM
-backdrop cannot apply to its layered surface. See [native surface details](NATIVE_SURFACES.md).
+backdrop cannot apply to its layered surface. See [native surface details](native-surfaces.md).
 
 X11, Windows, and macOS use Qt's native toplevel movement, resizing, stacking,
 and drag backends. Monitor restore is clamped to available geometry. Global
@@ -136,6 +136,6 @@ vectors are included. ShelfInvoke adapts Wheel's existing bounded lifecycle
 pattern because the shared Qt client can wait indefinitely for a noncompliant
 job. No frozen protocol or release tag is changed.
 
-See [status](STATUS.md), [test reproduction](TESTING.md),
-[ecosystem evidence](ECOSYSTEM_VERIFICATION.md), and
-[dependency notices](../THIRD_PARTY_NOTICES.md).
+See [status](../STATUS.md), [test reproduction](testing.md),
+[ecosystem evidence](history/ecosystem-verification.md), and
+[dependency notices](../../THIRD_PARTY_NOTICES.md).

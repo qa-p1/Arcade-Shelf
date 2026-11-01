@@ -98,9 +98,9 @@ GNOME/KDE/Sway, Windows and macOS.
 | Real executable process suite | 11/11 passed, including 1,000-reference transaction, restarts, partial batches, authentication, cancellation and owned handoffs | Isolated offscreen profile |
 | Headless Wayland executable process suite | 11/11 passed under Weston | Does not test pointer drag transfers to Nautilus |
 | Frozen Rust Link CLI → real Shelf | 14/14 isolated checks passed | Offscreen |
-| Real Arcade Find ↔ real Shelf | Find's e2e 49/49 (headless Sway and Xvfb): Find's "Add to Shelf" stores references, launches a stopped Shelf, and Shelf's `find.show` opens Find on the file; Link's runner `find` group 3/3; `tst_PeerHub` contract test with Find's real manifest; `tst_Ui` clicks Actions → "Search in Find" and "Find matching files" against Find's manifest | Isolated profiles; no drag and drop between them yet; see [ECOSYSTEM_VERIFICATION.md](ECOSYSTEM_VERIFICATION.md#real-find-against-real-shelf) |
+| Real Arcade Find ↔ real Shelf | Find's e2e 49/49 (headless Sway and Xvfb): Find's "Add to Shelf" stores references, launches a stopped Shelf, and Shelf's `find.show` opens Find on the file; Link's runner `find` group 3/3; `tst_PeerHub` contract test with Find's real manifest; `tst_Ui` clicks Actions → "Search in Find" and "Find matching files" against Find's manifest | Isolated profiles; no drag and drop between them yet; see [ECOSYSTEM_VERIFICATION.md](dev/history/ecosystem-verification.md#real-find-against-real-shelf) |
 | Reference Rust Link tests | 42 passed, 1 intentionally ignored engine-download test | No downloaded engine |
-| Shared onboarding tests (Shelf and Find) | Link Rust 36 + Qt 2/2; runner shelf 3/3 and find 3/3; Tools 15/15 focused, lifecycle 4/4 and 3/3; Wheel CTest 9/9 | Merged; details in [ONBOARDING.md](ONBOARDING.md) |
+| Shared onboarding tests (Shelf and Find) | Link Rust 36 + Qt 2/2; runner shelf 3/3 and find 3/3; Tools 15/15 focused, lifecycle 4/4 and 3/3; Wheel CTest 9/9 | Merged; details in [ONBOARDING.md](dev/history/ecosystem-onboarding.md) |
 | Linux runtime package | Rebuilt from the recorded milestone; 11 packaged process checks and real stopped-app Link launch passed with development Qt paths removed | Cloud host runtime bundle; native compositor and distribution compatibility remain separate |
 
 The GUI run exposed and fixed search focus being reset while typing. The
@@ -114,7 +114,7 @@ Qt 6.8.3 exposed that startup cleanup deleted every live Shelf-owned handoff
 export (a descriptor-opened marker reported no modification time) and that
 collapsing to a docked tab could stay clamped to the panel's height; both are
 fixed, with regression coverage. No fabricated
-desktop results or screenshots are used. Commands are in [TESTING.md](TESTING.md).
+desktop results or screenshots are used. Commands are in [TESTING.md](dev/testing.md).
 
 ## Measured performance
 
@@ -149,11 +149,11 @@ native compositor/monitor performance still need profiling.
 
 The cloud environment has no real Hyprland/Nautilus session, Windows/macOS host,
 or physical monitor/DPI setup. Headless Wayland startup and X11 pointer tests
-cover narrower behaviors. Reproducible desktop steps are in [TESTING.md](TESTING.md).
+cover narrower behaviors. Reproducible desktop steps are in [TESTING.md](dev/testing.md).
 
 The shared repositories know Shelf and Find since Arcade Link `v0.2.0`
 (2026-10-10): Link, Tools and Wheel are merged and the other apps moved to the
-new tag; see [ONBOARDING.md](ONBOARDING.md).
+new tag; see [ONBOARDING.md](dev/history/ecosystem-onboarding.md).
 
 ## Remaining implementation/refinement work
 
@@ -166,8 +166,8 @@ new tag; see [ONBOARDING.md](ONBOARDING.md).
 
 ## Documents
 
-[README](../README.md) · [Architecture](ARCHITECTURE.md) ·
-[Link contracts](ARCADE_LINK.md) · [Testing](TESTING.md) ·
-[Packaging](PACKAGING.md) · [Ecosystem evidence](ECOSYSTEM_VERIFICATION.md) ·
-[Ecosystem onboarding](ONBOARDING.md) · [Changelog](../CHANGELOG.md) ·
+[README](../README.md) · [Architecture](dev/architecture.md) ·
+[Link contracts](dev/link.md) · [Testing](dev/testing.md) ·
+[Packaging](dev/packaging.md) · [Ecosystem evidence](dev/history/ecosystem-verification.md) ·
+[Ecosystem onboarding](dev/history/ecosystem-onboarding.md) · [Changelog](../CHANGELOG.md) ·
 [Dependency notices](../THIRD_PARTY_NOTICES.md)

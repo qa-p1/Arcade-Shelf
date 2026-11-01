@@ -34,7 +34,7 @@ Download the file for your system from [Releases](https://github.com/qa-p1/Arcad
 - Builds are unsigned. On Windows, SmartScreen may warn: choose **More info → Run anyway**. On macOS the app is not notarized: Control-click or right-click it and choose **Open** the first time.
 - If FUSE is missing on Linux, run the AppImage with `--appimage-extract-and-run`.
 
-A version tag publishes a GitHub release with the three packages, `arcade-release.json` and `SHA256SUMS.txt`. See [Install and start Arcade Shelf](docs/user/getting-started.md) and [packaging](docs/PACKAGING.md).
+A version tag publishes a GitHub release with the three packages, `arcade-release.json` and `SHA256SUMS.txt`. See [Install and start Arcade Shelf](docs/user/getting-started.md) and [packaging](docs/dev/packaging.md).
 
 ## Features
 
@@ -68,7 +68,7 @@ Shelf exposes `shelf.add`, `shelf.show` and `shelf.pick`. A picker returns only 
 
 When Arcade Tools is running, its tray icon hosts Shelf's menu, including **New shelf…** and **Show shelf**. Tools can also restart Shelf, rebind its global shortcut and back up portable settings. When Tools disconnects, Shelf's own icon returns immediately; turning off Connected apps also returns the icon.
 
-See [Use Arcade Shelf with other apps](docs/user/with-other-apps.md), [the contracts and ownership rules](docs/ARCADE_LINK.md), [ecosystem verification](docs/ECOSYSTEM_VERIFICATION.md) and [ecosystem onboarding](docs/ONBOARDING.md).
+See [Use Arcade Shelf with other apps](docs/user/with-other-apps.md), [the contracts and ownership rules](docs/dev/link.md), [ecosystem verification](docs/dev/history/ecosystem-verification.md) and [ecosystem onboarding](docs/dev/history/ecosystem-onboarding.md).
 
 ## Usage
 
@@ -153,14 +153,14 @@ python3 tests/process_smoke.py --binary build/arcade-shelf
 python3 scripts/check-vendor.py
 ```
 
-Linux native drag tests require Xvfb and xdotool. Wayland startup can be tested with headless Weston; real Hyprland/Nautilus behavior requires a desktop session. See [testing instructions](docs/TESTING.md).
+Linux native drag tests require Xvfb and xdotool. Wayland startup can be tested with headless Weston; real Hyprland/Nautilus behavior requires a desktop session. See [testing instructions](docs/dev/testing.md).
 
 ## Documentation
 
-- [User guide](docs/user/): [getting started](docs/user/getting-started.md), [features](docs/user/features.md), [shortcuts](docs/user/shortcuts.md), [FAQ](docs/user/faq.md), [troubleshooting](docs/user/troubleshooting.md)
-- [Architecture](docs/ARCHITECTURE.md), [native surfaces](docs/NATIVE_SURFACES.md)
-- [Arcade Link](docs/ARCADE_LINK.md), [ecosystem verification](docs/ECOSYSTEM_VERIFICATION.md), [onboarding](docs/ONBOARDING.md)
-- [Testing](docs/TESTING.md), [packaging](docs/PACKAGING.md)
+- [User guide](docs/user): [getting started](docs/user/getting-started.md), [features](docs/user/features.md), [shortcuts](docs/user/shortcuts.md), [FAQ](docs/user/faq.md), [troubleshooting](docs/user/troubleshooting.md)
+- [Architecture](docs/dev/architecture.md), [native surfaces](docs/dev/native-surfaces.md)
+- [Arcade Link](docs/dev/link.md), [ecosystem verification](docs/dev/history/ecosystem-verification.md), [onboarding](docs/dev/history/ecosystem-onboarding.md)
+- [Testing](docs/dev/testing.md), [packaging](docs/dev/packaging.md)
 - [Status](docs/STATUS.md)
 - [Changelog](CHANGELOG.md)
 

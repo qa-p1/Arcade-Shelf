@@ -11,7 +11,7 @@ mounts the DMG and runs `scripts/test-macos-installer.sh`. Both use a private
 `ARCADE_HOME` and Shelf profile, verify receipt/integration cleanup and retain
 app data on uninstall. These checks are CI only, not real-desktop verification.
 
-Build the actual application and tests with the [README commands](../README.md).
+Build the actual application and tests with the [README commands](../../README.md).
 Tests create generated content and private profiles; they do not use the owner's
 files, clipboard history, login items, or desktop shortcuts.
 
@@ -43,7 +43,7 @@ The GUI suite also covers pending preference edits during additions, all four
 docked edges, delayed hover and raw-image drag peeking, same-click focus promotion,
 and noninteractive additions while another test window is fullscreen. Native
 edge completion, system materials and fullscreen observation require the
-[platform checks](NATIVE_SURFACES.md) in addition to these controlled regressions.
+[platform checks](native-surfaces.md) in addition to these controlled regressions.
 
 NativeDrag deliberately skips under the offscreen/Wayland plugins. A passing
 offscreen CTest target does not mean native drag was executed.
@@ -133,7 +133,7 @@ caches are not flushed. A zero CPU sample does not establish zero wakeups.
 `benchmarks/cloud-debug.json` is an early RelWithDebInfo measurement taken before
 the settled-idle refinement and UI notification fixes. Its elevated CPU numbers
 describe that intermediate run; its filename is historical, not its build type.
-The final milestone measurement is recorded separately in [status](STATUS.md).
+The final milestone measurement is recorded separately in [status](../STATUS.md).
 
 ## Cloud environment reproduction
 
@@ -143,7 +143,7 @@ workspace, source `/workspace/toolchain/env.sh` for process-scoped build variabl
 Those absolute paths are not runtime dependencies or an installation recipe.
 Normal builds use an installed Qt SDK. Native startup was independently probed
 under offscreen, Xvfb/xcb and headless Weston; final application evidence is listed
-in [status](STATUS.md) and [ecosystem verification](ECOSYSTEM_VERIFICATION.md).
+in [status](../STATUS.md) and [ecosystem verification](history/ecosystem-verification.md).
 
 Where download.qt.io is unreachable, conda-forge's `qt6-main=6.8.3` works as
 well (with `libgl-devel`, `libegl-devel` and `glib`); configure with

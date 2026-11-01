@@ -174,5 +174,5 @@ smoke-test results must be checked before publishing distributable releases.
 A `v<version>` tag (or a manual run of the workflow on that tag) builds and
 tests all three platforms, then publishes the packages with one stable
 `arcade-release.json` and `SHA256SUMS.txt` as a GitHub release, which Arcade
-Tools installs from ([onboarding](ONBOARDING.md)). Real install, update and
+Tools installs from ([onboarding](history/ecosystem-onboarding.md)). Real install, update and
 removal through Tools on each platform still need a desktop run.

@@ -20,8 +20,8 @@ alone adds Shelf to Connected apps, not to menus. Lens and Look add an
 explicit **Add to Shelf** entry; Box and Clipboard list Shelf without one.
 
 Shelf vendors the Link Qt module from `v0.2.0` too
-([provenance](../vendor/arcade-link/provenance.json),
-`scripts/check-vendor.py`).
+(then recorded in `vendor/arcade-link/provenance.json`, since replaced by
+`VENDORED.json`; `scripts/check-vendor.py`).
 
 ## Verification before merging
 
