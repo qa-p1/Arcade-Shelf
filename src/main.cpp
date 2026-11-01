@@ -216,18 +216,26 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    ArcadeLink::Error error;
+    std::unique_ptr<ArcadeLink::Client> client;
     if (!locked) {
-        ArcadeLink::Error error;
-        std::unique_ptr<ArcadeLink::Client> client;
         // A concurrent first launch may not have created its private endpoint yet.
         for (int attempt = 0; attempt < 30 && !client; ++attempt) {
             client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(root + "/instance"), Shelf::AppId, Shelf::AppId, Shelf::Version, 100, &error);
             if (!client) QThread::msleep(50);
         }
-        if (!client) {
+        // No endpoint but the lock is held: the resident is quitting (a launch
+        // right after Quit). Wait for it to let go, then start as usual.
+        for (int attempt = 0; !client && attempt < 100 && !locked; ++attempt) {
+            QThread::msleep(50);
+            locked = lock.tryLock(0);
+        }
+        if (!client && !locked) {
             qCritical("Couldn't contact the resident Shelf instance: %s", qPrintable(error.userMessage("Arcade Shelf")));
             return 1;
         }
+    }
+    if (client) {
         if (parser.isSet("quit")) client->call("app.quit", {}, &error, 1000);
         else if (parser.isSet("status")) {
             QJsonObject status = client->call("app.status", {}, &error, 1000).toObject();
