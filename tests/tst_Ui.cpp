@@ -310,7 +310,7 @@ private slots:
         QCOMPARE(settings["theme"].toString(),QString("light"));
         QVERIFY(settings["reducedMotion"].toBool());
         QCOMPARE(settings["retentionDays"].toInt(),41);
-        QCOMPARE(settings["quotaBytes"].toInteger(),qint64(139)*1048576);
+        QCOMPARE(settings["quotaBytes"].toInteger(),qint64(139)*1000*1000);
         QVERIFY(settings["peers"].toObject()["arcade.look"].toBool());
         QCOMPARE(recovered.items("quick").size(),12);
     }

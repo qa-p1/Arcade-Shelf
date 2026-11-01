@@ -175,7 +175,7 @@ public:
     Q_INVOKABLE void setPeerEnabled(QString id, bool enabled);
     Q_INVOKABLE void getPeer(QString id);
     Q_INVOKABLE void setRetention(int days);
-    Q_INVOKABLE void setQuota(int mib);
+    Q_INVOKABLE void setQuota(int mb);
     Q_INVOKABLE void setStartAtLogin(bool value);
 signals:
     void changed();

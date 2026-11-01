@@ -276,7 +276,7 @@ struct FullscreenGuard::Native {
                 const bool fullscreen = FullscreenGuard::hyprlandFullscreen(snapshot->monitors, snapshot->clients,
                     owner->m_window->screen()->name(), QCoreApplication::applicationPid(), &matched);
                 owner->setState(fullscreen, matched ? QStringLiteral("Hyprland fullscreen observation active")
-                                                   : QStringLiteral("Hyprland monitor could not be matched to Shelf's screen"));
+                                                   : QStringLiteral("Couldn't match Hyprland's monitor to Shelf's screen."));
             }
             if (std::exchange(queryAgain, false)) schedule();
         };

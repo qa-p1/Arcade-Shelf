@@ -234,11 +234,11 @@ bool Store::open(QString *error)
     m_boundariesRecorded = false;
     m_canonicalRoot = QFileInfo(m_root).canonicalFilePath();
     m_canonicalObjects = QFileInfo(m_root + QStringLiteral("/objects")).canonicalFilePath();
-    if (m_canonicalRoot.isEmpty() || m_canonicalObjects.isEmpty()) return fail(QStringLiteral("Could not resolve Shelf storage boundaries."));
+    if (m_canonicalRoot.isEmpty() || m_canonicalObjects.isEmpty()) return fail(QStringLiteral("Couldn't resolve Shelf storage boundaries."));
 #ifdef Q_OS_UNIX
     struct stat rootStat {}, objectsStat {};
     if (::lstat(QFile::encodeName(m_root).constData(),&rootStat) != 0 || ::lstat(QFile::encodeName(m_root + QStringLiteral("/objects")).constData(),&objectsStat) != 0)
-        return fail(QStringLiteral("Could not inspect Shelf storage boundaries."));
+        return fail(QStringLiteral("Couldn't inspect Shelf storage boundaries."));
     m_rootDevice = rootStat.st_dev; m_rootInode = rootStat.st_ino;
     m_objectsDevice = objectsStat.st_dev; m_objectsInode = objectsStat.st_ino;
 #endif
@@ -251,9 +251,9 @@ bool Store::open(QString *error)
     if (!m_db.open()) return fail(m_db.lastError().text());
     QFile::setPermissions(database, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     if (!exec(QStringLiteral("PRAGMA foreign_keys=ON")) || !exec(QStringLiteral("PRAGMA journal_mode=WAL")) || !exec(QStringLiteral("PRAGMA synchronous=FULL")))
-        return fail(QStringLiteral("Could not configure SQLite durability."));
+        return fail(QStringLiteral("Couldn't configure SQLite durability."));
     QSqlQuery version(m_db);
-    if (!version.exec(QStringLiteral("PRAGMA user_version")) || !version.next()) return fail(QStringLiteral("Could not read the storage schema."));
+    if (!version.exec(QStringLiteral("PRAGMA user_version")) || !version.next()) return fail(QStringLiteral("Couldn't read the storage schema."));
     if (version.value(0).toInt() > 1) return fail(QStringLiteral("This Shelf database was created by a newer version of Arcade Shelf."));
     if (!m_db.transaction()) return fail(m_db.lastError().text());
     const QStringList schema{
@@ -266,14 +266,14 @@ bool Store::open(QString *error)
         QStringLiteral("INSERT OR IGNORE INTO meta(key,value) VALUES('activeShelf','quick')"),
         QStringLiteral("PRAGMA user_version=1")};
     for (const auto &sql : schema) {
-        if (!exec(sql)) { m_db.rollback(); return fail(QStringLiteral("Could not migrate Shelf storage.")); }
+        if (!exec(sql)) { m_db.rollback(); return fail(QStringLiteral("Couldn't migrate Shelf storage.")); }
     }
-    if (!m_db.commit()) return fail(QStringLiteral("Could not commit Shelf storage migration."));
+    if (!m_db.commit()) return fail(QStringLiteral("Couldn't commit Shelf storage migration."));
     QSqlQuery check(m_db);
     if (!check.exec(QStringLiteral("PRAGMA quick_check")) || !check.next() || check.value(0).toString() != QStringLiteral("ok"))
         return fail(QStringLiteral("Shelf storage is damaged. Preserve this directory before recovering a backup."));
     if (!hasShelf(activeShelf())) setActiveShelf(QStringLiteral("quick"));
-    if (!cleanup()) return fail(QStringLiteral("Could not recover Shelf storage or safely inspect owned handoffs."));
+    if (!cleanup()) return fail(QStringLiteral("Couldn't recover Shelf storage or safely inspect owned handoffs."));
     return true;
 }
 
@@ -413,7 +413,7 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
     };
     const auto abort = [&] {
         m_db.rollback(); for (const auto &path : staged) removeOwnedPath(path);
-        result.addedIds.clear(); result.error = failure(QStringLiteral("internal"),QStringLiteral("Could not persist items"));
+        result.addedIds.clear(); result.error = failure(QStringLiteral("internal"),QStringLiteral("Couldn't persist items"));
     };
     const QSet<QString> fileKinds{QStringLiteral("image"),QStringLiteral("video"),QStringLiteral("audio"),QStringLiteral("pdf"),QStringLiteral("document"),QStringLiteral("spreadsheet"),QStringLiteral("presentation"),QStringLiteral("archive"),QStringLiteral("text"),QStringLiteral("code"),QStringLiteral("font"),QStringLiteral("model"),QStringLiteral("any")};
     for (const auto &value : expanded) {
@@ -674,7 +674,7 @@ QString Store::writeHandoff(const QString &key, const QString &name, const QByte
 {
     const auto handoff = ArcadeLink::Locations::discover().handoff;
     if (!privateOwnedDirectory(handoff)) {
-        if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Could not create a private handoff"));
+        if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Couldn't create a private handoff"));
         return {};
     }
     const QString cached = m_handoffs.value(key);
@@ -688,7 +688,7 @@ QString Store::writeHandoff(const QString &key, const QString &name, const QByte
         const QByteArray expected = QByteArray("arcade.shelf\n") + key.toUtf8() + '\n' + name.toUtf8() + '\n';
         if (!openRegular(marker,QIODevice::ReadWrite) || marker.read(4096) != expected ||
             !marker.setFileTime(QDateTime::currentDateTimeUtc(),QFileDevice::FileModificationTime)) {
-            if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Could not renew the owned handoff lifetime"));
+            if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Couldn't renew the owned handoff lifetime"));
             return {};
         }
         return cached;
@@ -699,7 +699,7 @@ QString Store::writeHandoff(const QString &key, const QString &name, const QByte
         return {};
     }
     if (!privateOwnedDirectory(handoff)) {
-        if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Could not create a private handoff"));
+        if (error) *error = failure(QStringLiteral("internal"),QStringLiteral("Couldn't create a private handoff"));
         return {};
     }
     const QString directory = handoff + QLatin1Char('/') + uid();

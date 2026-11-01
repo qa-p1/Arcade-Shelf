@@ -173,7 +173,7 @@ bool macLogin(const InstallSpec &spec, const ArcadeInstall::Environment &env, co
     }
     existing.close();
     if (!enabled) return !QFileInfo::exists(target) || QFile::remove(target);
-    if (!QDir().mkpath(QFileInfo(target).absolutePath())) { *error = QStringLiteral("Could not create the login directory."); return false; }
+    if (!QDir().mkpath(QFileInfo(target).absolutePath())) { *error = QStringLiteral("Couldn't create the login directory."); return false; }
     QByteArray bytes;
     QXmlStreamWriter xml(&bytes);
     xml.writeStartDocument();
@@ -189,7 +189,7 @@ bool macLogin(const InstallSpec &spec, const ArcadeInstall::Environment &env, co
     xml.writeEndElement(); xml.writeEndElement(); xml.writeEndDocument();
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)
-        || file.write(bytes) != bytes.size() || !file.commit()) { *error = QStringLiteral("Could not save the login entry."); return false; }
+        || file.write(bytes) != bytes.size() || !file.commit()) { *error = QStringLiteral("Couldn't save the login entry."); return false; }
     *path = target;
     return true;
 }
@@ -224,13 +224,13 @@ bool installMac(const InstallSpec &spec, const ArcadeInstall &install, const Arc
             }
             if (!QDir().rename(target, previous)) {
                 QDir(moved).removeRecursively();
-                *error = QStringLiteral("Could not preserve the installed copy before updating."); return false;
+                *error = QStringLiteral("Couldn't preserve the installed copy before updating."); return false;
             }
         }
         if (!QDir().rename(moved, target)) {
             if (QFileInfo::exists(previous)) QDir().rename(previous, target);
             QDir(moved).removeRecursively();
-            *error = QStringLiteral("Could not move the app into Applications"); return false;
+            *error = QStringLiteral("Couldn't move the app into Applications"); return false;
         }
         if (QFileInfo::exists(previous)) {
             old.insert(QStringLiteral("previous"), QJsonObject{{QStringLiteral("path"), previous},
@@ -326,7 +326,7 @@ bool installCopy(const InstallSpec &spec, const ArcadeInstall &install, const Ar
         return false;
     }
     QTemporaryDir stage;
-    if (!stage.isValid()) { *error = QStringLiteral("Could not stage the icons"); return false; }
+    if (!stage.isValid()) { *error = QStringLiteral("Couldn't stage the icons"); return false; }
     QJsonObject old;
     install.environment().receipts().read(spec.app.id, &old);
     ArcadeInstall::InstallOptions o;
@@ -337,7 +337,7 @@ bool installCopy(const InstallSpec &spec, const ArcadeInstall &install, const Ar
     o.managedBy = old.value(QStringLiteral("managedBy")).toString(QStringLiteral("self"));
     if (!spec.writeIcons) { *error = QStringLiteral("This package has no install icons."); return false; }
     o.icons = spec.writeIcons(stage.path());
-    if (o.icons.isEmpty()) { *error = QStringLiteral("Could not stage the install icons."); return false; }
+    if (o.icons.isEmpty()) { *error = QStringLiteral("Couldn't stage the install icons."); return false; }
     o.startAtLogin = options.startAtLogin;
     o.removeDownload = options.removeDownload;
     return install.install(o, receipt, error) && finishDesktopEntry(spec, *receipt, error);
@@ -567,7 +567,7 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args)
             process.start(qEnvironmentVariable("SystemRoot") + QStringLiteral("/System32/WindowsPowerShell/v1.0/powershell.exe"), parameters);
             if (!process.waitForFinished(30000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
                 process.kill(); process.waitForFinished(1000);
-                error = QStringLiteral("Could not repair Windows launcher, CLI and login integration."); return false;
+                error = QStringLiteral("Couldn't repair Windows launcher, CLI and login integration."); return false;
             }
             return env.receipts().read(spec.app.id, &receipt, &error);
         })) { err(error); return 1; }
@@ -604,10 +604,10 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args)
                 if (QFileInfo::exists(folder) && !QDir(folder).removeRecursively()) return false;
             }
             return true;
-        })) { err(QStringLiteral("Could not safely remove Shelf settings and data.")); return 1; }
+        })) { err(QStringLiteral("Couldn't safely remove Shelf settings and data.")); return 1; }
         QStringList uninstallArgs;
         if (headless) uninstallArgs << QStringLiteral("/S");
-        if (!QProcess::startDetached(uninstaller, uninstallArgs)) { err(QStringLiteral("Could not start the Windows uninstaller.")); return 1; }
+        if (!QProcess::startDetached(uninstaller, uninstallArgs)) { err(QStringLiteral("Couldn't start the Windows uninstaller.")); return 1; }
         return 0;
 #else
         if (spec.quitRunning && !io([&] { return spec.quitRunning(&error); })) { err(error); return 1; }
@@ -615,7 +615,7 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args)
         const QString cli = detection.receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("cli")).toString();
         if (!cli.isEmpty() && !io([&] {
             return !QFileInfo(cli).isSymLink() || QFileInfo(cli).symLinkTarget() != launchPath(spec, detection.receipt) || QFile::remove(cli);
-        })) { err(QStringLiteral("Could not remove the owned CLI link.")); return 1; }
+        })) { err(QStringLiteral("Couldn't remove the owned CLI link.")); return 1; }
 #endif
         bool removed = false;
         if (!io([&] { return install.uninstall(spec.app.id, {removeData, spec.dataFolders}, &removed, &error); })) {

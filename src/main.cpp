@@ -135,7 +135,7 @@ int main(int argc, char **argv)
         QTextStream(stderr) << "Shelf uses resident background handling; --arcade-invoke is not supported.\n"; return 2;
     }
     const bool headless = ArcadeApp::isHeadlessIntegrationCommand(arguments) || arguments.contains("--silent")
-        || arguments.contains("--quit") || arguments.contains("--status") || arguments.contains("--restart")
+        || arguments.contains("--quit") || arguments.contains("--status") || arguments.contains("--hide") || arguments.contains("--restart")
         || arguments.contains("--help") || arguments.contains("-h");
     std::unique_ptr<QCoreApplication> application;
     if (headless) application = std::make_unique<QCoreApplication>(argc, argv);
@@ -143,7 +143,13 @@ int main(int argc, char **argv)
     auto &app = *application;
     QCommandLineParser parser;
     parser.setApplicationDescription("A floating workspace for desktop content."); parser.addHelpOption(); parser.addVersionOption();
-    for (const auto &flag : QStringList{"background","settings","show","toggle","quit","status"}) parser.addOption(QCommandLineOption(flag,flag));
+    parser.addOption(QCommandLineOption("background","Start without showing a window (as at login)."));
+    parser.addOption(QCommandLineOption("settings","Open Settings."));
+    parser.addOption(QCommandLineOption("show","Open the panel."));
+    parser.addOption(QCommandLineOption("hide","Close the panel to its capsule."));
+    parser.addOption(QCommandLineOption("toggle","Open or close the panel."));
+    parser.addOption(QCommandLineOption("quit","Quit the running Arcade Shelf."));
+    parser.addOption(QCommandLineOption("status","Print one line of JSON: running, version, Link state."));
     parser.addOption(QCommandLineOption("wait-for-exit","Wait for an old resident before restarting.","pid"));
     parser.addOption(QCommandLineOption("restart","Restart the running Arcade Shelf instance."));
     parser.addOption(QCommandLineOption("install","Install this package."));
@@ -198,9 +204,17 @@ int main(int argc, char **argv)
             client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(root + "/instance"),Shelf::AppId,Shelf::AppId,Shelf::Version,100,&error);
             if (!client) QThread::msleep(50);
         }
-        if (!client) { qCritical("Could not contact the resident Shelf instance: %s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; }
+        if (!client) { qCritical("Couldn't contact the resident Shelf instance: %s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; }
         if (parser.isSet("quit")) client->call("app.quit",{},&error,1000);
-        else if (parser.isSet("status")) QTextStream(stdout) << QJsonDocument(client->call("app.status",{},&error,1000).toObject()).toJson(QJsonDocument::Compact) << '\n';
+        else if (parser.isSet("status")) {
+            QJsonObject status = client->call("app.status",{},&error,1000).toObject();
+            const QJsonValue extra = client->call("invoke",{{"action","internal.status"},{"inputs",QJsonArray{}}},&error,2000);
+            const QJsonObject details = extra.toObject().contains("result") ? extra.toObject()["result"].toObject() : extra.toObject();
+            status.insert("running", true);
+            status.insert("link", details["link"]);
+            QTextStream(stdout) << QJsonDocument(status).toJson(QJsonDocument::Compact) << '\n';
+        }
+        else if (parser.isSet("hide")) client->call("invoke",{{"action","internal.hide"},{"inputs",QJsonArray{}}},&error,5000);
         else if (parser.isSet("restart")) {
             client->restart({}, &error);
         }
@@ -212,7 +226,10 @@ int main(int argc, char **argv)
         } else client->call("app.activate",{},&error,1000);
         if (error.isError()) { qCritical("%s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; } return 0;
     }
-    if (headless) { if (parser.isSet("status")) QTextStream(stdout) << "{\"running\":false}\n"; return 0; }
+    if (headless) {
+        if (parser.isSet("status")) QTextStream(stdout) << QJsonDocument(QJsonObject{{"running", false}, {"version", Shelf::Version}}).toJson(QJsonDocument::Compact) << '\n';
+        return 0;
+    }
     // An installed copy from before 0.4: its launcher and login entry move to dev.arcade.Shelf.
     ArcadeApp::migrateIntegration(installSpec());
     // Started at login or by Tools, stderr often goes to /dev/null: keep

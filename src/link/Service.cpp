@@ -97,6 +97,10 @@ void Service::start()
         const QString action = req["action"].toString();
         if (action == "internal.settings") { emit showRequested({}, true); r.done({{"message", "Showing settings"}}); }
         else if (action == "internal.toggle") { emit toggleRequested(); r.done({}); }
+        else if (action == "internal.hide") { emit hideRequested(); r.done({}); }
+        else if (action == "internal.status") {
+            r.done({{"link", QJsonObject{{"enabled", m_store->settings()["linkEnabled"].toBool(true)}, {"listening", m_server != nullptr}}}});
+        }
         else if (action == "internal.add") { const auto result = m_store->add(req["inputs"].toArray()); if (result.error.isError()) r.fail(result.error); else { finishAdd(result, true); r.done(result.result); } }
         else r.fail(ArcadeLink::Error::make("unsupported_input", "Unknown lifecycle command"));
     };
@@ -154,7 +158,7 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
         replacement.setArguments(args);
         ArcadeLink::detachFromImage(replacement);
         if (!replacement.startDetached())
-            return ArcadeLink::Error::make("internal", "Could not start the replacement Shelf process.");
+            return ArcadeLink::Error::make("internal", "Couldn't start the replacement Shelf process.");
         return ArcadeLink::Error{};
     };
     server.restart = [this](const QString &) { emit quitRequested(); };
@@ -186,7 +190,7 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
         QString error;
         if (!ArcadeLink::ensurePrivateDir(directory) || !m_store->exportPortable(path, false, nullptr, nullptr, &error)) {
             QDir(directory).removeRecursively();
-            r.fail(ArcadeLink::Error::make("internal", error.isEmpty() ? "Could not export Shelf settings." : error)); return;
+            r.fail(ArcadeLink::Error::make("internal", error.isEmpty() ? "Couldn't export Shelf settings." : error)); return;
         }
         r.done({{"outputs", QJsonArray{QJsonObject{{"type", "file/any"}, {"path", path}, {"owner", AppId}}}}});
     };
@@ -216,7 +220,7 @@ void Service::completeShortcutBinding(QJsonObject result, ArcadeLink::Error erro
 {
     if (!m_shortcutResponder) return;
     if (!error.isError() && !m_store->saveSettings({{"shortcut", m_requestedShortcut}}))
-        error = ArcadeLink::Error::make("internal", "Could not save the global shortcut.");
+        error = ArcadeLink::Error::make("internal", "Couldn't save the global shortcut.");
     const auto responder = *m_shortcutResponder;
     m_shortcutResponder.reset();
     if (error.isError()) responder.fail(error);
@@ -296,23 +300,23 @@ void Service::remove(QStringList ids)
 {
     QStringList safe;
     for (const auto &id : ids) { if (m_retained.contains(id)) m_deferredRemoval << id; else safe << id; }
-    if (!m_store->remove(safe)) emit feedback("Could not remove the selected items.", false);
+    if (!m_store->remove(safe)) emit feedback("Couldn't remove the selected items.", false);
     m_undo.clear(); refresh();
 }
 void Service::undo() { auto ids = m_undo; m_undo.clear(); remove(ids); emit feedback("Last addition undone.", false); }
-void Service::reorder(QString shelf, QStringList ids) { if (!m_store->reorder(shelf, ids)) emit feedback("Could not reorder items.", false); refresh(); }
+void Service::reorder(QString shelf, QStringList ids) { if (!m_store->reorder(shelf, ids)) emit feedback("Couldn't reorder items.", false); refresh(); }
 void Service::switchShelf(QString id) { if (!target(id)) emit feedback("That shelf is unavailable.", false); refresh(); }
-void Service::createShelf(QString name, bool temporary) { auto id = m_store->createShelf(name, temporary); if (id.isEmpty()) emit feedback("Could not create shelf.", false); else m_store->setActiveShelf(id); refresh(); }
-void Service::renameShelf(QString id, QString name) { if (!m_store->renameShelf(id, name)) emit feedback("Could not rename shelf.", false); refresh(); }
+void Service::createShelf(QString name, bool temporary) { auto id = m_store->createShelf(name, temporary); if (id.isEmpty()) emit feedback("Couldn't create shelf.", false); else m_store->setActiveShelf(id); refresh(); }
+void Service::renameShelf(QString id, QString name) { if (!m_store->renameShelf(id, name)) emit feedback("Couldn't rename shelf.", false); refresh(); }
 void Service::deleteShelf(QString id) {
     if (!m_retained.isEmpty()) { emit feedback("Wait for the active action before deleting a shelf.", false); return; }
-    if (!m_store->deleteShelf(id)) emit feedback("Quick Shelf cannot be deleted.", false); m_undo.clear(); refresh();
+    if (!m_store->deleteShelf(id)) emit feedback("Couldn't delete Quick Shelf. It's the collection new items go to.", false); m_undo.clear(); refresh();
 }
 void Service::pinShelf(QString id, bool pin) { m_store->pinShelf(id, pin); refresh(); }
 void Service::reorderShelves(QStringList ids) { m_store->reorderShelves(ids); refresh(); }
 void Service::saveSettings(QJsonObject settings)
 {
-    if (!m_store->saveSettings(settings)) emit feedback("Could not save preferences.", false);
+    if (!m_store->saveSettings(settings)) emit feedback("Couldn't save preferences.", false);
     // Acknowledge the submitted patch before the committed snapshot. The GUI
     // can then stop overlaying its pending values, including failed writes.
     emit settingsSaved(settings);
@@ -324,14 +328,14 @@ void Service::exportPortableSettings(QString path, bool includeOwned)
     int omittedItems = 0;
     QString error;
     if (!m_store || !m_store->exportPortable(path, includeOwned, &includedBytes, &omittedItems, &error)) {
-        emit feedback(error.isEmpty() ? QStringLiteral("Could not export the Shelf backup.") : error, false);
+        emit feedback(error.isEmpty() ? QStringLiteral("Couldn't export the Shelf backup.") : error, false);
         return;
     }
     QString message = QStringLiteral("Shelf backup exported.");
     if (!includeOwned && omittedItems > 0)
         message += QStringLiteral(" %1 owned item(s) were left out.").arg(omittedItems);
     else if (includeOwned)
-        message += QStringLiteral(" %1 of owned content included.").arg(QLocale().formattedDataSize(includedBytes));
+        message += QStringLiteral(" %1 of owned content included.").arg(QLocale().formattedDataSize(includedBytes, 1, QLocale::DataSizeSIFormat));
     emit feedback(message, false);
 }
 void Service::importPortableSettings(QString path)
@@ -340,7 +344,7 @@ void Service::importPortableSettings(QString path)
     int importedItems = 0;
     QString error;
     if (!m_store || !m_store->importPortable(path, &importedItems, &error)) {
-        emit feedback(error.isEmpty() ? QStringLiteral("Could not import the Shelf backup.") : error, false);
+        emit feedback(error.isEmpty() ? QStringLiteral("Couldn't import the Shelf backup.") : error, false);
         return;
     }
     m_undo.clear();

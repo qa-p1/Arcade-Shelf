@@ -614,7 +614,7 @@ Window {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: grid.y + Math.max(0, (grid.height - height) / 2)
                     iconName: window.shelf.filter.length ? "search" : "plus"
-                    title: window.shelf.filter.length ? "No matching items" : window.shelf.picking ? "This collection is empty" : "Drop to collect"
+                    title: window.shelf.filter.length ? "Nothing matches \u201c" + window.shelf.filter + "\u201d" : window.shelf.picking ? "This collection is empty" : "Drop to collect"
                     text: window.shelf.filter.length ? "Try a different filter." : window.shelf.picking ? "Choose another collection to continue."
                         : "Keep the originals right where they are. Paste (Ctrl+V) or drop files, text and links."
                     Repeater {

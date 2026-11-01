@@ -54,6 +54,7 @@ signals:
     void feedback(QString message, bool pulse);
     void showRequested(QString shelf, bool settings);
     void toggleRequested();
+    void hideRequested();
     void newCollectionRequested();
     void shortcutRequested(QString accelerator);
     void pickRequested(bool multiple, QStringList types);

@@ -827,7 +827,7 @@ static void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QS
                 if (!QRegularExpression(QStringLiteral("^0x[0-9a-fA-F]+$")).match(client.value("address").toString()).hasMatch()) continue;
                 found = client; ++matches;
             }
-            if (matches != 1) { failed(QStringLiteral("Could not identify Shelf's mapped window in Hyprland")); return; }
+            if (matches != 1) { failed(QStringLiteral("Couldn't identify Shelf's mapped window in Hyprland")); return; }
             callback(found);
         });
 }
@@ -1139,7 +1139,7 @@ bool Desktop::open(const QString &pathOrUrl)
         }
     }
     const bool opened = QDesktopServices::openUrl(url);
-    if (!opened) setError(QStringLiteral("The desktop could not open this item"));
+    if (!opened) setError(QStringLiteral("Couldn't open this item. The desktop has no app for it."));
     return opened;
 }
 
@@ -1151,11 +1151,11 @@ void Desktop::reveal(const QString &path)
     runProgram(this, explorer, {QStringLiteral("/select,"), QDir::toNativeSeparators(path)},
         [this, path](bool ok, const QByteArray &) {
             if (!ok && !QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
-                setError(QStringLiteral("Explorer could not reveal the original"));
+                setError(QStringLiteral("Couldn't show this in its folder. File Explorer didn't open it."));
         });
 #elif defined(Q_OS_MACOS)
     runProgram(this, QStringLiteral("/usr/bin/open"), {QStringLiteral("-R"), path},
-        [this](bool ok, const QByteArray &) { if (!ok) setError(QStringLiteral("Finder could not reveal the original")); });
+        [this](bool ok, const QByteArray &) { if (!ok) setError(QStringLiteral("Couldn't show this in its folder. Finder didn't open it.")); });
 #else
 #ifdef ARCADE_SHELF_HAVE_DBUS
     QDBusMessage request = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.FileManager1"),
@@ -1165,12 +1165,12 @@ void Desktop::reveal(const QString &path)
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, path] {
         if (watcher->reply().type() == QDBusMessage::ErrorMessage
             && !QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
-            setError(QStringLiteral("The file manager could not reveal the original"));
+            setError(QStringLiteral("Couldn't show this in its folder. The file manager didn't open it."));
         watcher->deleteLater();
     });
 #else
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
-        setError(QStringLiteral("The file manager could not reveal the original"));
+        setError(QStringLiteral("Couldn't show this in its folder. The file manager didn't open it."));
 #endif
 #endif
 }
@@ -1276,7 +1276,7 @@ QString Desktop::validateShortcut(const QString &accelerator)
     const bool clipboard = ((mods == Qt::ControlModifier || mods == Qt::MetaModifier)
         && (shortcut.key == Qt::Key_C || shortcut.key == Qt::Key_V || shortcut.key == Qt::Key_X))
         || (shortcut.key == Qt::Key_Insert && (mods == physicalControl || mods == Qt::ShiftModifier));
-    if (clipboard) return QStringLiteral("Standard clipboard shortcuts cannot be used globally");
+    if (clipboard) return QStringLiteral("Couldn't use this shortcut. Copy, cut and paste keys can't be global; choose another.");
     if (mods == Qt::NoModifier && !(shortcut.key >= Qt::Key_F1 && shortcut.key <= Qt::Key_F35))
         return QStringLiteral("Use a modifier with a letter or navigation key");
     return {};
@@ -1559,7 +1559,7 @@ void Desktop::installHyprlandShortcut(quint64 generation)
                 [this, generation, parsed, target](bool read, const QByteArray &bindings) {
                     if (generation != d->generation) return;
                     if (!read || !QJsonDocument::fromJson(bindings).isArray()) {
-                        setShortcutStatus(QStringLiteral("Could not check desktop shortcut collisions")); return;
+                        setShortcutStatus(QStringLiteral("Couldn't check desktop shortcut collisions")); return;
                     }
                     bool owned = false;
                     for (const auto &value : QJsonDocument::fromJson(bindings).array()) {
@@ -1671,7 +1671,7 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
     }
     if (!enabled) {
         if (!targetExists || QFile::remove(target)) return removeLegacy() && syncReceipt();
-        setError(QStringLiteral("Could not remove Shelf's login entry")); return false;
+        setError(QStringLiteral("Couldn't remove Shelf's login entry")); return false;
     }
     const QFileInfo installed(executable);
     const bool receiptOwned = !receipt.isEmpty() && receiptExecutable(receipt) == executable
@@ -1680,13 +1680,13 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
     if (!stableExecutable(executable) && !receiptOwned) {
         setError(QStringLiteral("Install Shelf in a permanent location before enabling start at login")); return false;
     }
-    if (!QDir().mkpath(existing.absolutePath())) { setError(QStringLiteral("Could not create the per-user login directory")); return false; }
+    if (!QDir().mkpath(existing.absolutePath())) { setError(QStringLiteral("Couldn't create the per-user login directory")); return false; }
     QByteArray bytes;
 #ifdef Q_OS_WIN
     const QString pending = target + QStringLiteral(".pending-%1.lnk").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     if (!windowsLoginShortcut(pending, executable, true)
         || (targetExists && !QFile::remove(target)) || !QFile::rename(pending, target)) {
-        QFile::remove(pending); setError(QStringLiteral("Could not save Shelf's login shortcut")); return false;
+        QFile::remove(pending); setError(QStringLiteral("Couldn't save Shelf's login shortcut")); return false;
     }
     return removeLegacy() && syncReceipt();
 #elif defined(Q_OS_MACOS)
@@ -1708,7 +1708,7 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
 #ifndef Q_OS_WIN
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
-        setError(QStringLiteral("Could not save Shelf's login entry")); return false;
+        setError(QStringLiteral("Couldn't save Shelf's login entry")); return false;
     }
     QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     return removeLegacy() && syncReceipt();

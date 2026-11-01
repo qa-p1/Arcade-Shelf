@@ -77,6 +77,7 @@ Controller::Controller(QString root, bool background, QObject *parent)
     });
     connect(m_service, &Service::showRequested, this, [this](QString, bool settings) { if (settings) showSettings(); else show(); });
     connect(m_service, &Service::toggleRequested, this, &Controller::toggle);
+    connect(m_service, &Service::hideRequested, this, &Controller::collapse);
     connect(m_service, &Service::newCollectionRequested, this, &Controller::newCollectionFromTray);
     connect(m_service, &Service::shortcutRequested, this, [this](QString accelerator) {
         m_desktop.rebindShortcut(accelerator, ArcadeLink::executablePath(),
@@ -298,7 +299,20 @@ void Controller::saveSetting(QString key, QJsonValue value)
     QMetaObject::invokeMethod(m_service, [this, patch] { m_service->saveSettings(patch); });
     emit changed();
 }
-void Controller::feedback(QString message) { m_message = std::move(message); emit changed(); }
+void Controller::feedback(QString message)
+{
+    m_message = std::move(message);
+    emit changed();
+    // "Copied" shows for 1.5 s as in every Arcade app (STANDARD §8.1), other
+    // notes for 5 s; an error stays until the next message.
+    if (m_message.isEmpty() || m_message.startsWith(QStringLiteral("Couldn't"))) return;
+    const QString shown = m_message;
+    QTimer::singleShot(shown.startsWith(QStringLiteral("Copied")) ? 1500 : 5000, this, [this, shown] {
+        if (m_message != shown) return;
+        m_message.clear();
+        emit changed();
+    });
+}
 void Controller::setFilter(QString value) { if (m_filter == value) return; m_filter = std::move(value); m_itemsCacheValid = false; emit itemsChanged(); emit changed(); }
 void Controller::setTheme(QString value) { if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value); }
 void Controller::setShortcut(QString value) { if (value.size() > 100) return; saveSetting("shortcut", value); if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(value, ArcadeLink::executablePath()); else feedback(shortcutWarning()); }
@@ -394,7 +408,7 @@ void Controller::acceptDrop(QVariant urls, QString text, QString html)
         QString type = !html.isEmpty() ? "text/rich" : ((url.isValid() && (url.scheme() == "http" || url.scheme() == "https") && !text.contains('\n')) ? "text/url" : "text/plain");
         QJsonObject c = ArcadeLink::textContent(type, text); if (!html.isEmpty()) c["html"] = html; inputs << c;
     }
-    if (inputs.isEmpty()) { feedback("This content cannot be staged."); return; }
+    if (inputs.isEmpty()) { feedback("Couldn't collect this. Shelf keeps files, folders, images, text and links."); return; }
     QMetaObject::invokeMethod(m_service, [this, inputs] {
         QJsonArray normalized;
         QStringList generated;
@@ -420,9 +434,9 @@ void Controller::stageImage(QImage image)
     if (image.isNull() || image.sizeInBytes() > m_settings["quotaBytes"].toInteger(512*1024*1024)) { feedback("This image exceeds the storage limit."); return; }
     QMetaObject::invokeMethod(m_service,[this,image] {
         const QString dir = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
-        if (!ArcadeLink::ensurePrivateDir(dir)) { emit m_service->feedback("Could not stage this image.",false); return; }
+        if (!ArcadeLink::ensurePrivateDir(dir)) { emit m_service->feedback("Couldn't stage this image.",false); return; }
         const QString path = dir + "/image.png";
-        if (!image.save(path,"PNG")) { QDir().rmdir(dir); emit m_service->feedback("Could not stage this image.",false); return; }
+        if (!image.save(path,"PNG")) { QDir().rmdir(dir); emit m_service->feedback("Couldn't stage this image.",false); return; }
         QFile::setPermissions(path,QFile::ReadOwner|QFile::WriteOwner);
         auto input = ArcadeLink::fileContent(path); input["owner"] = AppId;
         m_service->add({input}); QFile::remove(path); QDir().rmdir(dir);
@@ -462,7 +476,7 @@ void Controller::selectAll() { if (m_picking && !m_pickMultiple) return; m_selec
 void Controller::clearSelection() { m_selected.clear(); m_dragContent = {}; m_dragRevision = -1; ++m_selectionRevision; emit changed(); }
 void Controller::removeSelected() { if (m_picking) return; auto ids = selectedIds(); QMetaObject::invokeMethod(m_service, [this, ids] { m_service->remove(ids); }); clearSelection(); }
 void Controller::undo() { QMetaObject::invokeMethod(m_service, &Service::undo); }
-void Controller::openItem(QString id) { auto o = item(id); if (!o["available"].toBool(true)) { feedback("The original is unavailable."); return; } if (o["type"] == "text/url") QDesktopServices::openUrl(QUrl(o["text"].toString())); else if (!o["path"].toString().isEmpty()) m_desktop.open(o["path"].toString()); }
+void Controller::openItem(QString id) { auto o = item(id); if (!o["available"].toBool(true)) { feedback("Couldn't open this item. Its original was moved or deleted."); return; } if (o["type"] == "text/url") QDesktopServices::openUrl(QUrl(o["text"].toString())); else if (!o["path"].toString().isEmpty()) m_desktop.open(o["path"].toString()); }
 void Controller::revealItem(QString id) { auto path = item(id)["path"].toString(); if (!path.isEmpty()) m_desktop.reveal(path); }
 void Controller::copySelected(QString mode)
 {
@@ -478,7 +492,10 @@ void Controller::copySelected(QString mode)
                 if (mode == "paths") { for (auto url : urls) text << url.toLocalFile(); }
                 else if (mode == "content" && !urls.isEmpty()) mime->setUrls(urls);
                 if (!text.isEmpty()) mime->setText(text.join('\n')); if (!html.isEmpty() && mode != "paths") mime->setHtml(html);
-                QGuiApplication::clipboard()->setMimeData(mime); guard->feedback("Copied.");
+                QGuiApplication::clipboard()->setMimeData(mime);
+                // The shared feedback (STANDARD §8.1): "Copied", or "Copied 3 paths" / "Copied 3 items".
+                const qsizetype n = mode == "paths" ? urls.size() : content.size();
+                guard->feedback(n > 1 ? QStringLiteral("Copied %1 %2").arg(n).arg(mode == "paths" ? "paths" : "items") : QStringLiteral("Copied"));
             });
         });
     });
@@ -576,7 +593,7 @@ void Controller::copyDiagnostics()
     text += QStringLiteral("Shortcut: %1\n").arg(platformStatus());
     text += QStringLiteral("Collections: %1, owned content %2 bytes\n").arg(m_shelves.size()).arg(m_ownedContentBytes);
     QGuiApplication::clipboard()->setText(text);
-    feedback(QStringLiteral("Copied diagnostics."));
+    feedback(QStringLiteral("Copied"));
 }
 void Controller::restart() { QMetaObject::invokeMethod(m_service, &Service::restartResident); }
 void Controller::exportPortableSettings()
@@ -592,7 +609,7 @@ void Controller::exportPortableSettings()
             QStringLiteral("Shelf currently stores %1 of owned content. Include a copy in this backup?\n\n"
                            "Without it, collections and preferences are exported while owned items are left out. "
                            "Referenced original files are never copied.")
-                .arg(QLocale().formattedDataSize(m_ownedContentBytes)), QMessageBox::NoButton);
+                .arg(QLocale().formattedDataSize(m_ownedContentBytes, 1, QLocale::DataSizeSIFormat)), QMessageBox::NoButton);
         auto *metadataOnly = prompt.addButton(QStringLiteral("Metadata only"), QMessageBox::ActionRole);
         auto *includeButton = prompt.addButton(QStringLiteral("Include owned content"), QMessageBox::AcceptRole);
         prompt.addButton(QMessageBox::Cancel);
@@ -661,7 +678,8 @@ void Controller::getPeer(QString id) {
     QDesktopServices::openUrl(QUrl(ArcadeLink::releasesUrl(id)));
 }
 void Controller::setRetention(int days) { if (days >= 0 && days <= 3650) saveSetting("retentionDays",days); }
-void Controller::setQuota(int mib) { if (mib >= 1 && mib <= 4096) saveSetting("quotaBytes",qint64(mib)*1024*1024); }
+// Size settings use decimal MB (STANDARD §8.1); the setting itself is bytes.
+void Controller::setQuota(int mb) { if (mb >= 1 && mb <= 4000) saveSetting("quotaBytes",qint64(mb)*1000*1000); }
 void Controller::setStartAtLogin(bool value) { if (m_desktop.setStartAtLogin(value,ArcadeLink::executablePath())) { m_startAtLogin = value; saveSetting("startAtLogin",value); emit changed(); } else { refreshStartAtLogin(); feedback(m_desktop.lastError()); } }
 // The login entry, not the saved preference: Tools and the installer set it
 // without touching Shelf's settings, and the desktop can switch it off.

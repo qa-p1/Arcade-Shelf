@@ -186,7 +186,8 @@ class AppImageLifecycleTests(unittest.TestCase):
             relaunched_receipt, end = decoder.raw_decode(output.lstrip())
             relaunched_status = json.loads(output.lstrip()[end:])
             self.assertEqual(relaunched_receipt, read_receipt())
-            self.assertEqual(relaunched_status, {"running": False})
+            self.assertFalse(relaunched_status["running"])
+            self.assertEqual(relaunched_status["version"], version)
             self.assertEqual(relaunched_receipt["previous"], updated["previous"])
 
             removed = json.loads(run(installed, "--uninstall", "--silent"))

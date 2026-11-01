@@ -188,8 +188,8 @@ Window {
                     subtitle: "The most collected content Shelf keeps."
                     NumberField {
                         objectName: "quotaField"
-                        from: 1; to: 4096; stepSize: 64; unit: "MiB"
-                        value: Math.max(1, Math.floor(Number(root.shelf.preferences.quotaBytes || 536870912) / 1048576))
+                        from: 1; to: 4000; stepSize: 50; unit: "MB"
+                        value: Math.max(1, Math.floor(Number(root.shelf.preferences.quotaBytes || 536870912) / 1000000))
                         onValueModified: value => root.shelf.setQuota(value)
                     }
                 }
