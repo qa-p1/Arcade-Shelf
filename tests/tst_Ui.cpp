@@ -26,6 +26,9 @@
 #include <QWheelEvent>
 #include <functional>
 #include <memory>
+#include <QtQml/QQmlExtensionPlugin>
+
+Q_IMPORT_QML_PLUGIN(ArcadePlugin)
 
 using namespace Shelf;
 
@@ -86,12 +89,43 @@ private:
         while(root->parentItem()) root=root->parentItem();
         return visit(root);
     }
+    // Settings is its own top-level window while it is open.
+    QQuickWindow *settingsWindow() {
+        for (auto *window : QGuiApplication::topLevelWindows())
+            if (window->objectName() == "settingsWindow" && window->isVisible()) return qobject_cast<QQuickWindow *>(window);
+        return nullptr;
+    }
+    QQuickItem *findIn(QQuickWindow *window, QString name, QString text = {}) {
+        std::function<QQuickItem *(QQuickItem *)> visit=[&](QQuickItem *parent) -> QQuickItem * {
+            const bool match = name.isEmpty() ? parent->isVisible() && parent->property("text").toString() == text && parent->width() > 0
+                                              : parent->objectName() == name;
+            if(match) return parent;
+            for(auto *child:parent->childItems()) if(auto *item=visit(child)) return item;
+            return nullptr;
+        };
+        auto *root=window->contentItem();
+        while(root->parentItem()) root=root->parentItem();
+        return visit(root);
+    }
+    void clickIn(QQuickWindow *window, QQuickItem *item, QPointF at = {-1, -1}) {
+        if (at.x() < 0) at = QPointF(item->width()/2, item->height()/2);
+        QTest::mouseClick(window,Qt::LeftButton,{},item->mapToScene(at).toPoint());
+    }
     void clickText(QString text) {
         QQuickItem *item=nullptr;
         QTRY_VERIFY_WITH_TIMEOUT((item=findText(text)) && item->isEnabled(),3000);
         // Let the menu's open transition finish before clicking.
         QTest::qWait(200);
         QTest::mouseClick(m_window,Qt::LeftButton,{},point(item,QPointF(item->width()/2,item->height()/2)));
+    }
+    void captureWindow(QQuickWindow *window, QString name) {
+        const QString dir = qEnvironmentVariable("ARCADE_SHELF_CAPTURE_DIR");
+        if (dir.isEmpty()) return;
+        QVERIFY(QDir().mkpath(dir));
+        QTest::qWait(300);
+        const QImage image = window->grabWindow();
+        QVERIFY2(!image.isNull(),"The window did not produce a rendered image");
+        QVERIFY(image.save(dir + "/" + name + ".png"));
     }
     void capture(QString name) {
         const QString dir = qEnvironmentVariable("ARCADE_SHELF_CAPTURE_DIR");
@@ -127,7 +161,7 @@ private slots:
         }
         m_controller = std::make_unique<Controller>(m_profile->path()+"/shelf",false);
         m_engine = std::make_unique<QQmlApplicationEngine>();
-        m_engine->rootContext()->setContextProperty("shelf",m_controller.get());
+        m_engine->setInitialProperties({{QStringLiteral("shelf"),QVariant::fromValue(m_controller.get())}});
         m_engine->addImageProvider("thumb",new ThumbnailProvider);
         m_engine->loadFromModule("ShelfUITest","Main");
         QVERIFY(!m_engine->rootObjects().isEmpty());
@@ -209,57 +243,47 @@ private slots:
         QTRY_COMPARE(m_controller->items().size(),0);
         QTest::keyClick(m_window,Qt::Key_Escape);
         QTRY_COMPARE(m_controller->items().size(),1);
+        // Settings is its own window: opening and closing it leaves the panel as it was.
         m_controller->showSettings();
         QTRY_VERIFY(m_controller->settingsOpen());
-        settle();
-        auto *light = find("theme-light"); QVERIFY(light);
-        QTest::mouseClick(m_window,Qt::LeftButton,{},point(light,QPointF(light->width()/2,light->height()/2)));
+        QQuickWindow *settings=nullptr;
+        QTRY_VERIFY((settings=settingsWindow()));
+        QVERIFY(QTest::qWaitForWindowExposed(settings));
+        QVERIFY(m_controller->expanded());
+        QCOMPARE(settings->title(),QString("Settings — Arcade Shelf"));
+        QVERIFY(settings->width() >= 720 && settings->height() >= 520);
+        QQuickItem *light=nullptr;
+        QTRY_VERIFY((light=findIn(settings,{},"Light")));
+        clickIn(settings,light);
         QTRY_COMPARE(m_controller->theme(),QString("light"));
-        auto *reduce = find("reducedMotionToggle"); QVERIFY(reduce);
-        QTest::mouseClick(m_window,Qt::LeftButton,{},point(reduce,QPointF(reduce->width()-16,reduce->height()/2)));
+        auto *reduce=findIn(settings,"reducedMotionToggle"); QVERIFY(reduce);
+        clickIn(settings,reduce);
         QTRY_VERIFY(m_controller->reducedMotion());
-        QTest::keyClick(m_window,Qt::Key_Escape);
+        QTest::keyClick(settings,Qt::Key_Escape);
         QTRY_VERIFY(!m_controller->settingsOpen());
+        QTRY_VERIFY(!settingsWindow());
+        QVERIFY(m_controller->expanded());
     }
-    void shortcutDraftSurvivesIncomingAddsAndCommits() {
-        m_controller->showSettings(); settle();
-        auto *scroll=find("preferencesScroll"); QVERIFY(scroll);
-        auto *field=find("shortcutField"); QVERIFY(field);
-        // The panel grows from the capsule first; the popup lays out after it.
-        QTRY_VERIFY_WITH_TIMEOUT(scroll->height()>100,3000);
-        const QPoint scrollPoint=point(scroll,QPointF(scroll->width()/2,scroll->height()/2));
-        const auto inViewport=[&] {
-            const QPointF position=field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2));
-            return position.y()>0 && position.y()<scroll->height();
-        };
-        // Wheel scrolling animates over several frames (and can overshoot and
-        // rebound). A press on a moving Flickable only stops it, so wait for
-        // the view to come to rest with the target inside the clipped viewport.
-        auto *flick=scroll->property("contentItem").value<QQuickItem *>(); QVERIFY(flick);
-        for(int attempt=0;attempt<4 && !inViewport();++attempt) {
-            QTest::mouseMove(m_window,scrollPoint);
-            QWheelEvent wheel(scrollPoint,m_window->mapToGlobal(scrollPoint),{},{0,-480},Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
-            QApplication::sendEvent(m_window,&wheel);
-            QTRY_VERIFY_WITH_TIMEOUT(!flick->property("moving").toBool(),3000);
-        }
-        QVERIFY2(inViewport(),qPrintable(QStringLiteral("Shortcut center y=%1, preferences viewport height=%2")
-            .arg(field->mapToItem(scroll,QPointF(field->width()/2,field->height()/2)).y()).arg(scroll->height())));
-        settle();
-        QTest::mouseClick(m_window,Qt::LeftButton,{},point(field,QPointF(field->width()/2,field->height()/2)));
-        QTRY_VERIFY(field->hasActiveFocus());
-        QTest::keyClick(m_window,Qt::Key_A,Qt::ControlModifier);
-        const QByteArray prefix="Ctrl+Alt+";
-        for(char key:prefix) QTest::keyClick(m_window,key);
-        QCOMPARE(field->property("text").toString(),QString::fromLatin1(prefix));
-        QCOMPARE(m_controller->shortcut(),QString());
+    void shortcutRecorderSurvivesIncomingAddsAndCommits() {
+        m_controller->showSettings();
+        QQuickWindow *settings=nullptr;
+        QTRY_VERIFY((settings=settingsWindow()));
+        QVERIFY(QTest::qWaitForWindowExposed(settings));
+        auto *shortcuts=findIn(settings,"nav-1"); QVERIFY(shortcuts);
+        clickIn(settings,shortcuts);
+        QQuickItem *recorder=nullptr;
+        QTRY_VERIFY((recorder=findIn(settings,"shortcutRecorder")) && recorder->isVisible());
+        clickIn(settings,recorder,QPointF(40,16));
+        QTRY_VERIFY(recorder->property("recording").toBool());
+        // An item arriving while the recorder listens must not end the recording.
         m_controller->acceptDrop({},"Arrived while configuring the shortcut","");
         QTRY_COMPARE(m_controller->count(),1);
-        settle();
-        QCOMPARE(field->property("text").toString(),QString::fromLatin1(prefix));
-        QVERIFY(field->hasActiveFocus());
-        QTest::keyClick(m_window,'J');
-        QTest::keyClick(m_window,Qt::Key_Return);
+        QCoreApplication::processEvents();
+        QVERIFY(recorder->property("recording").toBool());
+        QCOMPARE(m_controller->shortcut(),QString());
+        QTest::keyClick(settings,Qt::Key_J,Qt::ControlModifier|Qt::AltModifier);
         QTRY_COMPARE(m_controller->shortcut(),QString("Ctrl+Alt+J"));
+        QVERIFY(!recorder->property("recording").toBool());
         m_controller->attachWindow(nullptr); m_engine.reset(); m_controller.reset(); m_window=nullptr;
         Store recovered(m_profile->path()+"/shelf"); QVERIFY(recovered.open());
         QCOMPARE(recovered.settings()["shortcut"].toString(),QString("Ctrl+Alt+J"));
@@ -572,6 +596,19 @@ private slots:
         m_controller->setTheme("dark");
         m_controller->collapse(); QTRY_VERIFY(m_window->width() < 300);
         capture("capsule");
+        m_controller->setTheme("light"); capture("capsule-light");
+        m_controller->dock("right"); QTRY_COMPARE(m_window->width(),30); capture("docked-light");
+        m_controller->dock("");
+        m_controller->showSettings();
+        QQuickWindow *settings=nullptr;
+        QTRY_VERIFY((settings=settingsWindow()));
+        QVERIFY(QTest::qWaitForWindowExposed(settings));
+        captureWindow(settings,"settings-light");
+        m_controller->setTheme("dark"); captureWindow(settings,"settings-dark");
+        for (int page : {1, 2, 4, 5}) {
+            clickIn(settings,findIn(settings,QStringLiteral("nav-%1").arg(page)));
+            captureWindow(settings,QStringLiteral("settings-dark-%1").arg(page));
+        }
     }
 };
 

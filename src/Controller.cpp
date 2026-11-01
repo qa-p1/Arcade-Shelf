@@ -1,4 +1,6 @@
 #include "Controller.h"
+#include "ArcadeInstall.h"
+#include "ArcadePaths.h"
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
@@ -29,6 +31,7 @@ Controller::Controller(QString root, bool background, QObject *parent)
 {
     m_service->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_service, &QObject::deleteLater);
+    connect(&m_backdrop, &Backdrop::changed, this, &Controller::changed);
     connect(m_service, &Service::snapshot, this, [this](QJsonArray collections, QJsonArray content, QString active,
                                                         QJsonObject settings, bool undo, qint64 ownedContentBytes) {
         const bool first = m_settings.isEmpty();
@@ -160,6 +163,7 @@ void Controller::applyWindowPreferences()
     m_window->setProperty("panelWidth",qBound(440,g["width"].toInt(640),2000));
     m_window->setProperty("panelHeight",qBound(350,g["height"].toInt(490),1600));
     m_desktop.setAlwaysOnTop(m_window,alwaysOnTop());
+    m_backdrop.setEnabled(backdropEnabled());
     alignWindow(true);
 }
 QVariantMap Controller::preferences() const
@@ -291,10 +295,19 @@ void Controller::setFilter(QString value) { if (m_filter == value) return; m_fil
 void Controller::setTheme(QString value) { if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value); }
 void Controller::setShortcut(QString value) { if (value.size() > 100) return; saveSetting("shortcut", value); if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(value, ArcadeLink::executablePath()); else feedback(shortcutWarning()); }
 void Controller::setExpanded(bool value) { if (value) show(); else collapse(); }
-void Controller::setSettingsOpen(bool value) { m_settingsOpen = value; if (value) { refreshStartAtLogin(); show(); } emit changed(); }
+// Settings is its own window: opening or closing it leaves the panel alone.
+void Controller::setSettingsOpen(bool value)
+{
+    if (m_settingsOpen == value) return;
+    m_settingsOpen = value;
+    if (value) refreshStartAtLogin();
+    emit changed();
+}
 void Controller::setLinkEnabled(bool value) { saveSetting("linkEnabled", value); m_peers.setEnabled(value); }
 void Controller::setAlwaysOnTop(bool value) { saveSetting("alwaysOnTop", value); if (m_window) m_desktop.setAlwaysOnTop(m_window, value); }
 void Controller::setReducedMotion(bool value) { saveSetting("reducedMotion", value); }
+void Controller::setBackdropEnabled(bool value) { saveSetting("backdrop", value); m_backdrop.setEnabled(value); }
+void Controller::setHoverPeek(bool value) { saveSetting("hoverPeek", value); }
 void Controller::toggle() { if (m_expanded) collapse(); else show(); }
 void Controller::alignWindow(bool restore)
 {
@@ -352,7 +365,7 @@ void Controller::collapse()
 {
     if (m_picking) { cancelPick(); return; }
     const bool closing = m_expanded;
-    m_expanded = false; m_focusPanel = false; m_settingsOpen = false;
+    m_expanded = false; m_focusPanel = false;
     updateFullscreenPolicy();
     emit changed();
     if (closing) alignWindow();
@@ -513,8 +526,50 @@ void Controller::runSource(QString app, QString action)
 void Controller::cancelJob() { m_peers.cancel(); }
 void Controller::confirmPick() { auto ids = selectedIds(); QMetaObject::invokeMethod(m_service,[this,ids] { m_service->completePick(ids); }); }
 void Controller::cancelPick() { QMetaObject::invokeMethod(m_service,&Service::cancelPick); }
-void Controller::showSettings() { m_settingsOpen = true; refreshStartAtLogin(); show(); emit changed(); }
+void Controller::showSettings() { setSettingsOpen(true); emit settingsRaiseRequested(); }
 void Controller::newCollectionFromTray() { show(); emit newCollectionRequested(); }
+QString Controller::channel() const
+{
+    static const QString cached = [] {
+        QJsonObject receipt;  // a missing receipt reads as empty: not installed
+        if (!ArcadeLink::ReceiptStore::discover().read(AppId, &receipt)) return QString();
+        return receipt.value(QStringLiteral("channel")).toString();
+    }();
+    return cached;
+}
+void Controller::openLogsFolder()
+{
+    QDir().mkpath(logsPath());
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(logsPath())))
+        feedback(QStringLiteral("Couldn't open the logs folder. It is %1.").arg(QDir::toNativeSeparators(logsPath())));
+}
+void Controller::openUserGuide()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/blob/main/docs/user/index.md")));
+}
+void Controller::openLicences()
+{
+    // The packaged copy (Linux share/, macOS Resources/), else the notices online.
+    const QString app = QCoreApplication::applicationDirPath();
+    for (const QString &folder : {app + QStringLiteral("/../share/arcade-shelf/licenses"), app + QStringLiteral("/../Resources/licenses")}) {
+        if (QFileInfo(folder).isDir()) { QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(folder).absolutePath())); return; }
+    }
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/blob/main/THIRD_PARTY_NOTICES.md")));
+}
+void Controller::copyDiagnostics()
+{
+    auto header = ArcadeLink::DiagnosticsHeader::create(AppId, Version, channel().isEmpty() ? QStringLiteral("not installed") : channel());
+    header.linkEnabled = linkEnabled();
+    header.peersFrom(ArcadeLink::Locations::discover());
+    QString text = header.render();
+    text += QStringLiteral("Window: %1, %2\n").arg(m_expanded ? QStringLiteral("panel") : m_dock.isEmpty() ? QStringLiteral("capsule") : QStringLiteral("docked ") + m_dock,
+                                                   m_window ? QGuiApplication::platformName() : QStringLiteral("none"));
+    text += QStringLiteral("Backdrop: %1\n").arg(m_backdrop.status());
+    text += QStringLiteral("Shortcut: %1\n").arg(platformStatus());
+    text += QStringLiteral("Collections: %1, owned content %2 bytes\n").arg(m_shelves.size()).arg(m_ownedContentBytes);
+    QGuiApplication::clipboard()->setText(text);
+    feedback(QStringLiteral("Copied diagnostics."));
+}
 void Controller::restart() { QMetaObject::invokeMethod(m_service, &Service::restartResident); }
 void Controller::exportPortableSettings()
 {

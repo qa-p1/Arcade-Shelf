@@ -18,7 +18,7 @@ SHELF_APP="$SHELF_STAGE/Arcade Shelf.app"
 if [ "$SHELF_ARCH" = universal ]; then
   lipo "$SHELF_APP/Contents/MacOS/arcade-shelf" -verify_arch arm64 x86_64
 fi
-"$QT_ROOT_DIR/bin/macdeployqt" "$SHELF_APP" "-qmldir=$SHELF_SOURCE/ui" -always-overwrite
+"$QT_ROOT_DIR/bin/macdeployqt" "$SHELF_APP" "-qmldir=$SHELF_SOURCE/ui" "-qmldir=$SHELF_SOURCE/vendor/arcade-link/design/qml/Arcade" -always-overwrite
 mkdir -p "$SHELF_APP/Contents/Resources/licenses"
 cp "$SHELF_SOURCE/LICENSE" "$SHELF_SOURCE/THIRD_PARTY_NOTICES.md" "$SHELF_APP/Contents/Resources/licenses/"
 cp -R "$SHELF_SOURCE/licenses/." "$SHELF_APP/Contents/Resources/licenses/"

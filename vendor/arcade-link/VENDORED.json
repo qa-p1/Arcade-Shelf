@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-Link",
   "arcadeLink": "v0.3.0 (protocol 1)",
-  "commit": "85ec8f0a8d2d9bbadc59cc5656ed927ca5b3d0a9",
+  "commit": "56798545d263c104ded54877239750f9645c32a3",
   "license": "MIT OR Apache-2.0",
   "files": {
     "Cargo.toml": "491523da602ca3ee0c3cfade5767af3952267090d58324242078084570c9607b",

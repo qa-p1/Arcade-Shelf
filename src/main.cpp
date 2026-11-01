@@ -23,6 +23,11 @@
 #include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
+#include <QtQml/QQmlExtensionPlugin>
+
+// The Arcade design kit, compiled in as a static QML module.
+Q_IMPORT_QML_PLUGIN(ArcadePlugin)
 
 namespace {
 ArcadeApp::InstallSpec installSpec()
@@ -168,6 +173,13 @@ int main(int argc, char **argv)
     gui->setQuitOnLastWindowClosed(false);
     gui->setDesktopFileName("arcade.shelf");
     QQuickStyle::setStyle("Basic");
+    // Inter at 13 px (the kit's body size) for every window, including Qt Widgets dialogs.
+    const int inter = QFontDatabase::addApplicationFont(QStringLiteral(":/qt/fonts/InterVariable.ttf"));
+    if (inter >= 0 && !QFontDatabase::applicationFontFamilies(inter).isEmpty()) {
+        QFont font(QFontDatabase::applicationFontFamilies(inter).first());
+        font.setPixelSize(13);
+        gui->setFont(font);
+    }
     Shelf::Controller controller(root,parser.isSet("background"));
     // A stopped app must accept Link requests promptly, even while QML imports.
     // A foreground launch still starts integration after creating its first surface.
@@ -182,7 +194,7 @@ int main(int argc, char **argv)
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 #endif
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty("shelf",&controller);
+    engine.setInitialProperties({{QStringLiteral("shelf"), QVariant::fromValue(&controller)}});
     auto *thumbnails = new Shelf::ThumbnailProvider;
     engine.addImageProvider("thumb",thumbnails);
     QObject::connect(&controller,&Shelf::Controller::changed,&engine,[thumbnails,&controller] {
@@ -201,14 +213,13 @@ int main(int argc, char **argv)
     QIcon icon(glyph); gui->setWindowIcon(icon);
     QSystemTrayIcon tray(icon);
     QMenu menu;
+    // STANDARD §5.1 tray order; left click opens Shelf, right click shows this menu.
     menu.addAction("Open Arcade Shelf",&controller,&Shelf::Controller::show);
-    menu.addAction("Open Settings",&controller,&Shelf::Controller::showSettings);
-    menu.addAction("New shelf…",&controller,&Shelf::Controller::newCollectionFromTray);
-    menu.addAction("Show shelf",&controller,&Shelf::Controller::show);
-    menu.addAction("Restart Arcade Shelf",&controller,&Shelf::Controller::restart);
+    menu.addAction("Collect from clipboard",&controller,[&controller] { controller.show(); controller.paste(); });
+    menu.addAction("Settings",&controller,&Shelf::Controller::showSettings);
     menu.addSeparator(); menu.addAction("Quit Arcade Shelf",&app,&QCoreApplication::quit);
     tray.setContextMenu(&menu);
-    QObject::connect(&tray,&QSystemTrayIcon::activated,&controller,[&](QSystemTrayIcon::ActivationReason reason) { if (reason == QSystemTrayIcon::Trigger) controller.showSettings(); });
+    QObject::connect(&tray,&QSystemTrayIcon::activated,&controller,[&](QSystemTrayIcon::ActivationReason reason) { if (reason == QSystemTrayIcon::Trigger) controller.show(); });
     auto *trayHost = controller.trayHost();
     QObject::connect(trayHost, &ArcadeLink::ArcadeTrayHost::startupReady, &tray, [&tray](const QString &state) {
         tray.setVisible(state == "own");

@@ -6,6 +6,25 @@ set(CMAKE_AUTOMOC ON)
 include(CTest)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Network Sql Svg Test Concurrent)
 qt_standard_project_setup(REQUIRES 6.8)
+set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
+# The Arcade design kit (vendored from Link) as a compiled static QML module,
+# so qmlcachegen compiles it ahead of time and qmllint knows its types.
+set(ARCADE_KIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/design/qml/Arcade")
+file(GLOB ARCADE_KIT_FILES CONFIGURE_DEPENDS "${ARCADE_KIT_DIR}/*.qml" "${ARCADE_KIT_DIR}/*.js")
+foreach(file IN LISTS ARCADE_KIT_FILES)
+  get_filename_component(name "${file}" NAME)
+  set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
+  if(name STREQUAL "Theme.qml" OR name STREQUAL "Fonts.qml")
+    set_source_files_properties("${file}" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+  endif()
+endforeach()
+qt_add_library(arcade_kit STATIC)
+qt_add_qml_module(arcade_kit URI Arcade VERSION 1.0 QML_FILES ${ARCADE_KIT_FILES})
+# Fonts.qml loads ../../fonts/InterVariable.ttf next to the module (/qt/qml/Arcade).
+qt_add_resources(arcade_kit "arcade_inter" PREFIX "/qt/fonts" BASE "vendor/arcade-link/design/fonts"
+  FILES vendor/arcade-link/design/fonts/InterVariable.ttf)
+target_link_libraries(arcade_kit PRIVATE Qt6::Quick)
+set(SHELF_QML_FILES ui/Main.qml ui/SettingsWindow.qml ui/DockMenu.qml)
 add_library(arcade_link STATIC
   vendor/arcade-link/qt/ArcadeLink.cpp vendor/arcade-link/qt/ArcadeLink.h
   vendor/arcade-link/qt/ArcadeAccelerator.cpp vendor/arcade-link/qt/ArcadeAccelerator.h
@@ -58,9 +77,9 @@ elseif(APPLE)
   target_link_libraries(shelf_desktop PRIVATE "-framework Carbon" "-framework Cocoa" "-framework QuartzCore")
 endif()
 qt_add_executable(arcade-shelf src/main.cpp src/Controller.cpp src/Controller.h src/ThumbnailProvider.cpp src/ThumbnailProvider.h)
-target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
+target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
 qt_add_qml_module(arcade-shelf URI ArcadeShelf VERSION 1.0
-  QML_FILES ui/Main.qml ui/ShelfIcon.qml ui/ShelfButton.qml ui/ShelfField.qml ui/ShelfMenu.qml ui/ShelfDialog.qml
+  QML_FILES ${SHELF_QML_FILES}
   RESOURCES assets/shelf.svg)
 set_target_properties(arcade-shelf PROPERTIES WIN32_EXECUTABLE TRUE MACOSX_BUNDLE TRUE
   MACOSX_BUNDLE_GUI_IDENTIFIER io.github.qa_p1.ArcadeShelf
@@ -99,9 +118,9 @@ if(BUILD_TESTING)
   add_test(NAME SurfaceEffects COMMAND tst_SurfaceEffects)
   qt_add_executable(tst_Ui tests/tst_Ui.cpp src/Controller.cpp src/Controller.h src/ThumbnailProvider.cpp src/ThumbnailProvider.h)
   target_include_directories(tst_Ui PRIVATE src)
-  target_link_libraries(tst_Ui PRIVATE shelf_services shelf_desktop Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Test)
+  target_link_libraries(tst_Ui PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Test)
   qt_add_qml_module(tst_Ui URI ShelfUITest VERSION 1.0
-    QML_FILES ui/Main.qml ui/ShelfIcon.qml ui/ShelfButton.qml ui/ShelfField.qml ui/ShelfMenu.qml ui/ShelfDialog.qml
+    QML_FILES ${SHELF_QML_FILES}
     RESOURCES assets/shelf.svg)
   target_compile_definitions(tst_Ui PRIVATE SHELF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
   add_test(NAME Ui COMMAND tst_Ui)

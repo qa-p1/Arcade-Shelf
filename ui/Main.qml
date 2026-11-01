@@ -1,11 +1,16 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import QtQuick.Templates as T
+import Arcade
 
+// Shelf's one frameless window, in three modes: the capsule (216×76), a tab
+// docked on a screen edge (30×92) and the expanded panel (Template B). Settings
+// is a separate normal window (SettingsWindow.qml), created only while open.
 Window {
     id: window
+    required property ShelfController shelf
     objectName: "shelfWindow"
     visible: shelf.visible
     title: "Arcade Shelf"
@@ -36,95 +41,98 @@ Window {
 
     property int panelWidth: 640
     property int panelHeight: 490
-    property string dockEdge: shelf.dockEdge
+    readonly property string dockEdge: shelf.dockEdge
     readonly property bool verticalDock: dockEdge === "left" || dockEdge === "right"
+    // System follows the desktop's colour scheme, or the palette where the
+    // platform does not report one.
     SystemPalette { id: systemPalette; colorGroup: SystemPalette.Active }
-    readonly property bool dark: shelf.theme === "dark" || (shelf.theme === "system" && systemPalette.window.hslLightness < 0.5)
-    readonly property color paper: shelf.backdrop.active ? (dark ? "#de181720" : "#def8f7fb") : (dark ? "#f5181720" : "#f5f8f7fb")
-    readonly property color raised: dark ? "#25222e" : "#ffffff"
-    readonly property color tileSurface: dark ? "#211e29" : "#eeedf3"
-    readonly property color hoverSurface: dark ? "#302b3c" : "#e9e5f4"
-    readonly property color ink: dark ? "#eeeaf5" : "#292432"
-    readonly property color muted: dark ? "#a49bb3" : "#746a80"
-    readonly property color faint: dark ? "#756d86" : "#978e9f"
-    readonly property color outline: dark ? "#3a3347" : "#dcd6e6"
-    readonly property color accent: dark ? "#bdadfc" : "#7853ca"
-    readonly property color selection: dark ? "#392c51" : "#e7ddfa"
-    readonly property int motion: shelf.reducedMotion ? 0 : 180
+    readonly property bool dark: shelf.theme === "dark" || (shelf.theme === "system"
+        && (Application.styleHints.colorScheme === Qt.ColorScheme.Dark
+            || (Application.styleHints.colorScheme === Qt.ColorScheme.Unknown && systemPalette.window.hslLightness < 0.5)))
+    Binding { target: Theme; property: "mode"; value: window.dark ? "dark" : "light" }
+    Binding { target: Theme; property: "reducedMotion"; value: window.shelf.reducedMotion }
+    // Shelf's documented exception to opaque overlays: over the platform
+    // backdrop the surface is the panel colour at 87 %.
+    readonly property color paper: shelf.backdropActive ? Qt.alpha(Theme.panel, 0.87) : Theme.panel
     property int cursorIndex: -1
     property string contextItem: ""
     property string collectionToEdit: ""
     property string collectionMode: "new"
     property var pendingOffer: ({})
-    property int settingsPage: 0
     property bool restoring: true
     property bool resizing: false
-    property bool dragHover: dropArea.containsDrag || shelf.nativeDragHover
+    readonly property bool dragHover: dropArea.containsDrag || shelf.nativeDragHover
     property bool previousFocusPanel: shelf.focusPanel
     property bool pulsing: false
     readonly property int selectedCount: shelf.selectedCount
+    readonly property var lookPreview: {
+        for (let i = 0; i < shelf.offers.length; i++) {
+            const offer = shelf.offers[i];
+            if (offer.action === "look.preview" || offer.id === "look.preview") return offer;
+        }
+        return null;
+    }
 
-    function iconFor(type) {
+    function iconFor(type: string): string {
         if (type === "folder/reference") return "folder";
-        if (type === "text/url") return "url";
-        if (type.indexOf("text/") === 0) return "text";
+        if (type === "text/url") return "link";
+        if (type.indexOf("text/") === 0) return "type";
         if (type.indexOf("file/image") === 0) return "image";
         if (type.indexOf("file/video") === 0) return "video";
         if (type.indexOf("file/audio") === 0) return "audio";
         return "file";
     }
-    function subtitleFor(item) {
+    function subtitleFor(item: var): string {
         if (item.available === false) return "Original unavailable";
         if (item.type === "folder/reference") return "Folder";
         // One line only: a snippet's full text belongs to the preview above.
         const firstLine = (item.text || "").split("\n").map(line => line.trim()).find(line => line.length) || "";
         if (item.type === "text/url") return firstLine || "Link";
         if (item.type.indexOf("text/") === 0) return firstLine || "Text";
-        let size = Number(item.size || 0);
-        const kind = item.type.replace("file/", "");
-        return size < 1024 ? kind + " · " + size + " B" : size < 1048576 ? kind + " · " + (size/1024).toFixed(0) + " KB" : kind + " · " + (size/1048576).toFixed(1) + " MB";
+        return item.type.replace("file/", "") + " · " + Format.formatSize(Number(item.size || 0));
     }
-    function navigate(delta, modifiers) {
+    function countLabel(n: int): string {
+        return Format.formatCount(n) + (n === 1 ? " item" : " items");
+    }
+    function navigate(delta: int, modifiers: int) {
         if (!shelf.items.length) return;
-        cursorIndex = Math.max(0, Math.min(shelf.items.length-1, cursorIndex < 0 ? 0 : cursorIndex+delta));
+        cursorIndex = Math.max(0, Math.min(shelf.items.length - 1, cursorIndex < 0 ? 0 : cursorIndex + delta));
         shelf.select(shelf.items[cursorIndex].id, !!(modifiers & Qt.ControlModifier), !!(modifiers & Qt.ShiftModifier));
         grid.positionViewAtIndex(cursorIndex, GridView.Contain);
     }
-    function runOffer(offer) {
-        let effects = offer.effects || [];
-        if (effects.indexOf("network") >= 0 || effects.indexOf("uploads-content") >= 0 || effects.indexOf("sends-to-device") >= 0 || effects.indexOf("persists") >= 0 || effects.indexOf("clipboard") >= 0 || effects.indexOf("writes-files") >= 0 || effects.indexOf("overwrites-files") >= 0 || effects.indexOf("deletes-files") >= 0) {
+    function runOffer(offer: var) {
+        const effects = offer.effects || [];
+        const confirm = ["network", "uploads-content", "sends-to-device", "persists", "clipboard", "writes-files", "overwrites-files", "deletes-files"];
+        if (effects.some(effect => confirm.indexOf(effect) >= 0)) {
             pendingOffer = offer;
             confirmAction.open();
         } else shelf.runPeer(offer.app, offer.action || offer.id);
     }
-    function editCollection(id, name, mode) {
+    function editCollection(id: string, name: string, mode: string) {
         collectionToEdit = id; collectionMode = mode; collectionName.text = name;
+        temporaryToggle.checked = false;
         collectionDialog.open();
         collectionName.forceActiveFocus();
     }
-    // A deliberate close (Escape, the minus button) leaves the pointer on the
-    // edge tab; without a pause, hovering would peek the panel straight back.
+    // A deliberate close (Escape, the collapse button) leaves the pointer on
+    // the edge tab; without a pause, hovering would peek the panel straight back.
     property double peekHeldUntil: 0
     function closePanel() {
         peekHeldUntil = Date.now() + 900;
         edgeHoverTimer.stop();
         shelf.collapse();
     }
-    function dockTo(edge) {
+    function dockTo(edge: string) {
+        if (!edge.length) { shelf.dock(""); return; }
         shelf.collapse();
-        Qt.callLater(function() { shelf.dock(edge); });
+        Qt.callLater(function() { window.shelf.dock(edge); });
     }
-    function moveItem(delta) {
+    function moveItem(delta: int) {
         const rows = shelf.items; let index = -1;
-        for(let i=0;i<rows.length;i++) if(rows[i].id === contextItem) index = i;
-        if(index < 0 || index+delta < 0 || index+delta >= rows.length) return;
-        const before = delta < 0 ? rows[index-1].id : index+2 < rows.length ? rows[index+2].id : "";
+        for (let i = 0; i < rows.length; i++) if (rows[i].id === contextItem) index = i;
+        if (index < 0 || index + delta < 0 || index + delta >= rows.length) return;
+        const before = delta < 0 ? rows[index - 1].id : index + 2 < rows.length ? rows[index + 2].id : "";
         shelf.reorderItem(contextItem, before);
-    }
-    function itemBeforeAt(px, py) {
-        const point = grid.mapFromItem(interaction,px,py);
-        const index = grid.indexAt(point.x+grid.contentX,point.y+grid.contentY);
-        return index >= 0 && index < shelf.items.length ? shelf.items[index].id : "";
     }
     function savePosition() {
         if (!restoring && !resizing) shelf.saveGeometry(x, y, panelWidth, panelHeight);
@@ -134,133 +142,58 @@ Window {
     onYChanged: geometryTimer.restart()
     onWidthChanged: if (!restoring && shelf.expanded) { panelWidth = width; geometryTimer.restart(); }
     onHeightChanged: if (!restoring && shelf.expanded) { panelHeight = height; geometryTimer.restart(); }
-    onClosing: function(close) { close.accepted = false; shelf.collapse(); }
+    onClosing: function(close) { close.accepted = false; window.shelf.collapse(); }
     onDockEdgeChanged: if (!dockEdge.length) edgeHoverTimer.stop()
-    onDarkChanged: if (shelf.backdrop) shelf.backdrop.setDark(dark)
+    onDarkChanged: shelf.setBackdropDark(dark)
     Component.onCompleted: {
+        Theme.appId = "arcade.shelf";
         const geometry = shelf.restoreGeometry();
         panelWidth = Math.max(440, Number(geometry.width || 640));
         panelHeight = Math.max(350, Number(geometry.height || 490));
         if (geometry.x !== undefined) x = Number(geometry.x);
         if (geometry.y !== undefined) y = Number(geometry.y);
         restoring = false;
-        if (shelf.backdrop) shelf.backdrop.setDark(dark);
+        shelf.setBackdropDark(dark);
     }
     Timer { id: geometryTimer; interval: 250; onTriggered: window.savePosition() }
     Connections {
-        target: shelf
+        target: window.shelf
         function onChanged() {
-            const focusing = shelf.focusPanel && !window.previousFocusPanel;
-            window.previousFocusPanel = shelf.focusPanel;
+            const focusing = window.shelf.focusPanel && !window.previousFocusPanel;
+            window.previousFocusPanel = window.shelf.focusPanel;
             if (focusing) {
                 window.requestActivate(); interaction.forceActiveFocus();
             }
-            if (shelf.focusPanel || !shelf.expanded) peekDismissTimer.stop();
-            window.cursorIndex = Math.min(window.cursorIndex, shelf.items.length - 1);
-            if (shelf.analysisResult && Object.keys(shelf.analysisResult).length > 0 && !analysisDialog.visible) analysisDialog.open();
+            if (window.shelf.focusPanel || !window.shelf.expanded) peekDismissTimer.stop();
+            window.cursorIndex = Math.min(window.cursorIndex, window.shelf.items.length - 1);
+            if (window.shelf.analysisResult && Object.keys(window.shelf.analysisResult).length > 0 && !analysisDialog.visible) analysisDialog.open();
         }
-        function onPulse() { window.pulsing=true; pulseTimer.restart(); }
+        function onPulse() { window.pulsing = true; pulseTimer.restart(); }
         function onNewCollectionRequested() {
             Qt.callLater(function() { window.editCollection("", "", "new"); });
         }
         function onNativeDragHoverChanged() {
-            if (shelf.nativeDragHover) {
+            if (window.shelf.nativeDragHover) {
                 peekDismissTimer.stop();
-                if (window.dockEdge.length && !shelf.expanded) edgeHoverTimer.restart();
+                if (window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart();
             } else {
                 edgeHoverTimer.stop();
-                if (shelf.expanded && !shelf.focusPanel && !surfaceHover.hovered && !dropArea.containsDrag) peekDismissTimer.restart();
+                if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !dropArea.containsDrag) peekDismissTimer.restart();
             }
         }
     }
-    Timer { id: pulseTimer; interval: shelf.reducedMotion ? 900 : 650; onTriggered: window.pulsing=false }
+    Timer { id: pulseTimer; interval: window.shelf.reducedMotion ? 900 : 650; onTriggered: window.pulsing = false }
     Timer {
         id: edgeHoverTimer
         interval: 260
-        onTriggered: if (window.dockEdge.length && !shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)
-                         && (window.dragHover || Date.now() >= window.peekHeldUntil)) shelf.peek()
+        // A drag always peeks; plain hover only when "Open docked Shelf on hover" is on.
+        onTriggered: if (window.dockEdge.length && !window.shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)
+                         && (window.dragHover || (window.shelf.hoverPeek && Date.now() >= window.peekHeldUntil))) window.shelf.peek()
     }
     Timer {
         id: peekDismissTimer
         interval: 320
-        onTriggered: if (shelf.expanded && !shelf.focusPanel && !surfaceHover.hovered && !window.dragHover) shelf.collapse()
-    }
-
-    component IconButton: ShelfButton {
-        foreground: window.ink; hoverSurface: window.hoverSurface; accentColor: window.accent
-        reduceMotion: shelf.reducedMotion; compact: true
-    }
-    component Field: ShelfField {
-        foreground: window.ink; mutedColor: window.muted; surface: window.tileSurface
-        outline: window.outline; accentColor: window.accent
-    }
-    component ActionMenu: ShelfMenu {
-        foreground: window.ink; mutedColor: window.muted; surface: window.raised
-        hoverSurface: window.hoverSurface; outline: window.outline; accentColor: window.accent
-    }
-    component Modal: ShelfDialog {
-        foreground: window.ink; mutedColor: window.muted; surface: window.raised
-        outline: window.outline; accentColor: window.accent
-    }
-    component MenuEntry: MenuItem {
-        id: entry
-        implicitHeight: 34
-        leftPadding: 11; rightPadding: 26
-        contentItem: Text { text: entry.text; textFormat: Text.PlainText; color: entry.enabled ? window.ink : window.faint; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-        background: Rectangle { radius: 7; color: entry.highlighted ? window.hoverSurface : "transparent" }
-        indicator: ShelfIcon { visible: entry.checkable && entry.checked; name: "check"; width: 14; height: 14; color: window.accent; x: parent.width-22; anchors.verticalCenter: parent.verticalCenter }
-    }
-    component Label: Text { textFormat: Text.PlainText; color: window.ink; font.pixelSize: 12; font.family: "sans-serif" }
-    component PreferenceToggle: Switch {
-        id: control
-        property string description: ""
-        property string heading: ""
-        implicitHeight: description.length ? 57 : 38
-        leftPadding: 0; rightPadding: 52
-        text: heading
-        contentItem: Column {
-            spacing: 5
-            Label { text: control.heading; font.weight: Font.Medium }
-            Label { text: control.description; color: window.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; width: parent.width }
-        }
-        indicator: Rectangle {
-            x: control.width - width; anchors.verticalCenter: parent.verticalCenter
-            width: 34; height: 20; radius: 10
-            color: control.checked ? window.accent : window.outline
-            Rectangle {
-                x: control.checked ? 17 : 3; y: 3; width: 14; height: 14; radius: 7
-                color: control.checked && !window.dark ? "white" : control.checked ? "#20162f" : window.muted
-                Behavior on x { NumberAnimation { duration: window.motion } }
-            }
-            border.width: control.activeFocus ? 2 : 0; border.color: window.ink
-        }
-    }
-    component NumberInput: SpinBox {
-        id: number
-        implicitWidth: 118; implicitHeight: 34
-        editable: true
-        padding: 0; leftPadding: 31; rightPadding: 31
-        font.pixelSize: 12
-        contentItem: TextInput {
-            text: number.value.toString()
-            color: window.ink; selectionColor: window.accent
-            horizontalAlignment: Qt.AlignHCenter; verticalAlignment: Qt.AlignVCenter
-            readOnly: !number.editable
-            validator: number.validator
-            inputMethodHints: Qt.ImhFormattedNumbersOnly
-            font: number.font
-        }
-        background: Rectangle { color: window.tileSurface; radius: 8; border.color: number.activeFocus ? window.accent : window.outline }
-        up.indicator: Rectangle {
-            x: parent.width-width; width: 29; height: parent.height; radius: 8
-            color: number.up.pressed ? window.hoverSurface : "transparent"
-            ShelfIcon { anchors.centerIn: parent; name: "plus"; width: 14; height: 14; color: window.muted }
-        }
-        down.indicator: Rectangle {
-            width: 29; height: parent.height; radius: 8
-            color: number.down.pressed ? window.hoverSurface : "transparent"
-            ShelfIcon { anchors.centerIn: parent; name: "minus"; width: 14; height: 14; color: window.muted }
-        }
+        onTriggered: if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !window.dragHover) window.shelf.collapse()
     }
 
     Item {
@@ -270,7 +203,7 @@ Window {
         // would reassert focus on each controller notification while typing.
         focus: true
         Keys.onPressed: function(event) {
-            if (shelf.settingsOpen) return;
+            const shelf = window.shelf;
             const ctrl = !!(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier));
             if (event.key === Qt.Key_Escape) {
                 if (shelf.picking) shelf.cancelPick(); else if (shelf.filter.length) shelf.filter = ""; else window.closePanel();
@@ -279,17 +212,26 @@ Window {
             else if (ctrl && event.key === Qt.Key_V) shelf.paste();
             else if (ctrl && event.key === Qt.Key_Z) shelf.undo();
             else if (ctrl && event.key === Qt.Key_F) searchField.forceActiveFocus();
+            else if (ctrl && event.key === Qt.Key_Comma) shelf.showSettings();
             else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) shelf.removeSelected();
             else if (event.key === Qt.Key_Left) window.navigate(-1, event.modifiers);
             else if (event.key === Qt.Key_Right) window.navigate(1, event.modifiers);
-            else if (event.key === Qt.Key_Up) window.navigate(-Math.max(1, Math.floor(grid.width/grid.cellWidth)), event.modifiers);
-            else if (event.key === Qt.Key_Down) window.navigate(Math.max(1, Math.floor(grid.width/grid.cellWidth)), event.modifiers);
+            else if (event.key === Qt.Key_Up) window.navigate(-grid.columns, event.modifiers);
+            else if (event.key === Qt.Key_Down) window.navigate(grid.columns, event.modifiers);
             else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && shelf.picking) shelf.confirmPick();
-            else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && cursorIndex >= 0) shelf.openItem(shelf.items[cursorIndex].id);
-            else if (event.key === Qt.Key_Space && window.selectedCount) {
-                for (let i=0;i<shelf.offers.length;i++) if (shelf.offers[i].action === "look.preview" || shelf.offers[i].id === "look.preview") { window.runOffer(shelf.offers[i]); break; }
-            } else { event.accepted = false; return; }
+            else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && window.cursorIndex >= 0) shelf.openItem(shelf.items[window.cursorIndex].id);
+            else if (event.key === Qt.Key_Space && window.selectedCount && window.lookPreview) window.runOffer(window.lookPreview);
+            else { event.accepted = false; return; }
             event.accepted = true;
+        }
+
+        // The kit's shadow-pop, inside the window's margin. A compositor that
+        // rounds the whole window (Hyprland) draws its own, and a docked tab
+        // sits flat on the screen edge.
+        Item {
+            x: shell.x; y: shell.y; width: shell.width; height: shell.height
+            visible: shell.anchors.margins > 0
+            Shadow { radius: shell.radius }
         }
 
         // One native toplevel holds both views: a layer-shell surface cannot
@@ -297,8 +239,7 @@ Window {
         Rectangle {
             id: shell
             function updateBackdrop() {
-                if (!shelf.backdrop) return;
-                shelf.backdrop.setRegion(Qt.rect(x,y,width,height),radius);
+                window.shelf.setBackdropRegion(Qt.rect(x, y, width, height), radius);
             }
             Component.onCompleted: updateBackdrop()
             onXChanged: updateBackdrop()
@@ -309,42 +250,43 @@ Window {
             anchors.fill: parent
             // A compositor that rounds and blurs the whole window (Hyprland)
             // gets a surface that fills it, or its blur shows square margins.
-            anchors.margins: window.dockEdge.length || shelf.compositorRadius >= 0 ? 0 : 6
-            radius: window.dockEdge.length ? window.tabThickness / 2 : shelf.compositorRadius >= 0 ? shelf.compositorRadius : shelf.expanded ? 19 : 24
+            anchors.margins: window.dockEdge.length || window.shelf.compositorRadius >= 0 ? 0 : 6
+            radius: window.dockEdge.length ? window.tabThickness / 2 : window.shelf.compositorRadius >= 0 ? window.shelf.compositorRadius : Theme.radiusLg
             // The tab's edge side sits flat against the screen edge.
             topLeftRadius: window.dockEdge === "left" || window.dockEdge === "top" ? 0 : radius
             topRightRadius: window.dockEdge === "right" || window.dockEdge === "top" ? 0 : radius
             bottomLeftRadius: window.dockEdge === "left" || window.dockEdge === "bottom" ? 0 : radius
             bottomRightRadius: window.dockEdge === "right" || window.dockEdge === "bottom" ? 0 : radius
-            color: window.dockEdge.length ? (window.dark ? "#2e2b36" : "#f2f1f6") : window.paper
-            border.width: window.dockEdge.length && !window.dragHover ? 0 : 1
-            border.color: window.dragHover || window.pulsing ? window.accent : window.outline
+            color: window.paper
+            border.width: 1
+            border.color: window.dragHover || window.pulsing ? Theme.accent : Theme.line
             clip: true
-            Behavior on radius { NumberAnimation { duration: window.motion } }
-            Behavior on border.color { ColorAnimation { duration: window.motion } }
+            Behavior on border.color { ColorAnimation { duration: Theme.durationBase } }
             HoverHandler {
                 id: surfaceHover
                 onHoveredChanged: {
-                    if (!hovered && shelf.expanded && !shelf.focusPanel && !window.dragHover) peekDismissTimer.restart();
+                    if (!hovered && window.shelf.expanded && !window.shelf.focusPanel && !window.dragHover) peekDismissTimer.restart();
                     else peekDismissTimer.stop();
                 }
             }
 
+            // The drag-hover pulse: accent-soft over the whole surface.
             Rectangle {
                 anchors.fill: parent
-                color: window.accent
-                opacity: window.dragHover ? 0.11 : window.pulsing ? 0.08 : 0
+                color: Theme.accentSoft
+                opacity: window.dragHover ? 1 : window.pulsing ? 0.7 : 0
+                visible: opacity > 0
                 radius: parent.radius
                 topLeftRadius: parent.topLeftRadius; topRightRadius: parent.topRightRadius
                 bottomLeftRadius: parent.bottomLeftRadius; bottomRightRadius: parent.bottomRightRadius
-                Behavior on opacity { NumberAnimation { duration: window.motion } }
+                Behavior on opacity { NumberAnimation { duration: Theme.durationBase } }
             }
 
             Item {
                 id: capsule
                 objectName: "capsule"
                 anchors.fill: parent
-                visible: !shelf.expanded
+                visible: !window.shelf.expanded
                 MouseArea {
                     id: capsuleMouse
                     anchors.fill: parent
@@ -353,77 +295,81 @@ Window {
                     property real startY: 0
                     property bool moved: false
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onEntered: if (window.dockEdge.length && !shelf.expanded) edgeHoverTimer.restart()
+                    onEntered: if (window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart()
                     onExited: edgeHoverTimer.stop()
-                    onPressed: function(event) { edgeHoverTimer.stop();startX=event.x; startY=event.y; moved=false; }
+                    onPressed: function(event) { edgeHoverTimer.stop(); startX = event.x; startY = event.y; moved = false; }
                     onPositionChanged: function(event) {
-                        if(pressed && !moved && Math.abs(event.x-startX)+Math.abs(event.y-startY)>7) {
-                            moved=true; shelf.nativeMove();
+                        if (pressed && !moved && Math.abs(event.x - startX) + Math.abs(event.y - startY) > 7) {
+                            moved = true; window.shelf.nativeMove();
                         }
                     }
                     onClicked: function(event) {
-                        if(event.button === Qt.RightButton) capsuleMenu.popup();
-                        else if(!moved) shelf.toggle();
+                        if (event.button === Qt.RightButton) capsuleMenu.popup();
+                        else if (!moved) window.shelf.toggle();
                     }
                     cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                 }
                 ToolTip {
-                    id: capsuleTip
                     parent: capsule
-                    popupType: Popup.Window
-                    x: (capsule.width-width)/2
-                    y: -height-8
-                    visible: capsuleMouse.containsMouse && shelf.message.length > 0
-                    delay: 500
-                    padding: 9
-                    implicitWidth: Math.min(320,capsuleTipText.implicitWidth+18)
-                    text: shelf.message
-                    contentItem: Text {
-                        id: capsuleTipText
-                        text: capsuleTip.text
-                        textFormat: Text.PlainText
-                        color: window.ink
-                        font.pixelSize: 11
-                        wrapMode: Text.WordWrap
-                    }
-                    background: Rectangle { radius: 8; color: window.raised; border.color: window.outline }
+                    popupType: T.Popup.Window
+                    visible: capsuleMouse.containsMouse && window.shelf.message.length > 0
+                    text: window.shelf.message
+                    y: -height - Theme.space8
                 }
-                Row {
+                // Capsule: the Shelf mark, the collection and what it holds.
+                RowLayout {
                     visible: !window.dockEdge.length
-                    anchors.centerIn: parent
-                    spacing: 12
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.space12
+                    anchors.rightMargin: Theme.space12
+                    spacing: Theme.space10
                     Rectangle {
-                        width: 38; height: 38; radius: 13
-                        color: window.dark ? "#352a47" : "#e7ddfa"
-                        ShelfIcon { anchors.centerIn: parent; width: 22; height: 22; name: window.dragHover ? "plus" : "shelf"; color: window.accent }
+                        Layout.preferredWidth: Theme.tile; Layout.preferredHeight: Theme.tile
+                        radius: Theme.radiusTile
+                        color: Theme.accentSoft
+                        Glyph { anchors.centerIn: parent; size: 20; color: Theme.accentInk; visible: !window.dragHover }
+                        Icon { anchors.centerIn: parent; name: "plus"; size: 20; color: Theme.accentInk; visible: window.dragHover }
                     }
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-                        Label { text: window.dragHover ? "Drop to collect" : shelf.activeName; font.pixelSize: 12; font.weight: Font.DemiBold; elide: Text.ElideRight; width: 108 }
-                        Label { text: shelf.count ? shelf.count + (shelf.count === 1 ? " item held" : " items held") : "Ready when you are"; color: window.muted; font.pixelSize: 11 }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Label {
+                            Layout.fillWidth: true
+                            text: window.dragHover ? "Drop to collect" : window.shelf.activeName
+                            kind: "body"; medium: true
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: window.shelf.count ? "Click to open" : "Drop files, text or links"
+                            kind: "small"; color: Theme.muted
+                            elide: Text.ElideRight
+                        }
                     }
-                    ShelfIcon { name: "chevron"; color: window.faint; width: 14; height: 14; anchors.verticalCenter: parent.verticalCenter }
+                    Badge {
+                        visible: window.shelf.count > 0 && !window.dragHover
+                        text: Format.formatCount(window.shelf.count)
+                        tone: "accent"
+                    }
                 }
+                // Docked tab: a chevron toward the screen and an accent dot
+                // while the shelf holds something.
                 Item {
                     visible: window.dockEdge.length > 0
                     anchors.fill: parent
-                    ShelfIcon {
+                    Icon {
                         anchors.centerIn: parent
-                        width: window.dragHover ? 18 : 20; height: width
-                        name: window.dragHover ? "plus" : "chevron"
+                        size: window.dragHover ? 16 : 18
+                        name: window.dragHover ? "plus" : "chevronRight"
                         // Point back toward the screen, the way the panel opens.
                         rotation: window.dragHover ? 0 : window.dockEdge === "right" ? 180 : window.dockEdge === "top" ? 90 : window.dockEdge === "bottom" ? -90 : 0
-                        color: window.dragHover ? window.accent : window.ink
-                        opacity: window.dragHover || capsuleMouse.containsMouse ? 1 : 0.72
-                        Behavior on opacity { NumberAnimation { duration: window.motion } }
+                        color: window.dragHover ? Theme.accentInk : capsuleMouse.containsMouse ? Theme.text : Theme.muted
                     }
-                    // A small dot says the shelf is holding something.
-                    Rectangle {
-                        visible: shelf.count > 0 && !window.dragHover
-                        width: 5; height: 5; radius: 2.5; color: window.accent
-                        x: window.verticalDock ? (parent.width-width)/2 : parent.width-14
-                        y: window.verticalDock ? parent.height-14 : (parent.height-height)/2
+                    Dot {
+                        visible: window.shelf.count > 0 && !window.dragHover
+                        tone: "accent"
+                        x: window.verticalDock ? (parent.width - width) / 2 : parent.width - 14
+                        y: window.verticalDock ? parent.height - 14 : (parent.height - height) / 2
                     }
                 }
             }
@@ -431,141 +377,192 @@ Window {
             Item {
                 id: expanded
                 anchors.fill: parent
-                visible: shelf.expanded
+                visible: window.shelf.expanded
                 opacity: visible ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: window.motion } }
+                Behavior on opacity { NumberAnimation { duration: Theme.durationBase } }
 
+                // Header: collection switcher, count, filter, then actions.
                 Item {
                     id: header
-                    x: 18; y: 13; width: parent.width-36; height: 38
+                    x: Theme.space12; y: Theme.space10
+                    width: parent.width - Theme.space24; height: Theme.control
                     MouseArea {
                         anchors.fill: parent
-                        onPressed: shelf.nativeMove()
+                        onPressed: window.shelf.nativeMove()
                         cursorShape: Qt.OpenHandCursor
                     }
-                    Row {
-                        anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                        spacing: 9
-                        ShelfIcon { name: "shelf"; color: window.accent; width: 20; height: 20; anchors.verticalCenter: parent.verticalCenter }
-                        Label { text: shelf.picking ? "Choose from Shelf" : "Shelf"; font.pixelSize: 16; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
-                        Rectangle {
-                            width: countLabel.implicitWidth+14; height: 23; radius: 7
-                            color: window.tileSurface; anchors.verticalCenter: parent.verticalCenter
-                            Label { id: countLabel; text: shelf.count; color: window.muted; font.pixelSize: 11; anchors.centerIn: parent }
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: Theme.space6
+                        Button {
+                            id: collectionButton
+                            objectName: "collectionButton"
+                            // Menu buttons: the chevron follows the label.
+                            LayoutMirroring.enabled: true; LayoutMirroring.childrenInherit: true
+                            small: true
+                            variant: "ghost"
+                            text: window.shelf.picking ? "Choose from " + window.shelf.activeName : window.shelf.activeName
+                            iconName: "chevronDown"
+                            tooltip: "Collections"
+                            Layout.maximumWidth: Math.max(120, header.width * 0.34)
+                            onClicked: { collectionMenu.populated = true; collectionMenu.popup(collectionButton, 0, collectionButton.height + Theme.space4); }
                         }
-                    }
-                    Row {
-                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 3
-                        IconButton { glyph: "paste"; tooltip: "Collect from clipboard · Ctrl+V"; visible: !shelf.picking; onClicked: shelf.paste() }
-                        IconButton { glyph: "more"; tooltip: "Shelf options"; onClicked: surfaceMenu.popup() }
-                        IconButton { glyph: "minus"; tooltip: shelf.picking ? "Cancel selection" : "Collapse · Esc"; onClicked: shelf.picking ? shelf.cancelPick() : window.closePanel() }
-                    }
-                }
-
-                Rectangle { x: 18; y: 60; width: parent.width-36; height: 1; color: window.outline; opacity: 0.55 }
-
-                RowLayout {
-                    id: collectionRow
-                    x: 18; y: 72; width: parent.width-36; height: 35; spacing: 10
-                    ShelfButton {
-                        id: collectionButton
-                        text: shelf.activeName; glyph: "down"; foreground: window.ink; hoverSurface: window.hoverSurface
-                        accentColor: window.accent; surface: window.tileSurface; reduceMotion: shelf.reducedMotion
-                        Layout.maximumWidth: Math.min(240, collectionRow.width*0.48)
-                        onClicked: collectionsPopup.open()
-                    }
-                    Item { Layout.fillWidth: true }
-                    Item {
-                        Layout.preferredWidth: Math.max(120, Math.min(220, collectionRow.width*0.44)); Layout.fillHeight: true
-                        Field {
+                        Badge { text: Format.formatCount(window.shelf.count) }
+                        Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                        SearchField {
                             id: searchField
                             objectName: "filterField"
-                            anchors.fill: parent
-                            leftPadding: 33
-                            text: shelf.filter
+                            Layout.preferredWidth: Math.max(120, Math.min(220, header.width * 0.34))
+                            Layout.preferredHeight: Theme.controlSm
                             placeholderText: "Filter items"
-                            onTextEdited: shelf.filter = text
-                            Keys.onEscapePressed: { shelf.filter = ""; interaction.forceActiveFocus(); }
-                            Keys.onDownPressed: { interaction.forceActiveFocus(); window.navigate(1,0); }
+                            text: window.shelf.filter
+                            onEdited: text => window.shelf.filter = text
+                            onEscaped: interaction.forceActiveFocus()
+                            Keys.onDownPressed: { interaction.forceActiveFocus(); window.navigate(1, 0); }
                         }
-                        ShelfIcon { x: 10; anchors.verticalCenter: parent.verticalCenter; width: 15; height: 15; name: "search"; color: window.muted }
+                        Button {
+                            visible: window.shelf.undoAvailable && !window.shelf.busy && !window.shelf.picking
+                            small: true; variant: "ghost"
+                            text: "Undo"; iconName: "undo"
+                            tooltip: "Undo · Ctrl+Z"
+                            onClicked: window.shelf.undo()
+                        }
+                        Button {
+                            visible: window.shelf.busy
+                            small: true
+                            text: "Cancel"
+                            onClicked: window.shelf.cancelJob()
+                        }
+                        Button {
+                            id: actionsButton
+                            objectName: "actionsButton"
+                            LayoutMirroring.enabled: true; LayoutMirroring.childrenInherit: true
+                            visible: !window.shelf.picking
+                            enabled: window.selectedCount > 0
+                            small: true
+                            text: "Actions"; iconName: "chevronDown"
+                            onClicked: { actionsMenu.populated = true; actionsMenu.popup(actionsButton, 0, actionsButton.height + Theme.space4); }
+                        }
+                        Button {
+                            id: moreButton
+                            small: true; variant: "ghost"
+                            iconName: "more"; tooltip: "Shelf options"
+                            onClicked: surfaceMenu.popup(moreButton, 0, moreButton.height + Theme.space4)
+                        }
+                        Button {
+                            small: true; variant: "ghost"
+                            iconName: "minimize"
+                            tooltip: window.shelf.picking ? "Cancel · Esc" : "Close · Esc"
+                            onClicked: window.shelf.picking ? window.shelf.cancelPick() : window.closePanel()
+                        }
                     }
                 }
+                ProgressBar {
+                    objectName: "busyProgress"
+                    visible: window.shelf.busy
+                    x: header.x; width: header.width
+                    y: header.y + header.height + Theme.space6
+                    from: 0; to: 1
+                    indeterminate: window.shelf.progress < 0
+                    value: Math.max(0, Math.min(1, window.shelf.progress))
+                }
+                Divider { x: 0; width: parent.width; y: header.y + header.height + Theme.space12 }
 
                 GridView {
                     id: grid
                     objectName: "shelfGrid"
-                    x: 15; y: 122
-                    width: Math.max(0,parent.width-30); height: Math.max(0,parent.height-y-footer.height-14)
+                    readonly property int columns: Math.max(2, Math.floor(width / 142))
+                    x: Theme.space8; y: header.y + header.height + Theme.space16
+                    width: Math.max(0, parent.width - Theme.space16)
+                    height: Math.max(0, parent.height - y - footer.height)
                     clip: true
-                    model: shelf.expanded ? shelf.items : []
-                    cellWidth: width / Math.max(2, Math.floor(width / 142))
+                    model: window.shelf.expanded ? window.shelf.items : []
+                    cellWidth: width / columns
                     cellHeight: 152
                     boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 5 }
+                    ScrollBar.vertical: ScrollBar {}
                     delegate: Item {
                         id: tile
                         required property var modelData
                         required property int index
-                        objectName: "tile-"+modelData.id
+                        objectName: "tile-" + modelData.id
                         width: grid.cellWidth; height: grid.cellHeight
-                        readonly property bool chosen: { const revision=shelf.selectionRevision; return shelf.selected(modelData.id); }
+                        readonly property bool chosen: { const revision = window.shelf.selectionRevision; return window.shelf.selected(modelData.id); }
                         readonly property bool missing: modelData.available === false
+                        readonly property bool isText: modelData.type === "text/plain" || modelData.type === "text/rich"
                         Accessible.role: Accessible.ListItem
                         Accessible.name: modelData.name + ", " + window.subtitleFor(modelData)
                         Accessible.selected: chosen
-                        Accessible.onPressAction: shelf.select(modelData.id,false,false)
+                        Accessible.onPressAction: window.shelf.select(modelData.id, false, false)
                         Rectangle {
                             id: card
-                            x: 5; y: 3; width: parent.width-10; height: parent.height-10
-                            radius: 12
-                            color: tile.chosen ? window.selection : tileMouse.containsMouse ? window.hoverSurface : window.tileSurface
-                            border.width: tile.chosen ? 1.5 : 1
-                            border.color: tile.chosen ? window.accent : "transparent"
-                            Behavior on color { ColorAnimation { duration: window.motion } }
+                            x: Theme.space4; y: Theme.space4
+                            width: parent.width - Theme.space8; height: parent.height - Theme.space8
+                            radius: Theme.radiusMd
+                            color: tile.chosen ? Theme.accentSoft : tileMouse.containsMouse ? Theme.hover : Theme.sunken
+                            border.width: tile.chosen ? 2 : 0
+                            border.color: Theme.accent
                             Item {
                                 id: preview
-                                x: 9; y: 9; width: parent.width-18; height: 81
+                                x: Theme.space8; y: Theme.space8
+                                width: parent.width - Theme.space16; height: 82
                                 clip: true
                                 Image {
                                     id: thumbnail
                                     anchors.fill: parent
-                                    source: shelf.expanded && !tile.missing && modelData.thumbnail ? modelData.thumbnail : ""
+                                    source: window.shelf.expanded && !tile.missing && tile.modelData.thumbnail ? tile.modelData.thumbnail : ""
                                     asynchronous: true
                                     cache: true
                                     fillMode: Image.PreserveAspectCrop
                                     sourceSize.width: 256; sourceSize.height: 180
                                     visible: status === Image.Ready
                                 }
-                                ShelfIcon {
-                                    visible: thumbnail.status !== Image.Ready && modelData.type.indexOf("text/") !== 0
-                                    anchors.centerIn: parent; width: 36; height: 36
-                                    name: window.iconFor(modelData.type)
-                                    color: tile.missing ? window.faint : modelData.type === "folder/reference" ? "#c8ad80" : window.muted
+                                Icon {
+                                    visible: thumbnail.status !== Image.Ready && !tile.isText && tile.modelData.type !== "text/url"
+                                    anchors.centerIn: parent; size: 32
+                                    name: window.iconFor(tile.modelData.type)
+                                    color: tile.missing ? Theme.faint : Theme.muted
                                 }
                                 Label {
-                                    objectName: "previewText-"+modelData.id
-                                    visible: modelData.type === "text/plain" || modelData.type === "text/rich"
-                                    anchors.fill: parent; anchors.margins: 5
-                                    text: modelData.text || "Text"
-                                    font.pixelSize: 10; color: window.muted
-                                    wrapMode: Text.Wrap; maximumLineCount: 5; elide: Text.ElideRight
+                                    objectName: "previewText-" + tile.modelData.id
+                                    visible: tile.isText
+                                    anchors.fill: parent; anchors.margins: Theme.space4
+                                    text: tile.modelData.text || "Text"
+                                    textFormat: Text.PlainText
+                                    kind: "caption"; color: Theme.muted
+                                    wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight
                                 }
                                 Column {
-                                    visible: modelData.type === "text/url"
-                                    anchors.centerIn: parent; spacing: 5; width: parent.width-12
-                                    ShelfIcon { name: "url"; color: window.accent; width: 25; height: 25; anchors.horizontalCenter: parent.horizontalCenter }
-                                    Label { text: (modelData.text || "").replace(/^https?:\/\//, "").split("/")[0]; color: window.muted; font.pixelSize: 10; width: parent.width; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                    visible: tile.modelData.type === "text/url"
+                                    anchors.centerIn: parent; spacing: Theme.space4; width: parent.width - Theme.space12
+                                    Icon { name: "link"; color: Theme.accentInk; size: 24; anchors.horizontalCenter: parent.horizontalCenter }
+                                    Label {
+                                        width: parent.width
+                                        text: (tile.modelData.text || "").replace(/^https?:\/\//, "").split("/")[0]
+                                        kind: "caption"; color: Theme.muted
+                                        elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter
+                                    }
                                 }
                             }
-                            Label { x: 11; y: 99; width: parent.width-22; text: modelData.name; font.weight: Font.Medium; font.pixelSize: 11; elide: Text.ElideMiddle; maximumLineCount: 1 }
-                            Label { x: 11; y: 117; width: parent.width-22; text: window.subtitleFor(modelData); color: tile.missing ? "#df8d9b" : window.muted; font.pixelSize: 9; elide: Text.ElideRight; maximumLineCount: 1 }
+                            Label {
+                                id: nameLabel
+                                x: Theme.space10; y: 98; width: parent.width - Theme.space20
+                                text: tile.modelData.name
+                                kind: "body"; medium: true
+                                elide: Text.ElideMiddle; maximumLineCount: 1
+                            }
+                            Label {
+                                x: Theme.space10; y: 118; width: parent.width - Theme.space20
+                                text: window.subtitleFor(tile.modelData)
+                                kind: "caption"; color: tile.missing ? Theme.dangerInk : Theme.muted
+                                elide: Text.ElideRight; maximumLineCount: 1
+                            }
                             Rectangle {
                                 visible: tile.chosen
-                                x: parent.width-22; y: 7; width: 16; height: 16; radius: 8; color: window.accent
-                                ShelfIcon { anchors.centerIn: parent; name: "check"; color: "#21162f"; width: 11; height: 11 }
+                                x: parent.width - 24; y: Theme.space8; width: 16; height: 16; radius: 8; color: Theme.accent
+                                Icon { anchors.centerIn: parent; name: "check"; color: Theme.accentText; size: 11 }
                             }
-                            ShelfIcon { visible: tile.missing; x: 9; y: 8; name: "warning"; color: "#df8d9b"; width: 15; height: 15 }
+                            Icon { visible: tile.missing; x: Theme.space8; y: Theme.space8; name: "alert"; color: Theme.dangerInk; size: 14 }
                             MouseArea {
                                 id: tileMouse
                                 anchors.fill: parent
@@ -574,83 +571,92 @@ Window {
                                 property real pressX: 0; property real pressY: 0
                                 property bool startedDrag: false
                                 onPressed: function(event) {
-                                    pressX=event.x; pressY=event.y; startedDrag=false; window.cursorIndex=tile.index;
-                                    if(event.button === Qt.RightButton) {
-                                        if(!tile.chosen) shelf.select(modelData.id,false,false);
-                                        window.contextItem=modelData.id; itemMenu.popup();
-                                    } else if(!tile.chosen || (event.modifiers & (Qt.ControlModifier|Qt.MetaModifier|Qt.ShiftModifier))) shelf.select(modelData.id,!!(event.modifiers & (Qt.ControlModifier|Qt.MetaModifier)),!!(event.modifiers & Qt.ShiftModifier));
+                                    pressX = event.x; pressY = event.y; startedDrag = false; window.cursorIndex = tile.index;
+                                    if (event.button === Qt.RightButton) {
+                                        if (!tile.chosen) window.shelf.select(tile.modelData.id, false, false);
+                                        window.contextItem = tile.modelData.id; itemMenu.popup();
+                                    } else if (!tile.chosen || (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)))
+                                        window.shelf.select(tile.modelData.id, !!(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)), !!(event.modifiers & Qt.ShiftModifier));
                                     interaction.forceActiveFocus();
                                 }
-                                onClicked: function(event) { if(event.button===Qt.LeftButton && !startedDrag && !(event.modifiers & (Qt.ControlModifier|Qt.MetaModifier|Qt.ShiftModifier))) shelf.select(modelData.id,false,false); }
+                                onClicked: function(event) {
+                                    if (event.button === Qt.LeftButton && !startedDrag && !(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)))
+                                        window.shelf.select(tile.modelData.id, false, false);
+                                }
                                 onPositionChanged: function(event) {
-                                    if(pressed && (pressedButtons & Qt.LeftButton) && !startedDrag && !shelf.picking && Math.abs(event.x-pressX)+Math.abs(event.y-pressY)>9) {
-                                        startedDrag=true; shelf.dragSelected();
+                                    if (pressed && (pressedButtons & Qt.LeftButton) && !startedDrag && !window.shelf.picking && Math.abs(event.x - pressX) + Math.abs(event.y - pressY) > 9) {
+                                        startedDrag = true; window.shelf.dragSelected();
                                     }
                                 }
-                                onDoubleClicked: if(!startedDrag && !shelf.picking) shelf.openItem(modelData.id)
+                                onDoubleClicked: if (!startedDrag && !window.shelf.picking) window.shelf.openItem(tile.modelData.id)
                                 cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                             }
-                        }
-                    }
-                }
-
-                Column {
-                    id: emptyState
-                    visible: shelf.expanded && shelf.items.length === 0
-                    width: Math.min(380,parent.width-72)
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: grid.y+Math.max(5,(grid.height-implicitHeight)/2)
-                    spacing: grid.height < 210 ? 7 : 11
-                    Rectangle {
-                        width: grid.height < 210 ? 48 : 68; height: width; radius: 20; color: window.tileSurface
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        ShelfIcon { anchors.centerIn: parent; name: shelf.filter.length ? "search" : "shelf"; color: window.accent; width: 31; height: 31 }
-                    }
-                    Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: shelf.filter.length ? "No matching items" : shelf.picking ? "This shelf is empty" : "A little space for what’s next"; font.pixelSize: 15; font.weight: Font.Medium }
-                    Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: shelf.filter.length ? "Try a different filter." : shelf.picking ? "Choose another collection to continue." : "Drop files, links, or text here."; color: window.muted; font.pixelSize: 12 }
-                    Flow {
-                        id: sourceFlow
-                        visible: !shelf.filter.length && !shelf.picking && shelf.sources.length > 0 && grid.height > 220
-                        width: parent.width
-                        spacing: 6
-                        Repeater {
-                            model: sourceFlow.visible && shelf.expanded ? shelf.sources : []
-                            delegate: ShelfButton {
-                                required property var modelData
-                                text: modelData.title; foreground: window.ink; surface: window.tileSurface; hoverSurface: window.hoverSurface; accentColor: window.accent
-                                reduceMotion: shelf.reducedMotion
-                                onClicked: shelf.runSource(modelData.app,modelData.action || modelData.id)
+                            // The full name, where the label had to shorten it.
+                            ToolTip {
+                                visible: tileMouse.containsMouse && !tileMouse.pressed && nameLabel.truncated
+                                text: tile.modelData.name
                             }
                         }
                     }
                 }
 
+                EmptyState {
+                    id: emptyState
+                    objectName: "emptyState"
+                    visible: window.shelf.expanded && window.shelf.items.length === 0
+                    dashed: false
+                    width: Math.min(420, parent.width - Theme.space48)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: grid.y + Math.max(0, (grid.height - height) / 2)
+                    iconName: window.shelf.filter.length ? "search" : "plus"
+                    title: window.shelf.filter.length ? "No matching items" : window.shelf.picking ? "This collection is empty" : "Drop to collect"
+                    text: window.shelf.filter.length ? "Try a different filter." : window.shelf.picking ? "Choose another collection to continue."
+                        : "Keep the originals right where they are. Paste (Ctrl+V) or drop files, text and links."
+                    Repeater {
+                        model: !window.shelf.filter.length && !window.shelf.picking && grid.height > 220 && window.shelf.expanded ? window.shelf.sources : []
+                        delegate: Button {
+                            required property var modelData
+                            small: true
+                            text: modelData.title
+                            onClicked: window.shelf.runSource(modelData.app, modelData.action || modelData.id)
+                        }
+                    }
+                }
+
+                // Footer: the hint bar, or the picker's choice.
                 Item {
                     id: footer
                     anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
-                    height: shelf.message.length || shelf.busy ? 79 : 55
-                    Rectangle { width: parent.width-36; x: 18; height: 1; color: window.outline; opacity: 0.5 }
-                    Row {
-                        x: 18; y: 11; spacing: 5
-                        IconButton { glyph: "settings"; tooltip: "Preferences"; onClicked: shelf.showSettings() }
-                        Label { text: window.selectedCount ? window.selectedCount + " selected" : shelf.activeName; color: window.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter; width: Math.min(170,expanded.width*0.27); elide: Text.ElideRight }
-                    }
-                    Row {
-                        anchors.right: parent.right; anchors.rightMargin: 18; y: 10; spacing: 5
-                        IconButton { visible: !shelf.picking && window.selectedCount > 0; glyph: "copy"; tooltip: "Copy selection · Ctrl+C"; onClicked: shelf.copySelected("content") }
-                        IconButton { visible: !shelf.picking && window.selectedCount > 0; glyph: "trash"; tooltip: "Remove from Shelf · Delete"; onClicked: shelf.removeSelected() }
-                        ShelfButton { visible: !shelf.picking && window.selectedCount > 0 && shelf.offers.length > 0; text: "Actions"; glyph: "down"; foreground: window.ink; hoverSurface: window.hoverSurface; surface: window.tileSurface; accentColor: window.accent; reduceMotion: shelf.reducedMotion; onClicked: { peerMenu.populated=true;peerMenu.popup(); } }
-                        ShelfButton { visible: shelf.picking; text: "Cancel"; foreground: window.ink; hoverSurface: window.hoverSurface; reduceMotion: shelf.reducedMotion; onClicked: shelf.cancelPick() }
-                    ShelfButton { objectName: "pickerConfirm"; visible: shelf.picking; text: window.selectedCount ? "Use " + window.selectedCount + (window.selectedCount === 1 ? " item" : " items") : "Choose items"; accent: true; accentColor: window.accent; reduceMotion: shelf.reducedMotion; enabled: window.selectedCount > 0; onClicked: shelf.confirmPick() }
+                    height: window.shelf.picking ? 52 : Theme.hintBar + 1
+                    Divider { width: parent.width }
+                    HintBar {
+                        objectName: "hintBar"
+                        visible: !window.shelf.picking
+                        y: 1; width: parent.width
+                        hints: [{ keys: ["↵"], label: "Open" }, { keys: ["Space"], label: "Preview in Look" },
+                                { keys: ["Del"], label: "Remove" }, { keys: ["Esc"], label: "Close" }]
+                        trailing: window.shelf.message.length ? window.shelf.message
+                            : window.selectedCount ? Format.formatCount(window.selectedCount) + " selected" : ""
                     }
                     RowLayout {
-                        x: 20; y: 51; width: parent.width-40; height: 20; spacing: 8
-                        visible: shelf.message.length > 0 || shelf.busy
-                        Label { Layout.fillWidth: true; text: shelf.message; color: window.muted; font.pixelSize: 10; elide: Text.ElideRight }
-                        ShelfButton { visible: shelf.undoAvailable && !shelf.busy; text: "Undo"; glyph: "undo"; compact: true; implicitHeight: 22; foreground: window.accent; hoverSurface: window.hoverSurface; reduceMotion: shelf.reducedMotion; onClicked: shelf.undo() }
-                        ShelfButton { visible: shelf.busy; text: "Cancel"; compact: true; implicitHeight: 22; foreground: window.accent; hoverSurface: window.hoverSurface; onClicked: shelf.cancelJob() }
+                        visible: window.shelf.picking
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.space12; anchors.rightMargin: Theme.space12
+                        spacing: Theme.space8
+                        Label {
+                            Layout.fillWidth: true
+                            text: window.shelf.pickMultiple ? "Select one or more items." : "Select an item."
+                            kind: "small"; color: Theme.muted; elide: Text.ElideRight
+                        }
+                        Button { text: "Cancel"; onClicked: window.shelf.cancelPick() }
+                        Button {
+                            objectName: "pickerConfirm"
+                            variant: "primary"
+                            text: window.selectedCount ? "Use " + window.countLabel(window.selectedCount) : "Choose items"
+                            enabled: window.selectedCount > 0
+                            onClicked: window.shelf.confirmPick()
+                        }
                     }
-                    Rectangle { visible: shelf.busy; x: 18; y: 75; width: (parent.width-36)*Math.max(0,Math.min(1,shelf.progress)); height: 2; color: window.accent; radius: 1; Behavior on width { NumberAnimation { duration: window.motion } } }
                 }
             }
 
@@ -660,398 +666,263 @@ Window {
                 id: dropArea
                 objectName: "shelfDropArea"
                 anchors.fill: parent
-                enabled: !shelf.picking
+                enabled: !window.shelf.picking
                 onEntered: function(drag) {
                     drag.accepted = drag.hasUrls || drag.hasText || drag.hasHtml;
                     peekDismissTimer.stop();
-                    if (drag.accepted && window.dockEdge.length && !shelf.expanded) edgeHoverTimer.restart();
+                    if (drag.accepted && window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart();
                 }
                 onExited: {
                     edgeHoverTimer.stop();
-                    if (shelf.expanded && !shelf.focusPanel && !surfaceHover.hovered && !shelf.nativeDragHover) peekDismissTimer.restart();
+                    if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !window.shelf.nativeDragHover) peekDismissTimer.restart();
                 }
                 onDropped: function(drop) {
                     edgeHoverTimer.stop();
                     if (!(drop.hasUrls || drop.hasText || drop.hasHtml)) return;
-                    shelf.acceptDrop(drop.urls, drop.hasText ? drop.text : "", drop.hasHtml ? drop.html : "");
+                    window.shelf.acceptDrop(drop.urls, drop.hasText ? drop.text : "", drop.hasHtml ? drop.html : "");
                     drop.acceptProposedAction();
                 }
             }
+            // The panel's drop target while something is dragged over it.
             Rectangle {
-                visible: shelf.expanded && window.dragHover
-                anchors.fill: parent; anchors.margins: 9; radius: 13
-                color: window.dark ? "#ed211b30" : "#eeeae2f6"
-                border.color: window.accent; border.width: 2
+                visible: window.shelf.expanded && window.dragHover
+                anchors.fill: parent; anchors.margins: Theme.space8
+                radius: Theme.radiusLg
+                color: Theme.accentSoft
+                border.color: Theme.accent; border.width: 2
                 Column {
-                    anchors.centerIn: parent; spacing: 12
-                    ShelfIcon { name: "plus"; color: window.accent; width: 38; height: 38; anchors.horizontalCenter: parent.horizontalCenter }
-                    Label { text: "Drop to collect"; font.pixelSize: 18; font.weight: Font.Medium; anchors.horizontalCenter: parent.horizontalCenter }
-                    Label { text: "Keep the originals right where they are."; color: window.muted; anchors.horizontalCenter: parent.horizontalCenter }
+                    anchors.centerIn: parent; spacing: Theme.space8
+                    Icon { name: "plus"; color: Theme.accentInk; size: 32; anchors.horizontalCenter: parent.horizontalCenter }
+                    Label { text: "Drop to collect"; kind: "titleSm"; anchors.horizontalCenter: parent.horizontalCenter }
+                    Label { text: "Keep the originals right where they are."; color: Theme.muted; anchors.horizontalCenter: parent.horizontalCenter }
                 }
             }
         }
 
         // Resize strips stay outside the content hit region.
-        MouseArea { visible: shelf.expanded; x: 0; y: 12; width: 6; height: parent.height-24; cursorShape: Qt.SizeHorCursor; onPressed: shelf.nativeResize(Qt.LeftEdge) }
-        MouseArea { visible: shelf.expanded; x: parent.width-6; y: 12; width: 6; height: parent.height-24; cursorShape: Qt.SizeHorCursor; onPressed: shelf.nativeResize(Qt.RightEdge) }
-        MouseArea { visible: shelf.expanded; x: 12; y: 0; width: parent.width-24; height: 6; cursorShape: Qt.SizeVerCursor; onPressed: shelf.nativeResize(Qt.TopEdge) }
-        MouseArea { visible: shelf.expanded; x: 12; y: parent.height-6; width: parent.width-24; height: 6; cursorShape: Qt.SizeVerCursor; onPressed: shelf.nativeResize(Qt.BottomEdge) }
-        MouseArea { visible: shelf.expanded; x: parent.width-14; y: parent.height-14; width: 14; height: 14; cursorShape: Qt.SizeFDiagCursor; onPressed: shelf.nativeResize(Qt.RightEdge | Qt.BottomEdge) }
+        MouseArea { visible: window.shelf.expanded; x: 0; y: 12; width: 6; height: parent.height - 24; cursorShape: Qt.SizeHorCursor; onPressed: window.shelf.nativeResize(Qt.LeftEdge) }
+        MouseArea { visible: window.shelf.expanded; x: parent.width - 6; y: 12; width: 6; height: parent.height - 24; cursorShape: Qt.SizeHorCursor; onPressed: window.shelf.nativeResize(Qt.RightEdge) }
+        MouseArea { visible: window.shelf.expanded; x: 12; y: 0; width: parent.width - 24; height: 6; cursorShape: Qt.SizeVerCursor; onPressed: window.shelf.nativeResize(Qt.TopEdge) }
+        MouseArea { visible: window.shelf.expanded; x: 12; y: parent.height - 6; width: parent.width - 24; height: 6; cursorShape: Qt.SizeVerCursor; onPressed: window.shelf.nativeResize(Qt.BottomEdge) }
+        MouseArea { visible: window.shelf.expanded; x: parent.width - 14; y: parent.height - 14; width: 14; height: 14; cursorShape: Qt.SizeFDiagCursor; onPressed: window.shelf.nativeResize(Qt.RightEdge | Qt.BottomEdge) }
     }
 
-    ActionMenu {
+    // Capsule and tab menu (right click).
+    Menu {
         id: capsuleMenu
-        MenuEntry { text: "Open " + shelf.activeName; onTriggered: shelf.show() }
-        MenuEntry { text: "Collect from clipboard"; onTriggered: shelf.paste() }
-        MenuEntry { text: "Undo last collection"; visible: shelf.undoAvailable; onTriggered: shelf.undo() }
+        MenuItem { text: "Open " + window.shelf.activeName; onTriggered: window.shelf.show() }
+        MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; onTriggered: window.shelf.paste() }
+        MenuItem { text: "Undo"; iconName: "undo"; shortcut: "Ctrl+Z"; enabled: window.shelf.undoAvailable; onTriggered: window.shelf.undo() }
         MenuSeparator {}
-        MenuEntry { text: "Dock left"; onTriggered: window.dockTo("left") }
-        MenuEntry { text: "Dock right"; onTriggered: window.dockTo("right") }
-        MenuEntry { text: "Dock at top"; onTriggered: window.dockTo("top") }
-        MenuEntry { text: "Dock at bottom"; onTriggered: window.dockTo("bottom") }
-        MenuEntry { text: "Undock"; visible: window.dockEdge.length > 0; onTriggered: shelf.dock("") }
+        DockMenu { shelf: window.shelf; onDockRequested: edge => window.dockTo(edge) }
         MenuSeparator {}
-        MenuEntry { text: "Preferences"; onTriggered: shelf.showSettings() }
+        MenuItem { text: "Settings"; iconName: "settings"; shortcut: "Ctrl+,"; onTriggered: window.shelf.showSettings() }
     }
-    ActionMenu {
+    // The panel's window menu (⋯).
+    Menu {
         id: surfaceMenu
-        MenuEntry { text: "New collection…"; onTriggered: window.editCollection("","","new") }
-        MenuEntry { text: "Rename collection…"; onTriggered: window.editCollection(shelf.activeShelf,shelf.activeName,"rename") }
-        MenuEntry { text: "Select all"; enabled: shelf.items.length > 0; onTriggered: shelf.selectAll() }
+        MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; shortcut: "Ctrl+V"; onTriggered: window.shelf.paste() }
+        MenuItem { text: "Select all"; shortcut: "Ctrl+A"; enabled: window.shelf.items.length > 0; onTriggered: window.shelf.selectAll() }
         MenuSeparator {}
-        MenuEntry { text: "Dock left"; onTriggered: window.dockTo("left") }
-        MenuEntry { text: "Dock right"; onTriggered: window.dockTo("right") }
-        MenuEntry { text: "Always on top"; checkable: true; checked: shelf.alwaysOnTop; onTriggered: shelf.alwaysOnTop=!shelf.alwaysOnTop }
+        DockMenu { shelf: window.shelf; onDockRequested: edge => window.dockTo(edge) }
+        MenuItem { text: "Always on top"; iconName: "pin"; checkable: true; checked: window.shelf.alwaysOnTop; onTriggered: window.shelf.alwaysOnTop = !window.shelf.alwaysOnTop }
         MenuSeparator {}
-        MenuEntry { text: "Preferences"; onTriggered: shelf.showSettings() }
+        MenuItem { text: "Settings"; iconName: "settings"; shortcut: "Ctrl+,"; onTriggered: window.shelf.showSettings() }
     }
-    ActionMenu {
-        id: itemMenu
-        MenuEntry { text: "Open in default app"; onTriggered: shelf.openItem(window.contextItem) }
-        MenuEntry { text: "Reveal original"; onTriggered: shelf.revealItem(window.contextItem) }
-        MenuSeparator {}
-        MenuEntry { text: "Copy"; onTriggered: shelf.copySelected("content") }
-        MenuEntry { text: "Copy paths"; onTriggered: shelf.copySelected("paths") }
-        MenuSeparator {}
-        MenuEntry { text: "Move earlier"; onTriggered: window.moveItem(-1) }
-        MenuEntry { text: "Move later"; onTriggered: window.moveItem(1) }
-        MenuSeparator {}
-        MenuEntry { text: "Remove from Shelf"; onTriggered: shelf.removeSelected() }
-    }
-    ActionMenu {
-        id: peerMenu
+    // Collections: switch, then manage the open one.
+    Menu {
+        id: collectionMenu
+        // Filled just before it opens, so it has its final size when shown.
         property bool populated: false
-        onClosed: populated=false
+        onClosed: populated = false
         Instantiator {
-            model: peerMenu.populated ? shelf.offers : []
-            delegate: MenuEntry {
+            model: collectionMenu.populated ? window.shelf.shelves : []
+            delegate: MenuItem {
+                required property var modelData
+                text: modelData.name + "  ·  " + Format.formatCount(modelData.count || 0)
+                iconName: modelData.pinned ? "pin" : ""
+                checkable: true
+                checked: modelData.id === window.shelf.activeShelf
+                onTriggered: window.shelf.switchShelf(modelData.id)
+            }
+            onObjectAdded: (index, object) => collectionMenu.insertItem(index, object as MenuItem)
+            onObjectRemoved: (index, object) => collectionMenu.removeItem(object as MenuItem)
+        }
+        MenuSeparator {}
+        MenuItem { text: "New collection…"; iconName: "plus"; onTriggered: window.editCollection("", "", "new") }
+        MenuItem { text: "Rename collection…"; iconName: "edit"; onTriggered: window.editCollection(window.shelf.activeShelf, window.shelf.activeName, "rename") }
+        MenuItem {
+            readonly property bool pinned: window.shelf.shelves.some(s => s.id === window.shelf.activeShelf && s.pinned)
+            text: pinned ? "Unpin collection" : "Pin collection"
+            iconName: "pin"
+            onTriggered: window.shelf.pinShelf(window.shelf.activeShelf, !pinned)
+        }
+        MenuItem { text: "Move up"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1) }
+        MenuItem { text: "Move down"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1) }
+        MenuSeparator {}
+        MenuItem {
+            text: "Delete collection…"; iconName: "trash"; danger: true
+            enabled: window.shelf.shelves.length > 1
+            onTriggered: { window.collectionToEdit = window.shelf.activeShelf; deleteCollection.open(); }
+        }
+    }
+    // One item (right click), acting on the selection.
+    Menu {
+        id: itemMenu
+        MenuItem { text: "Open"; shortcut: "Enter"; onTriggered: window.shelf.openItem(window.contextItem) }
+        MenuItem { text: "Show in folder"; iconName: "showInFolder"; onTriggered: window.shelf.revealItem(window.contextItem) }
+        MenuItem { text: "Preview in Look"; iconName: "eye"; shortcut: "Space"; visible: !!window.lookPreview; height: visible ? implicitHeight : 0; onTriggered: window.runOffer(window.lookPreview) }
+        MenuSeparator {}
+        MenuItem { text: "Copy"; iconName: "copy"; shortcut: "Ctrl+C"; onTriggered: window.shelf.copySelected("content") }
+        MenuItem { text: "Copy path"; onTriggered: window.shelf.copySelected("paths") }
+        MenuSeparator {}
+        MenuItem { text: "Move earlier"; onTriggered: window.moveItem(-1) }
+        MenuItem { text: "Move later"; onTriggered: window.moveItem(1) }
+        MenuSeparator {}
+        MenuItem { text: "Remove from Shelf"; iconName: "trash"; shortcut: "Del"; danger: true; onTriggered: window.shelf.removeSelected() }
+    }
+    // Actions (header): the selection, then what other Arcade apps offer.
+    Menu {
+        id: actionsMenu
+        property bool populated: false
+        onClosed: populated = false
+        MenuItem { text: "Copy"; iconName: "copy"; shortcut: "Ctrl+C"; onTriggered: window.shelf.copySelected("content") }
+        MenuItem { text: "Copy path"; onTriggered: window.shelf.copySelected("paths") }
+        MenuSeparator { visible: window.shelf.offers.length > 0 }
+        Instantiator {
+            model: actionsMenu.populated ? window.shelf.offers : []
+            delegate: MenuItem {
                 required property var modelData
                 text: modelData.title
-                enabled: modelData.enabled !== false && !shelf.busy
+                enabled: modelData.enabled !== false && !window.shelf.busy
                 onTriggered: window.runOffer(modelData)
             }
-            onObjectAdded: function(index, object) { peerMenu.insertItem(index,object); }
-            onObjectRemoved: function(index, object) { peerMenu.removeItem(object); }
+            onObjectAdded: (index, object) => actionsMenu.insertItem(3 + index, object as MenuItem)
+            onObjectRemoved: (index, object) => actionsMenu.removeItem(object as MenuItem)
         }
-    }
-
-    Popup {
-        id: collectionsPopup
-        focus: true
-        x: 24; y: 116
-        width: Math.min(300,window.width-48)
-        height: Math.min(350,collectionsContent.implicitHeight+18)
-        padding: 9
-        background: Rectangle { color: window.raised; border.color: window.outline; radius: 13 }
-        contentItem: ScrollView {
-            clip: true
-            contentWidth: availableWidth
-        Column {
-            id: collectionsContent
-            width: collectionsPopup.availableWidth
-            spacing: 3
-            Repeater {
-                model: collectionsPopup.visible ? shelf.shelves : []
-                delegate: Item {
-                    id: collection
-                    required property var modelData
-                    width: collectionsContent.width; height: 40
-                    Rectangle { anchors.fill: parent; radius: 8; color: modelData.id===shelf.activeShelf ? window.selection : collectionMouse.containsMouse ? window.hoverSurface : "transparent" }
-                    MouseArea { id: collectionMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { shelf.switchShelf(modelData.id); collectionsPopup.close(); } }
-                    ShelfIcon { x: 10; anchors.verticalCenter: parent.verticalCenter; width: 16; height: 16; name: modelData.pinned ? "pin" : "shelf"; color: modelData.id===shelf.activeShelf ? window.accent : window.muted }
-                    Label { x: 35; width: parent.width-100; anchors.verticalCenter: parent.verticalCenter; text: modelData.name; elide: Text.ElideRight; font.pixelSize: 12 }
-                    Label { anchors.right: collectionMore.left; anchors.rightMargin: 5; anchors.verticalCenter: parent.verticalCenter; text: modelData.count || 0; color: window.muted; font.pixelSize: 10 }
-                    IconButton {
-                        id: collectionMore
-                        anchors.right: parent.right; anchors.rightMargin: 3; anchors.verticalCenter: parent.verticalCenter
-                        glyph: "more"; tooltip: "Collection options"
-                        onClicked: { collectionOptions.targetCollection=modelData; collectionOptions.popup(); }
-                    }
-                }
-            }
-            Rectangle { width: parent.width; height: 1; color: window.outline; opacity: 0.6 }
-            ShelfButton { width: parent.width; text: "New collection"; glyph: "plus"; foreground: window.accent; hoverSurface: window.hoverSurface; reduceMotion: shelf.reducedMotion; onClicked: { collectionsPopup.close();window.editCollection("","","new"); } }
-        }
-        }
-    }
-    ActionMenu {
-        id: collectionOptions
-        property var targetCollection: ({})
-        MenuEntry { text: "Rename…"; onTriggered: { collectionsPopup.close();window.editCollection(collectionOptions.targetCollection.id,collectionOptions.targetCollection.name,"rename"); } }
-        MenuEntry { text: collectionOptions.targetCollection.pinned ? "Unpin" : "Pin collection"; onTriggered: shelf.pinShelf(collectionOptions.targetCollection.id,!collectionOptions.targetCollection.pinned) }
-        MenuEntry { text: "Move up"; onTriggered: shelf.moveShelf(collectionOptions.targetCollection.id,-1) }
-        MenuEntry { text: "Move down"; onTriggered: shelf.moveShelf(collectionOptions.targetCollection.id,1) }
         MenuSeparator {}
-        MenuEntry { text: "Delete collection…"; enabled: shelf.shelves.length > 1; onTriggered: { window.collectionToEdit=collectionOptions.targetCollection.id; collectionsPopup.close();deleteCollection.open(); } }
+        MenuItem { text: "Remove from Shelf"; iconName: "trash"; shortcut: "Del"; danger: true; onTriggered: window.shelf.removeSelected() }
     }
 
-    Modal {
+    Dialog {
         id: collectionDialog
         title: window.collectionMode === "new" ? "New collection" : "Rename collection"
-        contentItem: ColumnLayout {
-            spacing: 15
-            Field { id: collectionName; Layout.fillWidth: true; placeholderText: "Collection name"; maximumLength: 80; onAccepted: if(text.trim().length) collectionSave.clicked() }
-            PreferenceToggle { id: temporaryToggle; visible: window.collectionMode === "new"; Layout.fillWidth: true; heading: "Temporary collection"; description: "Unpinned items follow your retention setting."; checked: false }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                ShelfButton { text: "Cancel"; foreground: window.ink; hoverSurface: window.hoverSurface; onClicked: collectionDialog.close() }
-                ShelfButton {
-                    id: collectionSave
-                    text: window.collectionMode === "new" ? "Create" : "Save"; accent: true; accentColor: window.accent
-                    enabled: collectionName.text.trim().length > 0
-                    onClicked: {
-                        if(window.collectionMode === "new") shelf.createShelf(collectionName.text.trim(),temporaryToggle.checked);
-                        else shelf.renameShelf(window.collectionToEdit,collectionName.text.trim());
-                        collectionDialog.close();
-                    }
-                }
+        Column {
+            width: parent.width
+            spacing: Theme.space12
+            TextField {
+                id: collectionName
+                width: parent.width
+                placeholderText: "Collection name"
+                maximumLength: 80
+                onAccepted: if (text.trim().length) collectionSave.clicked()
+            }
+            CheckBox {
+                id: temporaryToggle
+                visible: window.collectionMode === "new"
+                text: "Temporary: unpinned items follow your retention setting"
             }
         }
+        actions: [
+            Button { text: "Cancel"; onClicked: collectionDialog.close() },
+            Button {
+                id: collectionSave
+                variant: "primary"
+                text: window.collectionMode === "new" ? "Create" : "Save"
+                enabled: collectionName.text.trim().length > 0
+                onClicked: {
+                    if (window.collectionMode === "new") window.shelf.createShelf(collectionName.text.trim(), temporaryToggle.checked);
+                    else window.shelf.renameShelf(window.collectionToEdit, collectionName.text.trim());
+                    collectionDialog.close();
+                }
+            }
+        ]
     }
-    Modal {
+    Dialog {
         id: deleteCollection
         title: "Delete this collection?"
-        contentItem: ColumnLayout {
-            spacing: 18
-            Label { Layout.fillWidth: true; text: "Staged items will be removed. Original files stay in place."; color: window.muted; wrapMode: Text.WordWrap }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                ShelfButton { text: "Keep"; foreground: window.ink; hoverSurface: window.hoverSurface; onClicked: deleteCollection.close() }
-                ShelfButton { text: "Delete collection"; destructive: true; surface: window.tileSurface; hoverSurface: window.hoverSurface; onClicked: { shelf.deleteShelf(window.collectionToEdit);deleteCollection.close(); } }
+        body: "Its items leave Shelf. The original files stay where they are."
+        destructive: true
+        actions: [
+            Button { text: "Keep"; onClicked: deleteCollection.close() },
+            Button {
+                variant: "destructive"
+                text: "Delete collection"
+                onClicked: { window.shelf.deleteShelf(window.collectionToEdit); deleteCollection.close(); }
             }
-        }
+        ]
     }
-    Modal {
+    Dialog {
         id: confirmAction
         title: window.pendingOffer.title || "Send selection"
-        contentItem: ColumnLayout {
-            spacing: 17
-            Label { Layout.fillWidth: true; text: window.selectedCount + (window.selectedCount === 1 ? " selected item" : " selected items") + " will be shared with " + (window.pendingOffer.appName || window.pendingOffer.app || "this app") + "."; wrapMode: Text.WordWrap }
-            Label { Layout.fillWidth: true; text: "Effects: " + (window.pendingOffer.effects || []).join(", "); color: window.muted; font.pixelSize: 11; wrapMode: Text.WordWrap }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                ShelfButton { text: "Cancel"; foreground: window.ink; hoverSurface: window.hoverSurface; onClicked: confirmAction.close() }
-                ShelfButton { text: "Continue"; accent: true; accentColor: window.accent; onClicked: { const o=window.pendingOffer;confirmAction.close();shelf.runPeer(o.app,o.action || o.id); } }
-            }
-        }
-    }
-    Modal {
-        id: analysisDialog
-        title: shelf.analysisResult ? shelf.analysisResult.title || "Inspection results" : "Inspection results"
-        width: Math.min(500,window.width-32)
-        height: Math.min(380,window.height-32)
-        onClosed: shelf.dismissAnalysis()
-        contentItem: ColumnLayout {
-            spacing: 14
-            Label { Layout.fillWidth: true; visible: text.length > 0; text: shelf.analysisResult ? shelf.analysisResult.message || "" : ""; color: window.muted; wrapMode: Text.WordWrap }
-            ScrollView {
-                Layout.fillWidth: true; Layout.fillHeight: true
-                TextArea {
-                    readOnly: true; selectByMouse: true
-                    text: shelf.analysisResult ? shelf.analysisResult.formatted || "" : ""
-                    textFormat: TextEdit.PlainText
-                    color: window.ink; selectionColor: window.accent; selectedTextColor: "#20162f"
-                    wrapMode: TextEdit.Wrap
-                    font.pixelSize: 12
-                    background: Rectangle { color: window.tileSurface; radius: 10 }
+        body: (window.selectedCount === 1 ? "1 selected item goes to " : Format.formatCount(window.selectedCount) + " selected items go to ")
+            + (window.pendingOffer.appName || window.pendingOffer.app || "this app") + ". This action:"
+        Column {
+            width: parent.width
+            spacing: Theme.space4
+            Repeater {
+                model: window.pendingOffer.effects || []
+                delegate: Row {
+                    id: effectRow
+                    required property string modelData
+                    spacing: Theme.space8
+                    Dot { anchors.verticalCenter: parent.verticalCenter; tone: "warn" }
+                    Label {
+                        kind: "small"
+                        text: ({ "network": "Uses the network", "uploads-content": "Uploads the content", "sends-to-device": "Sends it to another device",
+                                 "persists": "Keeps a copy", "clipboard": "Changes the clipboard", "writes-files": "Writes files",
+                                 "overwrites-files": "Can overwrite files", "deletes-files": "Can delete files" })[effectRow.modelData] || effectRow.modelData
+                    }
                 }
             }
-            ShelfButton { Layout.alignment: Qt.AlignRight; text: "Done"; accent: true; accentColor: window.accent; onClicked: analysisDialog.close() }
         }
+        actions: [
+            Button { text: "Cancel"; onClicked: confirmAction.close() },
+            Button {
+                variant: "primary"
+                text: "Continue"
+                onClicked: { const offer = window.pendingOffer; confirmAction.close(); window.shelf.runPeer(offer.app, offer.action || offer.id); }
+            }
+        ]
+    }
+    Dialog {
+        id: analysisDialog
+        title: window.shelf.analysisResult.title || "Inspection results"
+        body: window.shelf.analysisResult.message || ""
+        onClosed: window.shelf.dismissAnalysis()
+        Flickable {
+            width: parent.width
+            height: Math.min(260, analysisText.implicitHeight + Theme.space16)
+            contentHeight: analysisText.implicitHeight + Theme.space16
+            clip: true
+            ScrollBar.vertical: ScrollBar {}
+            Rectangle { anchors.fill: parent; radius: Theme.radiusMd; color: Theme.sunken; z: -1 }
+            TextEdit {
+                id: analysisText
+                x: Theme.space8; y: Theme.space8
+                width: parent.width - Theme.space16
+                readOnly: true; selectByMouse: true
+                text: window.shelf.analysisResult.formatted || ""
+                textFormat: TextEdit.PlainText
+                color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.accentText
+                wrapMode: TextEdit.Wrap
+                font.family: Theme.fontMono; font.pixelSize: Theme.monoSize
+            }
+        }
+        actions: [Button { variant: "primary"; text: "Done"; onClicked: analysisDialog.close() }]
     }
 
-    Popup {
-        id: settings
-        objectName: "preferencesPopup"
-        focus: true
-        visible: shelf.settingsOpen
-        modal: true
-        closePolicy: Popup.CloseOnEscape
-        anchors.centerIn: parent
-        width: Math.min(590,window.width-28)
-        height: Math.min(440,window.height-28)
-        padding: 18
-        onClosed: shelf.settingsOpen=false
-        background: Rectangle { color: window.raised; radius: 16; border.color: window.outline }
-        Overlay.modal: Rectangle { color: "#8007060c" }
-        contentItem: ColumnLayout {
-            spacing: 16
-            RowLayout {
-                Layout.fillWidth: true
-                Label { text: "Preferences"; font.pixelSize: 18; font.weight: Font.DemiBold }
-                Item { Layout.fillWidth: true }
-                IconButton { glyph: "close"; tooltip: "Close preferences"; onClicked: shelf.settingsOpen=false }
-            }
-            RowLayout {
-                Layout.fillWidth: true; spacing: 5
-                Repeater {
-                    model: ["General", "Storage", "Connected apps", "About"]
-                    delegate: ShelfButton {
-                        required property string modelData
-                        required property int index
-                        text: modelData; foreground: window.settingsPage===index ? window.accent : window.muted
-                        surface: window.settingsPage===index ? window.selection : "transparent"; hoverSurface: window.hoverSurface
-                        onClicked: window.settingsPage=index
-                    }
-                }
-            }
-            Rectangle { Layout.fillWidth: true; height: 1; color: window.outline; opacity: 0.6 }
-            ScrollView {
-                objectName: "preferencesScroll"
-                Layout.fillWidth: true; Layout.fillHeight: true
-                contentWidth: availableWidth
-                clip: true
-                ColumnLayout {
-                    width: settings.availableWidth
-                    spacing: 16
-                    ColumnLayout {
-                        visible: window.settingsPage === 0; Layout.fillWidth: true; spacing: 15
-                        Label { text: "APPEARANCE"; font.pixelSize: 9; font.letterSpacing: 1.3; color: window.muted }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Theme"; Layout.fillWidth: true }
-                            Repeater {
-                                model: ["system","dark","light"]
-                                delegate: ShelfButton {
-                                    required property string modelData
-                                    objectName: "theme-"+modelData
-                                    text: modelData.charAt(0).toUpperCase()+modelData.slice(1)
-                                    glyph: modelData === "system" ? "monitor" : modelData === "dark" ? "moon" : "sun"
-                                    foreground: shelf.theme===modelData ? window.accent : window.muted
-                                    surface: shelf.theme===modelData ? window.selection : window.tileSurface
-                                    hoverSurface: window.hoverSurface
-                                    onClicked: shelf.theme=modelData
-                                }
-                            }
-                        }
-                        PreferenceToggle { objectName: "alwaysTopToggle"; Layout.fillWidth: true; heading: "Always on top"; description: "Keep the floating shelf above ordinary windows."; checked: shelf.alwaysOnTop; onToggled: shelf.alwaysOnTop=checked }
-                        PreferenceToggle { objectName: "reducedMotionToggle"; Layout.fillWidth: true; heading: "Reduce motion"; checked: shelf.reducedMotion; onToggled: shelf.reducedMotion=checked }
-                        PreferenceToggle { Layout.fillWidth: true; heading: "Start at login"; checked: !!shelf.preferences.startAtLogin; onToggled: shelf.setStartAtLogin(checked) }
-                        Label { text: "SHORTCUT"; font.pixelSize: 9; font.letterSpacing: 1.3; color: window.muted }
-                        Field {
-                            id: shortcutField
-                            objectName: "shortcutField"
-                            property bool draftDirty: false
-                            Layout.fillWidth: true
-                            placeholderText: "Ctrl+Alt+S"
-                            onTextEdited: draftDirty=true
-                            onEditingFinished: {
-                                const draft=text;
-                                if (draftDirty && draft !== shelf.shortcut) shelf.shortcut=draft;
-                                draftDirty=false;
-                            }
-                            Binding {
-                                target: shortcutField
-                                property: "text"
-                                value: shelf.shortcut
-                                when: !shortcutField.draftDirty
-                                restoreMode: Binding.RestoreNone
-                            }
-                        }
-                        Label { Layout.fillWidth: true; visible: shelf.shortcutWarning.length > 0; text: shelf.shortcutWarning; color: "#df8d9b"; wrapMode: Text.WordWrap; font.pixelSize: 11 }
-                        Label { Layout.fillWidth: true; text: shelf.platformStatus; color: window.muted; wrapMode: Text.WordWrap; font.pixelSize: 11 }
-                    }
-                    ColumnLayout {
-                        visible: window.settingsPage === 1; Layout.fillWidth: true; spacing: 15
-                        Label { text: "Shelf holds references to existing files. Only collected text, images, and temporary outputs use local storage."; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Owned storage quota"; Layout.fillWidth: true }
-                            NumberInput { from: 1; to: 4096; stepSize: 64; value: Math.max(1,Math.floor(Number(shelf.preferences.quotaBytes || 536870912)/1048576)); onValueModified: shelf.setQuota(value) }
-                            Label { text: "MiB"; color: window.muted }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Temporary item retention"; Layout.fillWidth: true }
-                            NumberInput { from: 0; to: 3650; value: Number(shelf.preferences.retentionDays === undefined ? 7 : shelf.preferences.retentionDays); onValueModified: shelf.setRetention(value) }
-                            Label { text: "days"; color: window.muted }
-                        }
-                        Label { text: "Set retention to 0 to keep temporary items. Pinned collections are kept. Removing an item never deletes its original file."; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
-                    }
-                    ColumnLayout {
-                        visible: window.settingsPage === 2; Layout.fillWidth: true; spacing: 15
-                        PreferenceToggle { Layout.fillWidth: true; heading: "Arcade Link"; description: "Allow other Arcade apps to add content and open the picker."; checked: shelf.linkEnabled; onToggled: shelf.linkEnabled=checked }
-                        Repeater {
-                            model: shelf.settingsOpen && window.settingsPage === 2 ? shelf.peers : []
-                            delegate: Item {
-                                id: peerRow
-                                required property var modelData
-                                Layout.fillWidth: true
-                                implicitHeight: 57
-                                PreferenceToggle {
-                                    visible: peerRow.modelData.installed !== false
-                                    anchors.fill: parent
-                                    heading: peerRow.modelData.name || peerRow.modelData.id
-                                    description: peerRow.modelData.linkEnabled === false ? "Arcade Link is disabled in this app" : "Available on this device"
-                                    checked: peerRow.modelData.enabled !== false
-                                    enabled: shelf.linkEnabled
-                                    onToggled: shelf.setPeerEnabled(peerRow.modelData.id,checked)
-                                }
-                                Column {
-                                    visible: peerRow.modelData.installed === false
-                                    anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; spacing: 5
-                                    Label { text: peerRow.modelData.name || peerRow.modelData.id; font.weight: Font.Medium }
-                                    Label { text: "Not installed"; color: window.muted; font.pixelSize: 11 }
-                                }
-                                ShelfButton {
-                                    visible: peerRow.modelData.installed === false
-                                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                                    text: "Get"; glyph: "external"; foreground: window.accent; surface: window.tileSurface; hoverSurface: window.hoverSurface
-                                    onClicked: shelf.getPeer(peerRow.modelData.id)
-                                }
-                            }
-                        }
-                        Label { visible: shelf.peers.length === 0; Layout.fillWidth: true; text: "Installed Arcade apps appear here when they publish an Arcade Link manifest."; color: window.muted; wrapMode: Text.WordWrap }
-                    }
-                    ColumnLayout {
-                        visible: window.settingsPage === 3; Layout.fillWidth: true; spacing: 12
-                        Rectangle {
-                            Layout.alignment: Qt.AlignHCenter
-                            width: 58; height: 58; radius: 18; color: window.selection
-                            ShelfIcon { anchors.centerIn: parent; name: "shelf"; color: window.accent; width: 30; height: 30 }
-                        }
-                        Label { Layout.alignment: Qt.AlignHCenter; text: "Arcade Shelf"; font.pixelSize: 20; font.weight: Font.DemiBold }
-                        Label { Layout.alignment: Qt.AlignHCenter; text: (shelf.preferences.version || "") + " · Collect. Hold. Continue."; color: window.muted }
-                        Label { Layout.fillWidth: true; text: "Built with Qt 6, SQLite, and Arcade Link. Your collections stay on this device."; color: window.muted; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
-                        ShelfButton { Layout.alignment: Qt.AlignHCenter; text: "Project on GitHub"; glyph: "external"; foreground: window.accent; hoverSurface: window.hoverSurface; onClicked: Qt.openUrlExternally("https://github.com/qa-p1/Arcade-Shelf") }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: window.outline; opacity: 0.6 }
-                        Label { text: "BACKUP AND RESTORE"; font.pixelSize: 9; font.letterSpacing: 1.3; color: window.muted }
-                        Label {
-                            Layout.fillWidth: true
-                            text: "Owned content currently uses " + Number(shelf.ownedContentBytes).toLocaleString() + " bytes. Export asks before copying it. Referenced original files are never copied."
-                            color: window.muted; wrapMode: Text.WordWrap; font.pixelSize: 11
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            ShelfButton { Layout.fillWidth: true; text: "Export backup…"; foreground: window.ink; surface: window.tileSurface; hoverSurface: window.hoverSurface; onClicked: shelf.exportPortableSettings() }
-                            ShelfButton { Layout.fillWidth: true; text: "Import backup…"; foreground: window.ink; surface: window.tileSurface; hoverSurface: window.hoverSurface; onClicked: shelf.importPortableSettings() }
-                        }
-                    }
-                }
-            }
+    // Settings: its own normal window, created while open.
+    Loader {
+        id: settingsLoader
+        active: window.shelf.settingsOpen
+        sourceComponent: SettingsWindow { shelf: window.shelf }
+    }
+    Connections {
+        target: window.shelf
+        function onSettingsRaiseRequested() {
+            const settings = settingsLoader.item as SettingsWindow;
+            if (settings) { settings.raise(); settings.requestActivate(); }
         }
     }
 }

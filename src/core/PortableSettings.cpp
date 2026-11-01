@@ -168,7 +168,8 @@ QJsonObject portablePreferences(const QJsonObject &settings)
     QJsonObject result;
     for (const QString &key : {QStringLiteral("theme"), QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"),
                                QStringLiteral("quotaBytes"), QStringLiteral("retentionDays"), QStringLiteral("thumbnailQuotaBytes"),
-                               QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers")}) {
+                               QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers"),
+                               QStringLiteral("backdrop"), QStringLiteral("hoverPeek")}) {
         if (settings.contains(key)) result.insert(key, settings.value(key));
     }
     return result;
@@ -179,7 +180,8 @@ bool validatePortablePreferences(const QJsonObject &preferences, QString *error)
     static const QSet<QString> allowed{
         QStringLiteral("theme"), QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"),
         QStringLiteral("quotaBytes"), QStringLiteral("retentionDays"), QStringLiteral("thumbnailQuotaBytes"),
-        QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers")
+        QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers"),
+        QStringLiteral("backdrop"), QStringLiteral("hoverPeek")
     };
     for (auto it = preferences.begin(); it != preferences.end(); ++it) {
         if (!allowed.contains(it.key())) { *error = QStringLiteral("The backup contains an unsupported preference."); return false; }
@@ -189,7 +191,8 @@ bool validatePortablePreferences(const QJsonObject &preferences, QString *error)
          !QStringList{QStringLiteral("system"), QStringLiteral("dark"), QStringLiteral("light")}.contains(preferences.value(QStringLiteral("theme")).toString()))) {
         *error = QStringLiteral("The backup contains an invalid theme preference."); return false;
     }
-    for (const QString &key : {QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"), QStringLiteral("linkEnabled")}) {
+    for (const QString &key : {QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"), QStringLiteral("linkEnabled"),
+                               QStringLiteral("backdrop"), QStringLiteral("hoverPeek")}) {
         if (preferences.contains(key) && !preferences.value(key).isBool()) { *error = QStringLiteral("The backup contains an invalid boolean preference."); return false; }
     }
     qint64 ignored = 0;
