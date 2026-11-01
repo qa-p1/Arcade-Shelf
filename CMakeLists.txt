@@ -24,7 +24,7 @@ qt_add_qml_module(arcade_kit URI Arcade VERSION 1.0 QML_FILES ${ARCADE_KIT_FILES
 qt_add_resources(arcade_kit "arcade_inter" PREFIX "/qt/fonts" BASE "vendor/arcade-link/design/fonts"
   FILES vendor/arcade-link/design/fonts/InterVariable.ttf)
 target_link_libraries(arcade_kit PRIVATE Qt6::Quick)
-set(SHELF_QML_FILES ui/Main.qml ui/SettingsWindow.qml ui/DockMenu.qml)
+set(SHELF_QML_FILES ui/Main.qml ui/SettingsWindow.qml ui/DockMenu.qml ui/InstallPrompt.qml)
 add_library(arcade_link STATIC
   vendor/arcade-link/qt/ArcadeLink.cpp vendor/arcade-link/qt/ArcadeLink.h
   vendor/arcade-link/qt/ArcadeAccelerator.cpp vendor/arcade-link/qt/ArcadeAccelerator.h
@@ -43,7 +43,7 @@ if(WIN32)
 endif()
 add_library(shelf_install STATIC src/platform/AppInstaller.cpp src/platform/AppInstaller.h)
 target_include_directories(shelf_install PUBLIC src)
-target_link_libraries(shelf_install PUBLIC arcade_link Qt6::Widgets Qt6::Concurrent)
+target_link_libraries(shelf_install PUBLIC arcade_link Qt6::Widgets Qt6::Quick Qt6::Concurrent)
 add_library(shelf_core STATIC src/core/Store.cpp src/core/Store.h src/core/PortableSettings.cpp)
 target_include_directories(shelf_core PUBLIC src)
 target_link_libraries(shelf_core PUBLIC arcade_link Qt6::Sql)

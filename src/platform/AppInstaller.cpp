@@ -2,6 +2,9 @@
 #include <QCheckBox>
 #include <QCryptographicHash>
 #include <QDialog>
+#include <QEventLoop>
+#include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
@@ -337,6 +340,51 @@ int ask(const InstallSpec &spec, Dialog kind, const QString &installedVersion, b
         layout->addWidget(replaces);
     }
     const auto labels = strings.value(QStringLiteral("notInstalled")).toObject().value(QStringLiteral("options")).toArray();
+    // The kit prompt (ui/InstallPrompt.qml), built only while it asks.
+    {
+        const bool options_shown = kind == Dialog::Install || kind == Dialog::Update || kind == Dialog::MoveToApplications;
+        QStringList paragraphs;
+        if (text.contains(QStringLiteral("body"))) paragraphs << format(spec, text.value(QStringLiteral("body")).toString(), version, from);
+        if (managed) paragraphs << format(spec, strings.value(QStringLiteral("managedByTools")).toString(), spec.version);
+        if (!legacy.isEmpty() && !note.isEmpty() && (kind == Dialog::Install || kind == Dialog::Update))
+            paragraphs << format(spec, note, spec.version, legacy.first());
+        // Option order and keys follow the shared strings: start at login, then
+        // remove the download (Linux) or add the terminal command (macOS).
+        QVariantList optionList;
+        QStringList optionKeys;
+        if (options_shown) {
+            optionList << QVariantMap{{QStringLiteral("label"), labels.at(0).toString()}, {QStringLiteral("checked"), options->startAtLogin}};
+            optionKeys << QStringLiteral("login");
+#ifdef Q_OS_LINUX
+            optionList << QVariantMap{{QStringLiteral("label"), labels.at(1).toString()}, {QStringLiteral("checked"), options->removeDownload}};
+            optionKeys << QStringLiteral("remove");
+#endif
+#ifdef Q_OS_MACOS
+            optionList << QVariantMap{{QStringLiteral("label"), QStringLiteral("Add the %1 terminal command").arg(spec.app.cliName)}, {QStringLiteral("checked"), options->installCli}};
+            optionKeys << QStringLiteral("cli");
+#endif
+        }
+        QStringList buttons;
+        for (const auto &name : text.value(QStringLiteral("buttons")).toArray()) buttons << name.toString();
+        QQmlApplicationEngine engine;
+        engine.setInitialProperties({{QStringLiteral("heading"), format(spec, text.value(QStringLiteral("title")).toString(), version, from)},
+                                     {QStringLiteral("paragraphs"), paragraphs}, {QStringLiteral("options"), optionList},
+                                     {QStringLiteral("buttons"), buttons}});
+        engine.loadFromModule("ArcadeShelf", "InstallPrompt");
+        if (auto *window = engine.rootObjects().isEmpty() ? nullptr : qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            QEventLoop loop;
+            QObject::connect(window, SIGNAL(finished()), &loop, SLOT(quit()));
+            loop.exec();
+            const QVariantList checks = window->property("checks").toList();
+            for (int i = 0; i < optionKeys.size() && i < checks.size(); ++i) {
+                if (optionKeys.at(i) == QStringLiteral("login")) options->startAtLogin = checks.at(i).toBool();
+                else if (optionKeys.at(i) == QStringLiteral("remove")) options->removeDownload = checks.at(i).toBool();
+                else if (optionKeys.at(i) == QStringLiteral("cli")) options->installCli = checks.at(i).toBool();
+            }
+            return window->property("clicked").toInt();
+        }
+    }
+    // Fallback where the QML module is absent: the plain Qt Widgets prompt.
     QCheckBox login(labels.at(0).toString()), remove(labels.at(1).toString());
     QCheckBox cli(QStringLiteral("Add the %1 terminal command").arg(spec.app.cliName));
     if (kind == Dialog::Install || kind == Dialog::Update || kind == Dialog::MoveToApplications) {
