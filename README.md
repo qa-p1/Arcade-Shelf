@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/qa-p1/Arcade-Shelf/releases/latest"><img src="https://img.shields.io/github/v/release/qa-p1/Arcade-Shelf" alt="Latest release"></a>
-  <a href="https://github.com/qa-p1/Arcade-Shelf/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/qa-p1/Arcade-Shelf/build.yml?branch=main&label=CI" alt="CI status"></a>
+  <a href="https://github.com/qa-p1/Arcade-Shelf/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/qa-p1/Arcade-Shelf/ci.yml?branch=main&label=CI" alt="CI status"></a>
 </p>
 
 ---

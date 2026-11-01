@@ -95,11 +95,24 @@ if(APPLE)
 elseif(WIN32)
   target_sources(arcade-shelf PRIVATE packaging/windows/arcade-shelf.rc)
 endif()
-if(MSVC)
-  target_compile_options(shelf_core PRIVATE /W4)
-else()
-  target_compile_options(shelf_core PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+# Shelf's own code builds without warnings; CI (scripts/check) turns them
+# into errors with -DSHELF_WARNINGS_AS_ERRORS=ON (STANDARD §10). Vendored
+# Link code keeps its own flags.
+# The QML gate (STANDARD §10): qmllint over Shelf's module at zero warnings.
+# The typed controller (QML_NAMED_ELEMENT ShelfController) makes that possible.
+add_custom_target(qmllint_gate
+  COMMAND $<TARGET_FILE:Qt6::qmllint> "@${CMAKE_BINARY_DIR}/.rcc/qmllint/arcade-shelf.rsp" --max-warnings 0
+  COMMENT "qmllint (Shelf QML, zero warnings)" VERBATIM)
+add_dependencies(qmllint_gate arcade-shelf)
+option(SHELF_WARNINGS_AS_ERRORS "Fail the build on a compiler warning in Shelf's code" OFF)
+foreach(target shelf_install shelf_core shelf_services shelf_desktop arcade-shelf)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4 $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:/WX>)
+  else()
+    target_compile_options(${target} PRIVATE -Wall -Wextra $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:-Werror>)
+  endif()
+endforeach()
+target_compile_options(shelf_core PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wpedantic>)
 if(BUILD_TESTING)
   foreach(test IN ITEMS Store Service PeerHub)
     add_executable(tst_${test} tests/tst_${test}.cpp)

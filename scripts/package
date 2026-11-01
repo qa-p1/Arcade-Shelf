@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Builds this platform's installer from build/ into dist/: the Linux AppImage,
+# the Windows installer or the macOS disk image. Pass a Qt prefix as the first
+# argument, or set QT_ROOT_DIR (as CI's Qt action does).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+python=$(command -v python3 || command -v python)
+version=$("$python" scripts/check-version.py)
+qt="${1:-${QT_ROOT_DIR:-}}"
+case "$(uname -s)" in
+  Linux)
+    [ -n "$qt" ] || { echo "Pass the Qt prefix (or set QT_ROOT_DIR)." >&2; exit 2; }
+    exec "$python" scripts/package-linux.py --build build --qt-prefix "$qt" --version "$version" --output dist ;;
+  Darwin)
+    exec scripts/package-macos.sh build "$version" dist universal ;;
+  MINGW*|MSYS*|CYGWIN*)
+    exec pwsh scripts/package-windows.ps1 -Build build -QtPrefix "$qt" -Version "$version" -Output dist ;;
+  *) echo "Unsupported platform: $(uname -s)" >&2; exit 2 ;;
+esac

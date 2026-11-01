@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Build and run Shelf from source with its own profile in build/dev-profile,
+# so it never touches your installed Shelf's collections, folders or login
+# entry (a build tree never offers to install, and the folder move is skipped
+# under ARCADE_SHELF_HOME). Arguments go to Shelf, e.g. `scripts/dev --settings`.
+# Point CMAKE_PREFIX_PATH at Qt 6.8 first. Set ARCADE_HOME too to keep it off
+# your real Link registry.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[ -f build/CMakeCache.txt ] || cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build --target arcade-shelf --parallel
+export ARCADE_SHELF_HOME="${ARCADE_SHELF_HOME:-$PWD/build/dev-profile}"
+mkdir -p "$ARCADE_SHELF_HOME"
+if [ -x build/arcade-shelf.app/Contents/MacOS/arcade-shelf ]; then
+  exec build/arcade-shelf.app/Contents/MacOS/arcade-shelf "$@"
+fi
+exec build/arcade-shelf "$@"
