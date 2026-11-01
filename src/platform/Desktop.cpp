@@ -276,6 +276,8 @@ bool stableExecutable(const QString &path)
     return true;
 }
 
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+// Exec= quoting for the Linux login entry.
 QString quotedDesktopExec(QString text)
 {
     text.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
@@ -285,6 +287,7 @@ QString quotedDesktopExec(QString text)
     text.replace(QStringLiteral("%"), QStringLiteral("%%"));
     return QLatin1Char('"') + text + QLatin1Char('"');
 }
+#endif
 
 struct Shortcut {
     Qt::KeyboardModifiers modifiers;

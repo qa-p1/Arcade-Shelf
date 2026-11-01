@@ -114,6 +114,13 @@ foreach(target shelf_install shelf_core shelf_services shelf_desktop arcade-shel
   endif()
 endforeach()
 target_compile_options(shelf_core PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wpedantic>)
+# qmlcachegen's C++ for Shelf's QML is Qt's generated code, not Shelf's: MSVC
+# reports C4702 (unreachable code) in it at /W4. Only those files skip C4702.
+get_target_property(SHELF_QMLCACHE_SOURCES arcade-shelf SOURCES)
+list(FILTER SHELF_QMLCACHE_SOURCES INCLUDE REGEX "/\\.rcc/qmlcache/")
+if(MSVC AND SHELF_QMLCACHE_SOURCES)
+  set_source_files_properties(${SHELF_QMLCACHE_SOURCES} PROPERTIES COMPILE_OPTIONS /wd4702)
+endif()
 if(BUILD_TESTING)
   foreach(test IN ITEMS Store Service PeerHub)
     add_executable(tst_${test} tests/tst_${test}.cpp)
