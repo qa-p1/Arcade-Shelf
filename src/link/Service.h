@@ -1,4 +1,5 @@
 #pragma once
+#include "Identity.h"
 #include "core/Store.h"
 #include "ArcadeLink.h"
 #include <QObject>
@@ -6,12 +7,16 @@
 #include <optional>
 
 namespace Shelf {
-inline const QString AppId = QStringLiteral("arcade.shelf");
 inline const QString Version = QStringLiteral(SHELF_VERSION);
 QJsonArray publicActions();
 QJsonArray trayMenu();
 QJsonObject manifest(bool enabled = true, QString shortcut = QStringLiteral("Ctrl+Alt+S"));
 QString dataRoot();
+// The folders Shelf used before 0.4 that still exist (none under ARCADE_SHELF_HOME).
+QStringList legacyDataRoots();
+// Copies, verifies, then removes the pre-0.4 folder through Link. Returns
+// why a folder was kept, or an empty string. Safe to run on every start.
+QString migrateDataRoot();
 
 // This object, both servers, and SQLite stay on one dedicated event-loop thread.
 class Service : public QObject {

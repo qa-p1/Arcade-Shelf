@@ -1,5 +1,6 @@
 #include "Desktop.h"
 #include "ArcadeInstall.h"
+#include "Identity.h"
 
 #include <QCoreApplication>
 #include <QDesktopServices>
@@ -147,6 +148,25 @@ QString startupPath()
 #elif defined(Q_OS_MACOS)
     ArcadeLink::ArcadeInstall::Environment environment;
     if (!ArcadeLink::ArcadeInstall::Environment::discover(&environment)) return {};
+    return QDir(environment.home).filePath(QStringLiteral("Library/LaunchAgents/") + Shelf::OsId + QStringLiteral(".plist"));
+#else
+    ArcadeLink::ArcadeInstall::Environment environment;
+    if (!ArcadeLink::ArcadeInstall::Environment::discover(&environment)) return {};
+    return QDir(environment.config).filePath(QStringLiteral("autostart/") + Shelf::OsId + QStringLiteral(".desktop"));
+#endif
+}
+
+// Where earlier versions put the login entry: a .vbs launcher on Windows, and
+// the arcade.shelf name before 0.4 elsewhere. Only Shelf's own entry there is
+// ever read or removed (ownedLoginEntry).
+QString legacyStartupPath()
+{
+#ifdef Q_OS_WIN
+    QString path = startupPath();
+    path.chop(3); return path + QStringLiteral("vbs");
+#elif defined(Q_OS_MACOS)
+    ArcadeLink::ArcadeInstall::Environment environment;
+    if (!ArcadeLink::ArcadeInstall::Environment::discover(&environment)) return {};
     return QDir(environment.home).filePath(QStringLiteral("Library/LaunchAgents/arcade.shelf.plist"));
 #else
     ArcadeLink::ArcadeInstall::Environment environment;
@@ -167,12 +187,6 @@ bool loginEntryExists(const QString &path)
 }
 
 #ifdef Q_OS_WIN
-QString legacyStartupPath()
-{
-    QString path = startupPath();
-    path.chop(3); return path + QStringLiteral("vbs");
-}
-
 bool windowsLoginShortcut(const QString &path, const QString &executable, bool write)
 {
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -1500,7 +1514,7 @@ void Desktop::startPortalShortcut(quint64 generation)
     if (d->portalRegistered) { create(); return; }
     QDBusMessage registration = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
         QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.host.portal.Registry"), QStringLiteral("Register"));
-    registration << QStringLiteral("arcade.shelf") << QVariantMap{};
+    registration << OsId << QVariantMap{};
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(registration, 2500), this);
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, create] {
         const auto reply = watcher->reply(); watcher->deleteLater();
@@ -1513,7 +1527,7 @@ void Desktop::startPortalShortcut(quint64 generation)
                 || reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.NameHasNoOwner");
             setShortcutStatus(noPortal
                 ? QStringLiteral("This desktop has no portal for global shortcuts; bind arcade-shelf --toggle in its keyboard settings")
-                : QStringLiteral("Desktop identity registration failed; install arcade.shelf.desktop or bind arcade-shelf --toggle manually"));
+                : QStringLiteral("Desktop identity registration failed; install dev.arcade.Shelf.desktop or bind arcade-shelf --toggle manually"));
             return;
         }
         d->portalRegistered = true;
@@ -1536,7 +1550,7 @@ void Desktop::installHyprlandShortcut(quint64 generation)
                 if (name.endsWith(QStringLiteral(":arcade-shelf-show"))) candidates << name;
             }
             candidates.removeDuplicates();
-            const QString expected = QStringLiteral("arcade.shelf:arcade-shelf-show");
+            const QString expected = OsId + QStringLiteral(":arcade-shelf-show");
             const QString target = candidates.contains(expected) ? expected : (candidates.size() == 1 ? candidates.first() : QString());
             if (!QRegularExpression(QStringLiteral("^[A-Za-z0-9_.:-]+$")).match(target).hasMatch()) {
                 setShortcutStatus(QStringLiteral("Portal connected; Hyprland has not published Shelf's shortcut target")); return;
@@ -1582,17 +1596,36 @@ bool Desktop::startAtLogin() const
     if (!ArcadeLink::ReceiptStore::discover().read(QStringLiteral("arcade.shelf"), &receipt)) return false;
     const QString executable = receipt.isEmpty() ? ArcadeLink::executablePath() : receiptExecutable(receipt);
     // An entry switched off in the desktop's startup settings won't run.
-    if (ownedLoginEntry(startupPath(), executable))
+    for (const QString &path : {startupPath(), legacyStartupPath()}) {
+        if (!ownedLoginEntry(path, executable)) continue;
 #ifdef Q_OS_LINUX
-        return ArcadeLink::ArcadeInstall::autostartEnabled(startupPath());
+        return ArcadeLink::ArcadeInstall::autostartEnabled(path);
 #else
         return true;
 #endif
-#ifdef Q_OS_WIN
-    return ownedLoginEntry(legacyStartupPath(), executable);
-#else
+    }
     return false;
+}
+
+bool Desktop::migrateLoginEntry(const QString &executable)
+{
+    const bool testingLogin = qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") == 1
+        && QDir::isAbsolutePath(qEnvironmentVariable("ARCADE_HOME"));
+    if (d->isolated && !testingLogin) return true;
+    const QString legacy = legacyStartupPath(), target = startupPath();
+    if (legacy.isEmpty() || target.isEmpty()) return true;
+    QJsonObject receipt;
+    if (!ArcadeLink::ReceiptStore::discover().read(QStringLiteral("arcade.shelf"), &receipt)) return false;
+    const QString owner = receipt.isEmpty() ? executable : receiptExecutable(receipt);
+    if (!ownedLoginEntry(legacy, owner)) return true;
+    // The new entry is already there (an in-place reinstall wrote it): the old one just goes.
+    if (loginEntryExists(target)) return QFile::remove(legacy);
+#ifdef Q_OS_LINUX
+    // An entry switched off in the desktop's startup settings stays off.
+    if (!ArcadeLink::ArcadeInstall::autostartEnabled(legacy)) return QFile::remove(legacy);
 #endif
+    // Writes the entry under the new name, then removes the old one.
+    return setStartAtLogin(true, owner);
 }
 
 bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
@@ -1611,10 +1644,7 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
     const QString oldExecutable = receipt.isEmpty() ? executable : receiptExecutable(receipt);
     const QString recorded = receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("autostart")).toString();
     if (!recorded.isEmpty() && QDir::cleanPath(recorded) != QDir::cleanPath(target)
-#ifdef Q_OS_WIN
-        && QDir::cleanPath(recorded) != QDir::cleanPath(legacyStartupPath())
-#endif
-    ) { setError(QStringLiteral("The receipt names a different login entry; it was kept")); return false; }
+        && QDir::cleanPath(recorded) != QDir::cleanPath(legacyStartupPath())) { setError(QStringLiteral("The receipt names a different login entry; it was kept")); return false; }
     const auto syncReceipt = [&] {
         if (receipt.isEmpty()) return true; // A manual run must not invent an install receipt.
         auto integration = receipt.value(QStringLiteral("integration")).toObject();
@@ -1625,12 +1655,10 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
         setError(error); return false;
     };
     const auto removeLegacy = [&] {
-#ifdef Q_OS_WIN
         const QString legacy = legacyStartupPath();
-        if (ownedLoginEntry(legacy, oldExecutable) && !QFile::remove(legacy)) {
-            setError(QStringLiteral("Could not remove Shelf's legacy login entry")); return false;
+        if (!legacy.isEmpty() && ownedLoginEntry(legacy, oldExecutable) && !QFile::remove(legacy)) {
+            setError(QStringLiteral("Couldn't remove Shelf's old login entry.")); return false;
         }
-#endif
         return true;
     };
     const QFileInfo existing(target);
@@ -1668,7 +1696,7 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
     xml.writeComment(QStringLiteral("Arcade Shelf managed login entry"));
     xml.writeStartElement(QStringLiteral("plist")); xml.writeAttribute(QStringLiteral("version"), QStringLiteral("1.0"));
     xml.writeStartElement(QStringLiteral("dict"));
-    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("Label")); xml.writeTextElement(QStringLiteral("string"), QStringLiteral("arcade.shelf"));
+    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("Label")); xml.writeTextElement(QStringLiteral("string"), OsId);
     xml.writeTextElement(QStringLiteral("key"), QStringLiteral("ProgramArguments")); xml.writeStartElement(QStringLiteral("array"));
     xml.writeTextElement(QStringLiteral("string"), executable); xml.writeTextElement(QStringLiteral("string"), QStringLiteral("--background")); xml.writeEndElement();
     xml.writeTextElement(QStringLiteral("key"), QStringLiteral("RunAtLoad")); xml.writeEmptyElement(QStringLiteral("true"));

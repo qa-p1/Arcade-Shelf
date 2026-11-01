@@ -67,6 +67,8 @@ public:
                         std::function<void(QJsonObject, ArcadeLink::Error)> reply);
     Q_INVOKABLE bool setStartAtLogin(bool enabled, const QString &executable);
     Q_INVOKABLE bool startAtLogin() const;
+    // Moves Shelf's own login entry from its pre-0.4 name to dev.arcade.Shelf.
+    bool migrateLoginEntry(const QString &executable);
 
     // These pure helpers are shared by tests and the native adapter.
     static QMimeData *mimeDataForContents(const QJsonArray &contents);

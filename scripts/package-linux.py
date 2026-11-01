@@ -248,14 +248,14 @@ def build_appimage(source: Path, bundle: Path, output: Path, version: str, tools
     appdir = bundle.parent / "Arcade-Shelf.AppDir"
     shutil.copytree(bundle, appdir / "usr", symlinks=True)
     (appdir / "usr/arcade-shelf").unlink()
-    icon = "io.github.qa_p1.ArcadeShelf"
+    icon = "dev.arcade.Shelf"  # the OS identifier (STANDARD §10)
     for directory in ("usr/share/applications", "usr/share/icons/hicolor/scalable/apps", "usr/share/metainfo"):
         (appdir / directory).mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source / "packaging/linux/arcade.shelf.desktop", appdir / "usr/share/applications/arcade.shelf.desktop")
-    shutil.copy2(source / "packaging/linux/arcade.shelf.desktop", appdir / "arcade.shelf.desktop")
-    shutil.copy2(source / "assets/shelf.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
-    shutil.copy2(source / "assets/shelf.svg", appdir / f"{icon}.svg")
-    shutil.copy2(source / "packaging/linux/io.github.qa_p1.ArcadeShelf.metainfo.xml", appdir / "usr/share/metainfo/io.github.qa_p1.ArcadeShelf.metainfo.xml")
+    shutil.copy2(source / f"packaging/linux/{icon}.desktop", appdir / f"usr/share/applications/{icon}.desktop")
+    shutil.copy2(source / f"packaging/linux/{icon}.desktop", appdir / f"{icon}.desktop")
+    shutil.copy2(source / "packaging/icons/icon.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
+    shutil.copy2(source / "packaging/icons/icon.svg", appdir / f"{icon}.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}.metainfo.xml", appdir / f"usr/share/metainfo/{icon}.metainfo.xml")
     (appdir / ".DirIcon").symlink_to(f"{icon}.svg")
     apprun = appdir / "AppRun"
     apprun.write_text('#!/bin/sh\nHERE=$(dirname "$(readlink -f "$0")")\nexec "$HERE/usr/bin/arcade-shelf" "$@"\n')

@@ -143,7 +143,15 @@ Controller::~Controller()
     m_peers.cancel();
     if (m_thread.isRunning()) { QMetaObject::invokeMethod(m_service, &Service::stop, Qt::BlockingQueuedConnection); m_thread.quit(); m_thread.wait(); }
 }
-void Controller::start() { m_thread.start(); QMetaObject::invokeMethod(m_service, &Service::start); m_peers.start(); }
+void Controller::start()
+{
+    m_thread.start();
+    QMetaObject::invokeMethod(m_service, &Service::start);
+    m_peers.start();
+    // The login entry from before 0.4 (arcade.shelf) moves to dev.arcade.Shelf.
+    if (!m_desktop.migrateLoginEntry(ArcadeLink::executablePath()))
+        qWarning("Couldn't move the login entry to its new name: %s", qPrintable(m_desktop.lastError()));
+}
 void Controller::attachWindow(QWindow *window)
 {
     if (m_window) m_window->removeEventFilter(this);

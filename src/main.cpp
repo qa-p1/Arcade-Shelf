@@ -29,18 +29,68 @@
 Q_IMPORT_QML_PLUGIN(ArcadePlugin)
 
 namespace {
+// Asks the Shelf that owns `root` to quit and waits for it. True when none runs there.
+bool quitResident(const QString &root, QString *message)
+{
+    QLockFile lock(root + "/instance.lock");
+    lock.setStaleLockTime(0);
+    if (lock.tryLock()) return true;
+    ArcadeLink::Error error;
+    auto client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(root + "/instance"),
+                                             Shelf::AppId, Shelf::AppId, Shelf::Version, 1000, &error);
+    if (!client || !client->call("app.quit", {}, &error, 3000).toObject()["quitting"].toBool()) {
+        if (message) *message = error.isError() ? error.userMessage("Arcade Shelf") : QStringLiteral("Shelf is busy; finish the current action first.");
+        return false;
+    }
+    QElapsedTimer deadline; deadline.start();
+    while (deadline.elapsed() < 3000) {
+        if (lock.tryLock()) return true;
+        QThread::msleep(25);
+    }
+    if (message) *message = QStringLiteral("The running Shelf instance did not stop.");
+    return false;
+}
+
+// The tray icon: Shelf's glyph, monochrome (STANDARD §8). White on the
+// usual dark Linux and Windows panels; on macOS a black template image the
+// menu bar tints for its appearance.
+QIcon trayIcon()
+{
+    QFile file(QStringLiteral(":/qt/qml/ArcadeShelf/assets/glyph.svg"));
+    if (!file.open(QIODevice::ReadOnly)) return {};
+#ifdef Q_OS_MACOS
+    const QByteArray ink = "#000000";
+#else
+    const QByteArray ink = "#ffffff";
+#endif
+    QSvgRenderer renderer(file.readAll().replace("currentColor", ink));
+    QIcon icon;
+    for (const int size : {16, 22, 24, 32, 48, 64}) {
+        QPixmap pixmap(size, size);
+        pixmap.fill(Qt::transparent);
+        { QPainter painter(&pixmap); painter.setRenderHint(QPainter::Antialiasing); renderer.render(&painter); }
+        icon.addPixmap(pixmap);
+    }
+#ifdef Q_OS_MACOS
+    icon.setIsMask(true);
+#endif
+    return icon;
+}
+
 ArcadeApp::InstallSpec installSpec()
 {
     ArcadeApp::InstallSpec spec;
-    spec.app = {Shelf::AppId, "Arcade Shelf", "Arcade-Shelf.AppImage", "arcade.shelf", "arcade-shelf",
-                {"--background"}, {"io.github.qa_p1.ArcadeShelf"}, "arcade.shelf"};
+    // Before 0.4 the launcher was arcade.shelf.desktop (and, earlier, the
+    // io.github.qa_p1 id); Link replaces those it owns.
+    spec.app = {Shelf::AppId, "Arcade Shelf", "Arcade-Shelf.AppImage", Shelf::OsId, "arcade-shelf",
+                {"--background"}, {"arcade.shelf", "io.github.qa_p1.ArcadeShelf"}, Shelf::OsId};
     spec.version = Shelf::Version;
     spec.bundleName = "Arcade Shelf.app";
     spec.stateDir = Shelf::dataRoot();
     spec.dataFolders = {Shelf::dataRoot()};
     spec.writeIcons = [](const QString &directory) {
         QList<ArcadeLink::ArcadeInstall::Icon> icons;
-        const QString source = QStringLiteral(":/qt/qml/ArcadeShelf/assets/shelf.svg");
+        const QString source = QStringLiteral(":/qt/qml/ArcadeShelf/assets/icon.svg");
         const QString svg = directory + "/arcade-shelf.svg";
         if (!QFile::copy(source, svg)) return icons;
         icons.append({svg, 0});
@@ -56,25 +106,10 @@ ArcadeApp::InstallSpec installSpec()
         }
         return icons;
     };
-    spec.quitRunning = [](QString *message) {
-        QLockFile lock(Shelf::dataRoot() + "/instance.lock");
-        lock.setStaleLockTime(0);
-        if (lock.tryLock()) return true;
-        ArcadeLink::Error error;
-        auto client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(Shelf::dataRoot() + "/instance"),
-                                                 Shelf::AppId, Shelf::AppId, Shelf::Version, 1000, &error);
-        if (!client || !client->call("app.quit", {}, &error, 3000).toObject()["quitting"].toBool()) {
-            if (message) *message = error.isError() ? error.userMessage("Arcade Shelf") : QStringLiteral("Shelf is busy; finish the current action first.");
-            return false;
-        }
-        QElapsedTimer deadline; deadline.start();
-        while (deadline.elapsed() < 3000) {
-            if (lock.tryLock()) return true;
-            QThread::msleep(25);
-        }
-        if (message) *message = QStringLiteral("The running Shelf instance did not stop.");
-        return false;
-    };
+    spec.quitRunning = [](QString *message) { return quitResident(Shelf::dataRoot(), message); };
+    spec.tagline = QStringLiteral("A floating workspace for desktop content.");
+    spec.keywords = QStringLiteral("shelf;collect;drop;drag;files;links;clipboard;workspace;");
+    spec.category = QStringLiteral("FileTools");
     return spec;
 }
 }
@@ -84,8 +119,10 @@ int main(int argc, char **argv)
     ArcadeLink::onStartup();
     QStringList arguments;
     for (int i = 1; i < argc; ++i) arguments << QString::fromLocal8Bit(argv[i]);
-    QCoreApplication::setOrganizationName("qa-p1");
-    QCoreApplication::setApplicationName("ArcadeShelf");
+    // The X11 window class is the application name: the OS identifier, as
+    // the desktop entry's StartupWMClass says (STANDARD §10).
+    QCoreApplication::setOrganizationName("arcade");
+    QCoreApplication::setApplicationName(Shelf::OsId);
     QCoreApplication::setApplicationVersion(Shelf::Version);
     // Cheap CLI paths do not connect to a compositor, create directories, or register anything.
     if (arguments.contains("--version") || arguments.contains("--arcade-manifest")) {
@@ -133,6 +170,18 @@ int main(int argc, char **argv)
         return invalidCli("--channel requires --install and a value of stable or nightly.");
     if (installActionCount) return ArcadeApp::runIntegrationCommand(installSpec(), arguments);
     if (!headless && ArcadeApp::offerInstall(installSpec(), arguments)) return 0;
+    // A real start moves the folder from before 0.4 (STANDARD §10). An older
+    // Shelf still running there is asked to quit first, so nothing writes to
+    // it mid-copy. --status and --quit only look.
+    QStringList migrationNotes;
+    if (!headless && !Shelf::legacyDataRoots().isEmpty()) {
+        for (const QString &legacy : Shelf::legacyDataRoots()) {
+            QString message;
+            if (!quitResident(legacy, &message)) migrationNotes << message;
+        }
+        const QString kept = Shelf::migrateDataRoot();
+        if (!kept.isEmpty()) migrationNotes << kept;
+    }
     const QString root = Shelf::dataRoot();
     if (!ArcadeLink::ensurePrivateDir(root)) { qCritical("Shelf data directory is unsafe or unavailable."); return 1; }
     QLockFile lock(root + "/instance.lock"); lock.setStaleLockTime(0);
@@ -164,13 +213,17 @@ int main(int argc, char **argv)
         if (error.isError()) { qCritical("%s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; } return 0;
     }
     if (headless) { if (parser.isSet("status")) QTextStream(stdout) << "{\"running\":false}\n"; return 0; }
+    // An installed copy from before 0.4: its launcher and login entry move to dev.arcade.Shelf.
+    ArcadeApp::migrateIntegration(installSpec());
     // Started at login or by Tools, stderr often goes to /dev/null: keep
     // Qt's warnings in the log folder the manifest advertises instead.
     ArcadeLink::captureStderr(root + "/logs", "arcade-shelf");
+    for (const QString &note : std::as_const(migrationNotes)) qWarning("%s", qPrintable(note));
     auto *gui = qobject_cast<QApplication *>(&app);
     QImageReader::setAllocationLimit(64);
     gui->setQuitOnLastWindowClosed(false);
-    gui->setDesktopFileName("arcade.shelf");
+    // Wayland app_id; the X11 window class comes from the application name.
+    gui->setDesktopFileName(Shelf::OsId);
     QQuickStyle::setStyle("Basic");
 
     Shelf::Controller controller(root,parser.isSet("background"));
@@ -208,11 +261,8 @@ int main(int argc, char **argv)
     }
     auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
     controller.attachWindow(window);
-    QPixmap glyph(64,64); glyph.fill(Qt::transparent);
-    QSvgRenderer renderer(QStringLiteral(":/qt/qml/ArcadeShelf/assets/shelf.svg"));
-    { QPainter painter(&glyph); renderer.render(&painter); }
-    QIcon icon(glyph); gui->setWindowIcon(icon);
-    QSystemTrayIcon tray(icon);
+    gui->setWindowIcon(QIcon(QStringLiteral(":/qt/qml/ArcadeShelf/assets/icon.svg")));
+    QSystemTrayIcon tray(trayIcon());
     QMenu menu;
     // STANDARD §5.1 tray order; left click opens Shelf, right click shows this menu.
     menu.addAction("Open Arcade Shelf",&controller,&Shelf::Controller::show);

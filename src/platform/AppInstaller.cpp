@@ -259,6 +259,55 @@ bool installMac(const InstallSpec &spec, const ArcadeInstall &install, const Arc
 }
 #endif
 
+#ifdef Q_OS_LINUX
+// Link writes a generic launcher. Shelf adds its standard metadata (tagline,
+// keywords, a specific category, the window class) and names the actions the
+// way the tray does. Only an entry carrying Shelf's ownership marker changes,
+// and running it again changes nothing.
+bool finishDesktopEntry(const InstallSpec &spec, const QJsonObject &receipt, QString *error)
+{
+    const QString path = receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("desktopEntry")).toString();
+    if (path.isEmpty()) return true;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) { *error = QStringLiteral("Couldn't read the launcher."); return false; }
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+    file.close();
+    if (!lines.contains(QStringLiteral("X-Arcade-Id=") + spec.app.id)) {
+        *error = QStringLiteral("Couldn't update the launcher. Its ownership marker changed.");
+        return false;
+    }
+    QString section;
+    QStringList out;
+    for (const QString &line : lines) {
+        if (line.startsWith(QLatin1Char('['))) section = line;
+        const bool main = section == u"[Desktop Entry]";
+        if (main && (line.startsWith(QStringLiteral("Comment=")) || line.startsWith(QStringLiteral("Keywords="))
+                     || line.startsWith(QStringLiteral("StartupWMClass="))))
+            continue;
+        QString next = line;
+        if (main && next == u"Categories=Utility;" && !spec.category.isEmpty())
+            next = QStringLiteral("Categories=Utility;%1;").arg(spec.category);
+        else if (section == u"[Desktop Action Settings]" && next == u"Name=Open Settings")
+            next = QStringLiteral("Name=Settings");
+        else if (section == u"[Desktop Action Quit]" && next == u"Name=Quit")
+            next = QStringLiteral("Name=Quit ") + spec.app.name;
+        out << next;
+        if (main && next == QStringLiteral("Name=") + spec.app.name) {
+            if (!spec.tagline.isEmpty()) out << QStringLiteral("Comment=") + spec.tagline;
+            if (!spec.keywords.isEmpty()) out << QStringLiteral("Keywords=") + spec.keywords;
+            out << QStringLiteral("StartupWMClass=") + spec.app.desktopId;
+        }
+    }
+    const QByteArray bytes = out.join(QLatin1Char('\n')).toUtf8();
+    QSaveFile save(path);
+    if (!save.open(QIODevice::WriteOnly) || save.write(bytes) != bytes.size() || !save.commit()) {
+        *error = QStringLiteral("Couldn't update the launcher.");
+        return false;
+    }
+    return true;
+}
+#endif
+
 bool installCopy(const InstallSpec &spec, const ArcadeInstall &install, const ArcadeInstall::Runtime &runtime,
                  const Options &options, QJsonObject *receipt, QString *error)
 {
@@ -291,7 +340,7 @@ bool installCopy(const InstallSpec &spec, const ArcadeInstall &install, const Ar
     if (o.icons.isEmpty()) { *error = QStringLiteral("Could not stage the install icons."); return false; }
     o.startAtLogin = options.startAtLogin;
     o.removeDownload = options.removeDownload;
-    return install.install(o, receipt, error);
+    return install.install(o, receipt, error) && finishDesktopEntry(spec, *receipt, error);
 #elif defined(Q_OS_MACOS)
     return installMac(spec, install, runtime, options, receipt, error);
 #else
@@ -488,7 +537,9 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args)
         QJsonObject receipt;
 #ifdef Q_OS_LINUX
         const QString moved = detection.state != u"devBuild" && detection.isAppImage ? detection.runningFrom : QString();
-        if (!io([&] { return install.repair(spec.app, moved, &receipt, &error); })) { err(errorText(spec, QStringLiteral("repair"), error)); return 1; }
+        if (!io([&] { return install.repair(spec.app, moved, &receipt, &error) && finishDesktopEntry(spec, receipt, &error); })) {
+            err(errorText(spec, QStringLiteral("repair"), error)); return 1;
+        }
 #else
         receipt = detection.receipt;
         if (receipt.isEmpty()) { err(errorText(spec, QStringLiteral("noReceipt"), {})); return 1; }
@@ -676,6 +727,35 @@ bool offerInstall(const InstallSpec &spec, const QStringList &args)
     if (ArcadeInstall::reexec(launch, args, &error)) return true;
     message(spec, error, false);
     return false;
+}
+
+bool migrateIntegration(const InstallSpec &spec)
+{
+#ifdef Q_OS_LINUX
+    ArcadeInstall::Environment env;
+    if (!io([&] { return environment(&env, nullptr); })) return false;
+    ArcadeInstall install(env);
+    const auto runtime = ArcadeInstall::Runtime::discover();
+    ArcadeInstall::Detection detection;
+    if (!io([&] { return install.detect(spec.app.id, runtime, &detection, nullptr); })) return false;
+    if (detection.state != u"installedHere" || !runtime.isAppImage()) return true;
+    const QJsonObject integration = detection.receipt.value(QStringLiteral("integration")).toObject();
+    const QString entry = integration.value(QStringLiteral("desktopEntry")).toString();
+    if (entry.isEmpty() || QFileInfo(entry).fileName() == spec.app.desktopId + QStringLiteral(".desktop")) return true;
+    Options options = io([&] { return defaults(spec, env); });
+    options.removeDownload = false;
+    options.channel = detection.receipt.value(QStringLiteral("channel")).toString(options.channel);
+    QJsonObject receipt;
+    QString error;
+    if (!io([&] { return installCopy(spec, install, runtime, options, &receipt, &error); })) {
+        err(spec.app.cliName + QStringLiteral(": couldn't move the launcher to its new name: ") + error);
+        return false;
+    }
+    return true;
+#else
+    Q_UNUSED(spec)
+    return true;
+#endif
 }
 
 QString installMethod(const QString &id)

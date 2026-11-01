@@ -1,6 +1,7 @@
 #include "Service.h"
 #include "platform/AppInstaller.h"
 #include "ArcadeAccelerator.h"
+#include "ArcadePaths.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QLocale>
@@ -42,7 +43,35 @@ QJsonObject manifest(bool enabled, QString shortcut)
 QString dataRoot()
 {
     const QString override = qEnvironmentVariable("ARCADE_SHELF_HOME");
-    return override.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) : QDir(override).absolutePath();
+    if (!override.isEmpty()) return QDir(override).absolutePath();
+    // Link's layout: ~/.local/share/arcade/shelf, Arcade\Shelf on Windows,
+    // Application Support/Arcade/Shelf on macOS.
+    const QString current = ArcadeLink::appDirs(AppId).data;
+    // Until the folder from before 0.4 has moved (or if moving it failed),
+    // keep using it, so Shelf never starts with an empty collection.
+    if (!QFileInfo::exists(current + QStringLiteral("/shelf.sqlite3")))
+        for (const auto &legacy : ArcadeLink::legacyDirs(AppId))
+            if (legacy.kind == u"data" && QFileInfo::exists(legacy.path + QStringLiteral("/shelf.sqlite3"))) return legacy.path;
+    return current;
+}
+
+QStringList legacyDataRoots()
+{
+    QStringList roots;
+    if (!qEnvironmentVariable("ARCADE_SHELF_HOME").isEmpty()) return roots;
+    for (const auto &legacy : ArcadeLink::legacyDirs(AppId))
+        if (legacy.kind == u"data" && QFileInfo(legacy.path).isDir()) roots << legacy.path;
+    return roots;
+}
+
+QString migrateDataRoot()
+{
+    if (legacyDataRoots().isEmpty()) return {};
+    const auto report = ArcadeLink::migrateAppDirs(AppId);
+    if (report.kept.isEmpty()) return {};
+    QStringList reasons;
+    for (const auto &[path, reason] : report.kept) reasons << path + QStringLiteral(": ") + reason;
+    return QStringLiteral("Couldn't move Shelf's items to the new folder. The originals were kept. ") + reasons.join(QStringLiteral("; "));
 }
 Service::Service(QString root, QObject *parent, bool background) : QObject(parent), m_root(std::move(root)), m_background(background)
 {

@@ -78,12 +78,23 @@ elseif(APPLE)
 endif()
 qt_add_executable(arcade-shelf src/main.cpp src/Controller.cpp src/Controller.h src/ThumbnailProvider.cpp src/ThumbnailProvider.h)
 target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
+# The kit's launcher icon (window icon, install icons) and Shelf's monochrome
+# glyph (tray), both vendored from Link by scripts/vendor-link.py.
+set(SHELF_RESOURCES assets/glyph.svg packaging/icons/icon.svg)
+set_source_files_properties(packaging/icons/icon.svg PROPERTIES QT_RESOURCE_ALIAS assets/icon.svg)
 qt_add_qml_module(arcade-shelf URI ArcadeShelf VERSION 1.0
   QML_FILES ${SHELF_QML_FILES}
-  RESOURCES assets/shelf.svg)
+  RESOURCES ${SHELF_RESOURCES})
 set_target_properties(arcade-shelf PROPERTIES WIN32_EXECUTABLE TRUE MACOSX_BUNDLE TRUE
-  MACOSX_BUNDLE_GUI_IDENTIFIER io.github.qa_p1.ArcadeShelf
+  MACOSX_BUNDLE_GUI_IDENTIFIER dev.arcade.Shelf
+  MACOSX_BUNDLE_ICON_FILE arcade-shelf.icns
   MACOSX_BUNDLE_BUNDLE_NAME "Arcade Shelf" MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+if(APPLE)
+  set_source_files_properties(packaging/icons/arcade-shelf.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(arcade-shelf PRIVATE packaging/icons/arcade-shelf.icns)
+elseif(WIN32)
+  target_sources(arcade-shelf PRIVATE packaging/windows/arcade-shelf.rc)
+endif()
 if(MSVC)
   target_compile_options(shelf_core PRIVATE /W4)
 else()
@@ -121,7 +132,7 @@ if(BUILD_TESTING)
   target_link_libraries(tst_Ui PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Test)
   qt_add_qml_module(tst_Ui URI ShelfUITest VERSION 1.0
     QML_FILES ${SHELF_QML_FILES}
-    RESOURCES assets/shelf.svg)
+    RESOURCES ${SHELF_RESOURCES})
   target_compile_definitions(tst_Ui PRIVATE SHELF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
   add_test(NAME Ui COMMAND tst_Ui)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)

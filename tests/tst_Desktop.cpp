@@ -292,12 +292,12 @@ private slots:
 #elif defined(Q_OS_MACOS)
         const QString path = QDir(env.home).filePath("Applications/Arcade Shelf.app");
         const QString executable = QDir(path).filePath("Contents/MacOS/arcade-shelf");
-        const QString target = QDir(env.home).filePath("Library/LaunchAgents/arcade.shelf.plist");
+        const QString target = QDir(env.home).filePath("Library/LaunchAgents/dev.arcade.Shelf.plist");
         const QString method = "macos-bundle";
 #else
         const QString path = QDir(env.applications).filePath("Arcade-Shelf.AppImage");
         const QString executable = path;
-        const QString target = QDir(env.config).filePath("autostart/arcade.shelf.desktop");
+        const QString target = QDir(env.config).filePath("autostart/dev.arcade.Shelf.desktop");
         const QString method = "appimage";
 #endif
         QVERIFY(QDir().mkpath(QFileInfo(executable).absolutePath()));
@@ -369,6 +369,78 @@ private slots:
         QVERIFY(!desktop.setStartAtLogin(false, executable));
         QVERIFY(linked.open(QIODevice::ReadOnly));
         QCOMPARE(linked.readAll(), QByteArray("Arcade Shelf managed login entry\n"));
+#endif
+    }
+
+    // Before 0.4 the login entry was autostart/arcade.shelf.desktop (STANDARD §10).
+    void loginEntryMovesFromItsOldName()
+    {
+#ifndef Q_OS_LINUX
+        QSKIP("The pre-0.4 login entry name is checked on Linux");
+#else
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        QList<QPair<QByteArray, QByteArray>> environment;
+        for (const auto *key : {"ARCADE_HOME", "ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS"})
+            environment.append({key, qgetenv(key)});
+        const auto restore = qScopeGuard([&] {
+            for (const auto &item : environment) {
+                if (item.second.isNull()) qunsetenv(item.first.constData());
+                else qputenv(item.first.constData(), item.second);
+            }
+        });
+        qputenv("ARCADE_HOME", directory.path().toUtf8());
+        qputenv("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS", "1");
+        const auto env = ArcadeLink::ArcadeInstall::Environment::under(directory.path());
+        const QString executable = QDir(env.applications).filePath("Arcade-Shelf.AppImage");
+        QVERIFY(QDir().mkpath(QFileInfo(executable).absolutePath()));
+        QFile binary(executable); QVERIFY(binary.open(QIODevice::WriteOnly)); binary.write("fixture"); binary.close();
+        QVERIFY(QFile::setPermissions(executable, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QString legacy = QDir(env.config).filePath("autostart/arcade.shelf.desktop");
+        const QString target = QDir(env.config).filePath("autostart/dev.arcade.Shelf.desktop");
+        QJsonObject receipt{{"schema", 1}, {"id", "arcade.shelf"}, {"version", "0.3.3"}, {"channel", "stable"},
+            {"method", "appimage"}, {"managedBy", "self"}, {"path", executable},
+            {"integration", QJsonObject{{"icons", QJsonArray{}}, {"autostart", legacy}}},
+            {"installedAt", ArcadeLink::nowRfc3339()}, {"updatedAt", ArcadeLink::nowRfc3339()}};
+        QString error; QVERIFY2(env.receipts().write(receipt, &error), qPrintable(error));
+        const auto write = [](const QString &path, const QByteArray &bytes) {
+            QDir().mkpath(QFileInfo(path).absolutePath());
+            QFile file(path);
+            return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size();
+        };
+        const QByteArray old = "# Arcade Shelf managed login entry\n[Desktop Entry]\nType=Application\nName=Arcade Shelf\n"
+                               "Exec=fixture --background\nX-Arcade-Id=arcade.shelf\n";
+        QVERIFY(write(legacy, old));
+        Desktop desktop;
+        QVERIFY(desktop.startAtLogin()); // still read through the old name
+        QVERIFY2(desktop.migrateLoginEntry(executable), qPrintable(desktop.lastError()));
+        QVERIFY(!QFileInfo::exists(legacy));
+        QVERIFY(QFileInfo::exists(target));
+        QVERIFY(desktop.startAtLogin());
+        QJsonObject moved; QVERIFY2(env.receipts().read("arcade.shelf", &moved, &error), qPrintable(error));
+        QCOMPARE(moved.value("integration").toObject().value("autostart"), QJsonValue(target));
+        QVERIFY(desktop.migrateLoginEntry(executable)); // again: nothing to do
+        QVERIFY(QFileInfo::exists(target));
+
+        // Both present (an in-place reinstall wrote the new one): the old one goes.
+        QVERIFY(write(legacy, old));
+        QVERIFY(desktop.migrateLoginEntry(executable));
+        QVERIFY(!QFileInfo::exists(legacy));
+        QVERIFY(QFileInfo::exists(target));
+
+        // Switched off in the desktop's startup settings: it stays off.
+        QVERIFY(desktop.setStartAtLogin(false, executable));
+        QVERIFY(write(legacy, old + "X-GNOME-Autostart-enabled=false\n"));
+        QVERIFY(desktop.migrateLoginEntry(executable));
+        QVERIFY(!QFileInfo::exists(legacy));
+        QVERIFY(!QFileInfo::exists(target));
+        QVERIFY(!desktop.startAtLogin());
+
+        // Someone else's file under the old name is never touched.
+        QVERIFY(write(legacy, "unrelated login entry"));
+        QVERIFY(desktop.migrateLoginEntry(executable));
+        QFile foreign(legacy); QVERIFY(foreign.open(QIODevice::ReadOnly));
+        QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
+        QVERIFY(!QFileInfo::exists(target));
 #endif
     }
 };

@@ -19,6 +19,9 @@ struct InstallSpec {
     std::function<QList<ArcadeLink::ArcadeInstall::Icon>(const QString &dir)> writeIcons;
     // Asks a running copy to quit before files are removed.
     std::function<bool(QString *error)> quitRunning;
+    // Linux launcher metadata (STANDARD §10): the tagline, 4–8 keywords and
+    // the specific category after Utility.
+    QString tagline, keywords, category;
 };
 
 // True for --install, --uninstall, --repair and --integration-status.
@@ -30,6 +33,11 @@ int runIntegrationCommand(const InstallSpec &spec, const QStringList &args);
 // Before the first window: offer to install a downloaded copy. True when
 // this process should exit (it relaunched the installed copy or handed off).
 bool offerInstall(const InstallSpec &spec, const QStringList &args);
+// An installed AppImage from before 0.4 keeps its launcher and login entry
+// under the old desktop id. Reinstalling the running copy in place moves both
+// to the current id (Link replaces the entries the receipt recorded) and
+// keeps Start at login as it was. Does nothing for other copies.
+bool migrateIntegration(const InstallSpec &spec);
 // The manifest's `install` echo: appimage, macos-bundle, windows-installer,
 // manual or dev.
 QString installMethod(const QString &id);
