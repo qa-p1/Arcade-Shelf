@@ -19,22 +19,39 @@ Window {
     title: "Install — Arcade Shelf"
     flags: Qt.Dialog
     width: 460
-    height: content.implicitHeight + 44
     minimumWidth: width; maximumWidth: width
-    minimumHeight: height; maximumHeight: height
+    // A fixed-size window that follows its content. Binding the limits to
+    // `height` would pin it: the window clamps a taller height to the old
+    // maximum. Raise the limit first when growing, lower it last when shrinking.
+    function fit() {
+        const h = Math.ceil(content.implicitHeight) + 44;
+        if (h >= maximumHeight) { maximumHeight = h; minimumHeight = h; }
+        else { minimumHeight = h; maximumHeight = h; }
+        height = h;
+    }
     color: Theme.panel
     visible: true
     Component.onCompleted: {
         Theme.appId = "arcade.shelf";
         checks = options.map(option => !!option.checked);
+        fit();
     }
     onClosing: finished()
+    // Runs before Shelf's settings load: follow the desktop's colour scheme,
+    // or the palette where the platform does not report one (as Main.qml does).
+    SystemPalette { id: systemPalette; colorGroup: SystemPalette.Active }
+    Binding {
+        target: Theme; property: "mode"
+        value: Application.styleHints.colorScheme === Qt.ColorScheme.Dark
+            || (Application.styleHints.colorScheme === Qt.ColorScheme.Unknown && systemPalette.window.hslLightness < 0.5) ? "dark" : "light"
+    }
 
     Column {
         id: content
         x: 22; y: 22
         width: parent.width - 44
         spacing: Theme.space10
+        onImplicitHeightChanged: root.fit()
         Row {
             spacing: Theme.space12
             GlyphTile { appId: "arcade.shelf"; size: Theme.tile }

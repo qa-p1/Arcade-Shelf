@@ -579,6 +579,35 @@ private slots:
         QTRY_VERIFY2_WITH_TIMEOUT(m_controller->count() == 2,qPrintable(m_controller->message()),5000);
         QVERIFY(QFile::exists(match));
     }
+    void installPromptFitsItsContentAndReportsChoices() {
+        QQmlApplicationEngine engine;
+        const QVariantList options{QVariantMap{{"label","Start at login"},{"checked",true}},
+                                   QVariantMap{{"label","Remove the downloaded file"},{"checked",false}}};
+        engine.setInitialProperties({{"heading","Install Arcade Shelf?"},
+                                     {"paragraphs",QStringList{"This adds Arcade Shelf to the app launcher and your apps folder."}},
+                                     {"options",options},{"buttons",QStringList{"Install","Just run it"}}});
+        engine.loadFromModule("ShelfUITest","InstallPrompt");
+        QCOMPARE(engine.rootObjects().size(),1);
+        auto *prompt=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+        QVERIFY(prompt);
+        QVERIFY(QTest::qWaitForWindowExposed(prompt));
+        // The window grows to its content (heading, text, two options, buttons).
+        QTRY_VERIFY_WITH_TIMEOUT(prompt->height() > 180,2000);
+        QCOMPARE(prompt->minimumHeight(),prompt->height());
+        QCOMPARE(prompt->maximumHeight(),prompt->height());
+        auto *button=findIn(prompt,"installButton-0",{});
+        QVERIFY(button);
+        QVERIFY(button->mapToScene(QPointF(0,button->height())).y() <= prompt->height());
+        captureWindow(prompt,"install-prompt");
+        QQuickItem *option=findIn(prompt,"installOption-1",{});
+        QVERIFY(option);
+        clickIn(prompt,option);
+        QTRY_COMPARE(prompt->property("checks").toList(),(QVariantList{true,true}));
+        QSignalSpy finished(prompt,SIGNAL(finished()));
+        clickIn(prompt,findIn(prompt,"installButton-1",{}));
+        QTRY_COMPARE(finished.count(),1);
+        QCOMPARE(prompt->property("clicked").toInt(),1);
+    }
     void renderedViews() {
         const QString brief=writeFile("Design brief.md","# Arcade Shelf\nA floating workspace.");
         const QString assets=m_profile->path()+"/Brand assets"; QVERIFY(QDir().mkdir(assets));
