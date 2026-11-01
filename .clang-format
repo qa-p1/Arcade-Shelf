@@ -1,0 +1,33 @@
+# Shelf's C++ style, enforced by scripts/check (clang-format 18, as on CI's
+# Ubuntu 24.04). Vendored code under vendor/ keeps Link's own style.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 0
+AccessModifierOffset: -4
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterStruct: false
+  AfterNamespace: false
+  AfterControlStatement: Never
+  BeforeElse: false
+  BeforeCatch: false
+  SplitEmptyFunction: false
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Always
+AllowShortLambdasOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+NamespaceIndentation: None
+FixNamespaceComments: true
+IndentCaseLabels: false
+PointerAlignment: Right
+SortIncludes: Never
+IncludeBlocks: Preserve
+SpaceBeforeCpp11BracedList: false
+Cpp11BracedListStyle: true
+ReflowComments: false
+InsertNewlineAtEOF: true

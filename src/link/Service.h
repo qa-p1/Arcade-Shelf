@@ -61,6 +61,7 @@ signals:
     void pickEnded();
     void quitRequested();
     void fatalError(QString error);
+
 private:
     void invoke(const QJsonObject &req, const ArcadeLink::Responder &r);
     void publish();
@@ -79,4 +80,4 @@ private:
     bool m_multiple = false;
     bool m_background = true;
 };
-}
+} // namespace Shelf

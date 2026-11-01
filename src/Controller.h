@@ -152,7 +152,11 @@ public:
     Q_INVOKABLE void runPeer(QString app, QString action);
     Q_INVOKABLE void runSource(QString app, QString action);
     Q_INVOKABLE void cancelJob();
-    Q_INVOKABLE void dismissAnalysis() { m_analysis = {}; emit changed(); }
+    Q_INVOKABLE void dismissAnalysis()
+    {
+        m_analysis = {};
+        emit changed();
+    }
     Q_INVOKABLE void confirmPick();
     Q_INVOKABLE void cancelPick();
     Q_INVOKABLE void showSettings();
@@ -186,6 +190,7 @@ signals:
     void newCollectionRequested();
     // Bring an already open Settings window to the front.
     void settingsRaiseRequested();
+
 private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void stageImage(QImage image);
@@ -229,4 +234,4 @@ private:
     int m_dragRevision = -1;
     double m_progress = -1;
 };
-}
+} // namespace Shelf

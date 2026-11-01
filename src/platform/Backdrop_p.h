@@ -19,6 +19,6 @@ public:
 };
 
 std::unique_ptr<NativeBackdrop> makeNativeBackdrop(QObject *context,
-                                                 std::function<void()> refresh);
+                                                   std::function<void()> refresh);
 
 } // namespace Shelf

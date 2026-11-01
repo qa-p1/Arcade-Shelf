@@ -37,12 +37,13 @@ bool quitResident(const QString &root, QString *message)
     if (lock.tryLock()) return true;
     ArcadeLink::Error error;
     auto client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(root + "/instance"),
-                                             Shelf::AppId, Shelf::AppId, Shelf::Version, 1000, &error);
+                                              Shelf::AppId, Shelf::AppId, Shelf::Version, 1000, &error);
     if (!client || !client->call("app.quit", {}, &error, 3000).toObject()["quitting"].toBool()) {
         if (message) *message = error.isError() ? error.userMessage("Arcade Shelf") : QStringLiteral("Shelf is busy; finish the current action first.");
         return false;
     }
-    QElapsedTimer deadline; deadline.start();
+    QElapsedTimer deadline;
+    deadline.start();
     while (deadline.elapsed() < 3000) {
         if (lock.tryLock()) return true;
         QThread::msleep(25);
@@ -68,7 +69,11 @@ QIcon trayIcon()
     for (const int size : {16, 22, 24, 32, 48, 64}) {
         QPixmap pixmap(size, size);
         pixmap.fill(Qt::transparent);
-        { QPainter painter(&pixmap); painter.setRenderHint(QPainter::Antialiasing); renderer.render(&painter); }
+        {
+            QPainter painter(&pixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            renderer.render(&painter);
+        }
         icon.addPixmap(pixmap);
     }
 #ifdef Q_OS_MACOS
@@ -82,8 +87,7 @@ ArcadeApp::InstallSpec installSpec()
     ArcadeApp::InstallSpec spec;
     // Before 0.4 the launcher was arcade.shelf.desktop (and, earlier, the
     // io.github.qa_p1 id); Link replaces those it owns.
-    spec.app = {Shelf::AppId, "Arcade Shelf", "Arcade-Shelf.AppImage", Shelf::OsId, "arcade-shelf",
-                {"--background"}, {"arcade.shelf", "io.github.qa_p1.ArcadeShelf"}, Shelf::OsId};
+    spec.app = {Shelf::AppId, "Arcade Shelf", "Arcade-Shelf.AppImage", Shelf::OsId, "arcade-shelf", {"--background"}, {"arcade.shelf", "io.github.qa_p1.ArcadeShelf"}, Shelf::OsId};
     spec.version = Shelf::Version;
     spec.bundleName = "Arcade Shelf.app";
     spec.stateDir = Shelf::dataRoot();
@@ -99,7 +103,10 @@ ArcadeApp::InstallSpec installSpec()
         for (const int pixels : {16, 24, 32, 48, 64, 128, 256, 512}) {
             QImage image(pixels, pixels, QImage::Format_ARGB32_Premultiplied);
             image.fill(Qt::transparent);
-            { QPainter painter(&image); renderer.render(&painter); }
+            {
+                QPainter painter(&image);
+                renderer.render(&painter);
+            }
             const QString path = directory + "/arcade-shelf-" + QString::number(pixels) + ".png";
             if (!image.save(path)) return QList<ArcadeLink::ArcadeInstall::Icon>{};
             icons.append({path, pixels});
@@ -112,7 +119,7 @@ ArcadeApp::InstallSpec installSpec()
     spec.category = QStringLiteral("FileTools");
     return spec;
 }
-}
+} // namespace
 
 int main(int argc, char **argv)
 {
@@ -126,44 +133,47 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationVersion(Shelf::Version);
     // Cheap CLI paths do not connect to a compositor, create directories, or register anything.
     if (arguments.contains("--version") || arguments.contains("--arcade-manifest")) {
-        QCoreApplication app(argc,argv);
+        QCoreApplication app(argc, argv);
         if (arguments.contains("--version")) QTextStream(stdout) << "Arcade Shelf " << Shelf::Version << '\n';
         else QTextStream(stdout) << QJsonDocument(Shelf::manifest()).toJson(QJsonDocument::Indented);
         return 0;
     }
     if (arguments.contains("--arcade-invoke")) {
-        QTextStream(stderr) << "Shelf uses resident background handling; --arcade-invoke is not supported.\n"; return 2;
+        QTextStream(stderr) << "Shelf uses resident background handling; --arcade-invoke is not supported.\n";
+        return 2;
     }
-    const bool headless = ArcadeApp::isHeadlessIntegrationCommand(arguments) || arguments.contains("--silent")
-        || arguments.contains("--quit") || arguments.contains("--status") || arguments.contains("--hide") || arguments.contains("--restart")
-        || arguments.contains("--help") || arguments.contains("-h");
+    const bool headless = ArcadeApp::isHeadlessIntegrationCommand(arguments) || arguments.contains("--silent") || arguments.contains("--quit") || arguments.contains("--status") || arguments.contains("--hide") || arguments.contains("--restart") || arguments.contains("--help") || arguments.contains("-h");
     std::unique_ptr<QCoreApplication> application;
     if (headless) application = std::make_unique<QCoreApplication>(argc, argv);
     else application = std::make_unique<QApplication>(argc, argv);
     auto &app = *application;
     QCommandLineParser parser;
-    parser.setApplicationDescription("A floating workspace for desktop content."); parser.addHelpOption(); parser.addVersionOption();
-    parser.addOption(QCommandLineOption("background","Start without showing a window (as at login)."));
-    parser.addOption(QCommandLineOption("settings","Open Settings."));
-    parser.addOption(QCommandLineOption("show","Open the panel."));
-    parser.addOption(QCommandLineOption("hide","Close the panel to its capsule."));
-    parser.addOption(QCommandLineOption("toggle","Open or close the panel."));
-    parser.addOption(QCommandLineOption("quit","Quit the running Arcade Shelf."));
-    parser.addOption(QCommandLineOption("status","Print one line of JSON: running, version, Link state."));
-    parser.addOption(QCommandLineOption("wait-for-exit","Wait for an old resident before restarting.","pid"));
-    parser.addOption(QCommandLineOption("restart","Restart the running Arcade Shelf instance."));
-    parser.addOption(QCommandLineOption("install","Install this package."));
-    parser.addOption(QCommandLineOption("uninstall","Uninstall this app."));
-    parser.addOption(QCommandLineOption("repair","Repair this installation's integration."));
-    parser.addOption(QCommandLineOption("integration-status","Print installation integration status as JSON."));
-    parser.addOption(QCommandLineOption("silent","Suppress installer UI."));
-    parser.addOption(QCommandLineOption("no-launch","Do not launch the app after installation."));
-    parser.addOption(QCommandLineOption("channel","Select the installation channel.","channel"));
-    parser.addOption(QCommandLineOption("remove-data","Remove app data while uninstalling."));
-    parser.addOption(QCommandLineOption("add","Stage a local file or folder.","path")); parser.process(app);
+    parser.setApplicationDescription("A floating workspace for desktop content.");
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addOption(QCommandLineOption("background", "Start without showing a window (as at login)."));
+    parser.addOption(QCommandLineOption("settings", "Open Settings."));
+    parser.addOption(QCommandLineOption("show", "Open the panel."));
+    parser.addOption(QCommandLineOption("hide", "Close the panel to its capsule."));
+    parser.addOption(QCommandLineOption("toggle", "Open or close the panel."));
+    parser.addOption(QCommandLineOption("quit", "Quit the running Arcade Shelf."));
+    parser.addOption(QCommandLineOption("status", "Print one line of JSON: running, version, Link state."));
+    parser.addOption(QCommandLineOption("wait-for-exit", "Wait for an old resident before restarting.", "pid"));
+    parser.addOption(QCommandLineOption("restart", "Restart the running Arcade Shelf instance."));
+    parser.addOption(QCommandLineOption("install", "Install this package."));
+    parser.addOption(QCommandLineOption("uninstall", "Uninstall this app."));
+    parser.addOption(QCommandLineOption("repair", "Repair this installation's integration."));
+    parser.addOption(QCommandLineOption("integration-status", "Print installation integration status as JSON."));
+    parser.addOption(QCommandLineOption("silent", "Suppress installer UI."));
+    parser.addOption(QCommandLineOption("no-launch", "Do not launch the app after installation."));
+    parser.addOption(QCommandLineOption("channel", "Select the installation channel.", "channel"));
+    parser.addOption(QCommandLineOption("remove-data", "Remove app data while uninstalling."));
+    parser.addOption(QCommandLineOption("add", "Stage a local file or folder.", "path"));
+    parser.process(app);
     const QStringList installActions{"install", "uninstall", "repair", "integration-status"};
     int installActionCount = 0;
-    for (const auto &action : installActions) if (parser.isSet(action)) ++installActionCount;
+    for (const auto &action : installActions)
+        if (parser.isSet(action)) ++installActionCount;
     const auto invalidCli = [&](const QString &message) {
         QTextStream(stderr) << "arcade-shelf: " << message << '\n';
         return 2;
@@ -189,42 +199,59 @@ int main(int argc, char **argv)
         if (!kept.isEmpty()) migrationNotes << kept;
     }
     const QString root = Shelf::dataRoot();
-    if (!ArcadeLink::ensurePrivateDir(root)) { qCritical("Shelf data directory is unsafe or unavailable."); return 1; }
-    QLockFile lock(root + "/instance.lock"); lock.setStaleLockTime(0);
+    if (!ArcadeLink::ensurePrivateDir(root)) {
+        qCritical("Shelf data directory is unsafe or unavailable.");
+        return 1;
+    }
+    QLockFile lock(root + "/instance.lock");
+    lock.setStaleLockTime(0);
     bool locked = lock.tryLock(0);
     if (!locked && parser.isSet("wait-for-exit")) {
-        for (int attempt = 0; attempt < 60 && !locked; ++attempt) { QThread::msleep(50); locked = lock.tryLock(0); }
-        if (!locked) { qCritical("The previous instance did not stop."); return 1; }
+        for (int attempt = 0; attempt < 60 && !locked; ++attempt) {
+            QThread::msleep(50);
+            locked = lock.tryLock(0);
+        }
+        if (!locked) {
+            qCritical("The previous instance did not stop.");
+            return 1;
+        }
     }
     if (!locked) {
         ArcadeLink::Error error;
         std::unique_ptr<ArcadeLink::Client> client;
         // A concurrent first launch may not have created its private endpoint yet.
         for (int attempt = 0; attempt < 30 && !client; ++attempt) {
-            client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(root + "/instance"),Shelf::AppId,Shelf::AppId,Shelf::Version,100,&error);
+            client = ArcadeLink::Client::connect(ArcadeLink::Locations::under(root + "/instance"), Shelf::AppId, Shelf::AppId, Shelf::Version, 100, &error);
             if (!client) QThread::msleep(50);
         }
-        if (!client) { qCritical("Couldn't contact the resident Shelf instance: %s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; }
-        if (parser.isSet("quit")) client->call("app.quit",{},&error,1000);
+        if (!client) {
+            qCritical("Couldn't contact the resident Shelf instance: %s", qPrintable(error.userMessage("Arcade Shelf")));
+            return 1;
+        }
+        if (parser.isSet("quit")) client->call("app.quit", {}, &error, 1000);
         else if (parser.isSet("status")) {
-            QJsonObject status = client->call("app.status",{},&error,1000).toObject();
-            const QJsonValue extra = client->call("invoke",{{"action","internal.status"},{"inputs",QJsonArray{}}},&error,2000);
+            QJsonObject status = client->call("app.status", {}, &error, 1000).toObject();
+            const QJsonValue extra = client->call("invoke", {{"action", "internal.status"}, {"inputs", QJsonArray{}}}, &error, 2000);
             const QJsonObject details = extra.toObject().contains("result") ? extra.toObject()["result"].toObject() : extra.toObject();
             status.insert("running", true);
             status.insert("link", details["link"]);
             QTextStream(stdout) << QJsonDocument(status).toJson(QJsonDocument::Compact) << '\n';
-        }
-        else if (parser.isSet("hide")) client->call("invoke",{{"action","internal.hide"},{"inputs",QJsonArray{}}},&error,5000);
+        } else if (parser.isSet("hide")) client->call("invoke", {{"action", "internal.hide"}, {"inputs", QJsonArray{}}}, &error, 5000);
         else if (parser.isSet("restart")) {
             client->restart({}, &error);
-        }
-        else if (parser.isSet("background")) return 0;
+        } else if (parser.isSet("background")) return 0;
         else if (parser.isSet("settings") || parser.isSet("toggle") || parser.isSet("add")) {
-            const QString action = parser.isSet("settings") ? "internal.settings" : parser.isSet("toggle") ? "internal.toggle" : "internal.add";
-            QJsonArray inputs; if (parser.isSet("add")) inputs << ArcadeLink::fileContent(QFileInfo(parser.value("add")).absoluteFilePath());
-            client->call("invoke",{{"action",action},{"inputs",inputs}},&error,5000);
-        } else client->call("app.activate",{},&error,1000);
-        if (error.isError()) { qCritical("%s",qPrintable(error.userMessage("Arcade Shelf"))); return 1; } return 0;
+            const QString action = parser.isSet("settings") ? "internal.settings" : parser.isSet("toggle") ? "internal.toggle"
+                                                                                                           : "internal.add";
+            QJsonArray inputs;
+            if (parser.isSet("add")) inputs << ArcadeLink::fileContent(QFileInfo(parser.value("add")).absoluteFilePath());
+            client->call("invoke", {{"action", action}, {"inputs", inputs}}, &error, 5000);
+        } else client->call("app.activate", {}, &error, 1000);
+        if (error.isError()) {
+            qCritical("%s", qPrintable(error.userMessage("Arcade Shelf")));
+            return 1;
+        }
+        return 0;
     }
     if (headless) {
         if (parser.isSet("status")) QTextStream(stdout) << QJsonDocument(QJsonObject{{"running", false}, {"version", Shelf::Version}}).toJson(QJsonDocument::Compact) << '\n';
@@ -243,7 +270,7 @@ int main(int argc, char **argv)
     gui->setDesktopFileName(Shelf::OsId);
     QQuickStyle::setStyle("Basic");
 
-    Shelf::Controller controller(root,parser.isSet("background"));
+    Shelf::Controller controller(root, parser.isSet("background"));
     // A stopped app must accept Link requests promptly, even while QML imports.
     // A foreground launch still starts integration after creating its first surface.
     if (parser.isSet("background")) controller.start();
@@ -259,14 +286,14 @@ int main(int argc, char **argv)
     QQmlApplicationEngine engine;
     engine.setInitialProperties({{QStringLiteral("shelf"), QVariant::fromValue(&controller)}});
     auto *thumbnails = new Shelf::ThumbnailProvider;
-    engine.addImageProvider("thumb",thumbnails);
-    QObject::connect(&controller,&Shelf::Controller::changed,&engine,[thumbnails,&controller] {
+    engine.addImageProvider("thumb", thumbnails);
+    QObject::connect(&controller, &Shelf::Controller::changed, &engine, [thumbnails, &controller] {
         const auto preferences = controller.preferences();
         if (preferences.contains("thumbnailQuotaBytes"))
             thumbnails->setCacheLimitBytes(preferences.value("thumbnailQuotaBytes").toLongLong());
     });
-    QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{ QCoreApplication::exit(1); },Qt::QueuedConnection);
-    engine.loadFromModule("ArcadeShelf","Main");
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+    engine.loadFromModule("ArcadeShelf", "Main");
     if (engine.rootObjects().isEmpty()) return 1;
     // Inter at 13 px (the kit's body size) for every window, Qt Widgets dialogs
     // included. The kit's Fonts singleton has already loaded it from the
@@ -282,12 +309,13 @@ int main(int argc, char **argv)
     QSystemTrayIcon tray(trayIcon());
     QMenu menu;
     // STANDARD §5.1 tray order; left click opens Shelf, right click shows this menu.
-    menu.addAction("Open Arcade Shelf",&controller,&Shelf::Controller::show);
-    menu.addAction("Collect from clipboard",&controller,[&controller] { controller.show(); controller.paste(); });
-    menu.addAction("Settings",&controller,&Shelf::Controller::showSettings);
-    menu.addSeparator(); menu.addAction("Quit Arcade Shelf",&app,&QCoreApplication::quit);
+    menu.addAction("Open Arcade Shelf", &controller, &Shelf::Controller::show);
+    menu.addAction("Collect from clipboard", &controller, [&controller] { controller.show(); controller.paste(); });
+    menu.addAction("Settings", &controller, &Shelf::Controller::showSettings);
+    menu.addSeparator();
+    menu.addAction("Quit Arcade Shelf", &app, &QCoreApplication::quit);
     tray.setContextMenu(&menu);
-    QObject::connect(&tray,&QSystemTrayIcon::activated,&controller,[&](QSystemTrayIcon::ActivationReason reason) { if (reason == QSystemTrayIcon::Trigger) controller.show(); });
+    QObject::connect(&tray, &QSystemTrayIcon::activated, &controller, [&](QSystemTrayIcon::ActivationReason reason) { if (reason == QSystemTrayIcon::Trigger) controller.show(); });
     auto *trayHost = controller.trayHost();
     QObject::connect(trayHost, &ArcadeLink::ArcadeTrayHost::startupReady, &tray, [&tray](const QString &state) {
         tray.setVisible(state == "own");
@@ -299,11 +327,11 @@ int main(int argc, char **argv)
     // Quitting while Tools hosts the tray must not flash Shelf's own icon.
     QObject::connect(&app, &QCoreApplication::aboutToQuit, trayHost, [trayHost] { trayHost->finish(); });
     // Off the initial QML creation path; background endpoint remains promptly available.
-    QTimer::singleShot(0,&controller,[&] {
+    QTimer::singleShot(0, &controller, [&] {
         if (!parser.isSet("background")) controller.start();
         if (parser.isSet("settings")) controller.showSettings();
         else if (parser.isSet("show") || parser.isSet("toggle")) controller.show();
-        if (parser.isSet("add")) controller.acceptDrop(QVariantList{QUrl::fromLocalFile(QFileInfo(parser.value("add")).absoluteFilePath())},{},{});
+        if (parser.isSet("add")) controller.acceptDrop(QVariantList{QUrl::fromLocalFile(QFileInfo(parser.value("add")).absoluteFilePath())}, {}, {});
     });
     return app.exec();
 }

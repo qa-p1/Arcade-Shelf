@@ -13,9 +13,19 @@
 @interface ShelfMaterialView : NSVisualEffectView
 @end
 @implementation ShelfMaterialView
-- (NSView *)hitTest:(NSPoint)point { Q_UNUSED(point); return nil; }
-- (BOOL)acceptsFirstResponder { return NO; }
-- (BOOL)isAccessibilityElement { return NO; }
+- (NSView *)hitTest:(NSPoint)point
+{
+    Q_UNUSED(point);
+    return nil;
+}
+- (BOOL)acceptsFirstResponder
+{
+    return NO;
+}
+- (BOOL)isAccessibilityElement
+{
+    return NO;
+}
 @end
 
 namespace Shelf {
@@ -28,9 +38,11 @@ public:
         const QPointer<QObject> guard(context);
         m_observer = [[[NSWorkspace sharedWorkspace] notificationCenter]
             addObserverForName:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
-            object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *) {
-                if (guard) refresh();
-            }];
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(NSNotification *) {
+                      if (guard) refresh();
+                    }];
         [m_observer retain];
     }
     ~MacBackdrop() override
@@ -44,17 +56,22 @@ public:
     {
         @autoreleasepool {
             if (QGuiApplication::platformName() != QStringLiteral("cocoa")) {
-                clear(); *status = QStringLiteral("Native material unavailable on this display backend"); return false;
+                clear();
+                *status = QStringLiteral("Native material unavailable on this display backend");
+                return false;
             }
             if ([[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceTransparency]) {
-                clear(); *status = QStringLiteral("Native material disabled by macOS Reduce Transparency"); return false;
+                clear();
+                *status = QStringLiteral("Native material disabled by macOS Reduce Transparency");
+                return false;
             }
             NSView *qtView = reinterpret_cast<NSView *>(window->winId());
             NSWindow *nativeWindow = [qtView window];
             NSView *parent = [qtView superview];
-            if (!qtView || !nativeWindow || !parent || [nativeWindow contentView] != qtView
-                || [qtView isOpaque] || !window->format().hasAlpha()) {
-                clear(); *status = QStringLiteral("macOS material requires a transparent native Qt content view"); return false;
+            if (!qtView || !nativeWindow || !parent || [nativeWindow contentView] != qtView || [qtView isOpaque] || !window->format().hasAlpha()) {
+                clear();
+                *status = QStringLiteral("macOS material requires a transparent native Qt content view");
+                return false;
             }
             if (m_effect && [m_effect superview] != parent) clear();
             if (!m_effect) {
@@ -69,7 +86,7 @@ public:
                 [parent addSubview:m_effect positioned:NSWindowBelow relativeTo:qtView];
             }
             const CGFloat y = [qtView isFlipped] ? region.y()
-                : [qtView bounds].size.height - region.y() - region.height();
+                                                 : [qtView bounds].size.height - region.y() - region.height();
             const NSRect logical = NSMakeRect(region.x(), y, region.width(), region.height());
             [m_effect setFrame:[qtView convertRect:logical toView:parent]];
             [m_effect setAppearance:[NSAppearance appearanceNamed:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua]];
@@ -89,6 +106,7 @@ public:
             m_effect = nil;
         }
     }
+
 private:
     ShelfMaterialView *m_effect = nil;
     id m_observer = nil;

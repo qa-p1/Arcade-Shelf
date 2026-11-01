@@ -28,14 +28,18 @@ class DropRecorder : public QObject {
     Q_OBJECT
 public:
     QString output;
-    Q_INVOKABLE void record(const QVariantList &urls, const QString &text) {
+    Q_INVOKABLE void record(const QVariantList &urls, const QString &text)
+    {
         QJsonArray paths;
         for (auto value : urls) {
             while (value.metaType().id() == QMetaType::QVariant) value = value.value<QVariant>();
             paths.append(value.toUrl().toLocalFile());
         }
         QFile file(output);
-        if (!file.open(QIODevice::WriteOnly)) { QCoreApplication::exit(2); return; }
+        if (!file.open(QIODevice::WriteOnly)) {
+            QCoreApplication::exit(2);
+            return;
+        }
         file.write(QJsonDocument(QJsonObject{{"paths", paths}, {"text", text}}).toJson());
         file.close();
         QTimer::singleShot(50, qApp, [] { QCoreApplication::quit(); });
@@ -46,19 +50,23 @@ class NativeDragWindow : public QQuickWindow {
 public:
     QJsonArray contents;
     Shelf::Desktop desktop;
-    NativeDragWindow() {
+    NativeDragWindow()
+    {
         QObject::connect(&desktop, &Shelf::Desktop::dragFinished, this,
                          [this](int action) { completed = Qt::DropAction(action); });
     }
     Qt::DropAction completed = Qt::IgnoreAction;
     bool started = false;
+
 protected:
-    void mousePressEvent(QMouseEvent *event) override {
+    void mousePressEvent(QMouseEvent *event) override
+    {
         m_press = event->position().toPoint();
         m_armed = event->button() == Qt::LeftButton;
         event->accept();
     }
-    void mouseMoveEvent(QMouseEvent *event) override {
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
         if (m_armed && (event->buttons() & Qt::LeftButton) &&
             (event->position().toPoint() - m_press).manhattanLength() >= QApplication::startDragDistance()) {
             m_armed = false;
@@ -67,6 +75,7 @@ protected:
         }
         event->accept();
     }
+
 private:
     bool m_armed = false;
     QPoint m_press;
@@ -75,7 +84,8 @@ private:
 class DragTest : public QObject {
     Q_OBJECT
 private slots:
-    void nativeUriListAcrossProcesses() {
+    void nativeUriListAcrossProcesses()
+    {
         if (QGuiApplication::platformName() != QStringLiteral("xcb"))
             QSKIP("Native pointer injection probe requires X11/xcb; validate Wayland with compositor input tools.");
         const auto xdotool = QStandardPaths::findExecutable(QStringLiteral("xdotool"));
@@ -113,8 +123,8 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(&sender));
         QProcess pointer;
         pointer.start(xdotool, {"mousemove", "180", "170", "mousedown", "1", "sleep", "0.15",
-                               "mousemove", "230", "170", "sleep", "0.15", "mousemove", "480", "170",
-                               "sleep", "0.15", "mousemove", "530", "170", "sleep", "0.15", "mouseup", "1"});
+                                "mousemove", "230", "170", "sleep", "0.15", "mousemove", "480", "170",
+                                "sleep", "0.15", "mousemove", "530", "170", "sleep", "0.15", "mouseup", "1"});
         QVERIFY(pointer.waitForStarted(3000));
         QTRY_VERIFY_WITH_TIMEOUT(receiver.state() == QProcess::NotRunning, 6000);
         if (pointer.state() != QProcess::NotRunning)
@@ -133,7 +143,8 @@ private slots:
     }
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     QApplication app(argc, argv);
     if (app.arguments().size() == 3 && app.arguments()[1] == QStringLiteral("--receiver")) {
         DropRecorder recorder;
@@ -157,7 +168,8 @@ int main(int argc, char **argv) {
         )QML");
         if (engine.rootObjects().isEmpty()) return 3;
         QTimer::singleShot(10000, &app, [] { QCoreApplication::exit(4); });
-        std::cout << "READY\n" << std::flush;
+        std::cout << "READY\n"
+                  << std::flush;
         return app.exec();
     }
     DragTest test;

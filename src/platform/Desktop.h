@@ -49,7 +49,7 @@ public:
     void arrange(QWindow *window, const Placement &placement);
     Q_INVOKABLE void setAlwaysOnTop(QWindow *window, bool enabled);
     Q_INVOKABLE void restoreGeometry(QWindow *window, const QRect &geometry,
-                                    const QString &screenName = {});
+                                     const QString &screenName = {});
     Q_INVOKABLE void captureGeometry(QWindow *window);
     Q_INVOKABLE void reveal(const QString &path);
     Q_INVOKABLE bool open(const QString &pathOrUrl);

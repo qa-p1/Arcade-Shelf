@@ -30,10 +30,11 @@ public:
 
     static bool coversScreen(const QRect &window, const QRect &screen, int tolerance = 2);
     static bool hyprlandFullscreen(const QJsonArray &monitors, const QJsonArray &clients,
-                                  const QString &screenName, qint64 ownPid,
-                                  bool *monitorMatched = nullptr);
+                                   const QString &screenName, qint64 ownPid,
+                                   bool *monitorMatched = nullptr);
 signals:
     void changed();
+
 private:
     struct Native;
     friend struct Native;

@@ -10,8 +10,8 @@ namespace ArcadeApp {
 struct InstallSpec {
     ArcadeLink::ArcadeInstall::AppInfo app;
     QString version;
-    QString bundleName;   // macOS: "Arcade Shelf.app"
-    QString stateDir;     // where "Don't ask again" is remembered
+    QString bundleName; // macOS: "Arcade Shelf.app"
+    QString stateDir;   // where "Don't ask again" is remembered
     QStringList dataFolders;
     // Like every Arcade app, a fresh install starts at login.
     bool startAtLoginDefault = true;

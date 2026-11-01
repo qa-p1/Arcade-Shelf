@@ -69,7 +69,10 @@ using ProgramReply = std::function<void(bool, const QByteArray &)>;
 void runProgram(QObject *context, const QString &program, const QStringList &arguments,
                 ProgramReply reply, int timeoutMs = 1800)
 {
-    if (program.isEmpty()) { reply(false, {}); return; }
+    if (program.isEmpty()) {
+        reply(false, {});
+        return;
+    }
     auto *process = new QProcess(context);
     auto *deadline = new QTimer(process);
     deadline->setSingleShot(true);
@@ -79,7 +82,10 @@ void runProgram(QObject *context, const QString &program, const QStringList &arg
         if (std::exchange(*finished, true)) return;
         deadline->stop();
         output->append(process->readAllStandardOutput());
-        if (output->size() > 2 * 1024 * 1024) { output->clear(); ok = false; }
+        if (output->size() > 2 * 1024 * 1024) {
+            output->clear();
+            ok = false;
+        }
         reply(ok, *output);
         process->deleteLater();
     };
@@ -108,11 +114,7 @@ void runProgram(QObject *context, const QString &program, const QStringList &arg
 bool isolatedDesktop()
 {
     const QString platform = QGuiApplication::platformName();
-    return platform == QStringLiteral("offscreen") || platform == QStringLiteral("minimal")
-        || qEnvironmentVariableIntValue("ARCADE_SHELF_DISABLE_GLOBAL_SHORTCUT") == 1
-        || qEnvironmentVariableIntValue("ARCADE_SHELF_TESTING") == 1
-        || (!qEnvironmentVariableIsEmpty("ARCADE_HOME")
-            && qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") != 1);
+    return platform == QStringLiteral("offscreen") || platform == QStringLiteral("minimal") || qEnvironmentVariableIntValue("ARCADE_SHELF_DISABLE_GLOBAL_SHORTCUT") == 1 || qEnvironmentVariableIntValue("ARCADE_SHELF_TESTING") == 1 || (!qEnvironmentVariableIsEmpty("ARCADE_HOME") && qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") != 1);
 }
 
 bool isWayland()
@@ -142,8 +144,8 @@ QString startupPath()
 #ifdef Q_OS_WIN
     const QString appData = qEnvironmentVariable("APPDATA");
     const QString programs = QDir::isAbsolutePath(appData)
-        ? QDir(appData).filePath(QStringLiteral("Microsoft/Windows/Start Menu/Programs"))
-        : QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
+                                 ? QDir(appData).filePath(QStringLiteral("Microsoft/Windows/Start Menu/Programs"))
+                                 : QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
     return QDir(programs).filePath(QStringLiteral("Startup/Arcade Shelf.lnk"));
 #elif defined(Q_OS_MACOS)
     ArcadeLink::ArcadeInstall::Environment environment;
@@ -163,7 +165,8 @@ QString legacyStartupPath()
 {
 #ifdef Q_OS_WIN
     QString path = startupPath();
-    path.chop(3); return path + QStringLiteral("vbs");
+    path.chop(3);
+    return path + QStringLiteral("vbs");
 #elif defined(Q_OS_MACOS)
     ArcadeLink::ArcadeInstall::Environment environment;
     if (!ArcadeLink::ArcadeInstall::Environment::discover(&environment)) return {};
@@ -194,7 +197,7 @@ bool windowsLoginShortcut(const QString &path, const QString &executable, bool w
     IShellLinkW *link = nullptr;
     IPersistFile *file = nullptr;
     HRESULT result = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-        IID_IShellLinkW, reinterpret_cast<void **>(&link));
+                                      IID_IShellLinkW, reinterpret_cast<void **>(&link));
     if (SUCCEEDED(result)) result = link->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&file));
     const QString native = QDir::toNativeSeparators(path);
     if (write) {
@@ -210,8 +213,8 @@ bool windowsLoginShortcut(const QString &path, const QString &executable, bool w
         if (SUCCEEDED(result)) result = link->GetPath(target, 32768, nullptr, SLGP_RAWPATH);
         if (SUCCEEDED(result)) result = link->GetArguments(arguments, 1024);
         if (SUCCEEDED(result) && (QDir::cleanPath(QDir::fromNativeSeparators(QString::fromWCharArray(target)))
-                .compare(QDir::cleanPath(QDir::fromNativeSeparators(executable)), Qt::CaseInsensitive) != 0
-            || QString::fromWCharArray(arguments) != QStringLiteral("--background"))) result = E_FAIL;
+                                          .compare(QDir::cleanPath(QDir::fromNativeSeparators(executable)), Qt::CaseInsensitive) != 0 ||
+                                  QString::fromWCharArray(arguments) != QStringLiteral("--background"))) result = E_FAIL;
     }
     if (file) file->Release();
     if (link) link->Release();
@@ -257,22 +260,18 @@ bool ownedLoginEntry(const QString &path, const QString &executable)
 bool stableExecutable(const QString &path)
 {
     const QFileInfo info(path);
-    if (!info.isAbsolute() || !info.isFile() || !info.isExecutable()
-        || path.contains(QChar::Null) || path.contains(QLatin1Char('\n'))
-        || path.contains(QLatin1Char('\r'))) return false;
+    if (!info.isAbsolute() || !info.isFile() || !info.isExecutable() || path.contains(QChar::Null) || path.contains(QLatin1Char('\n')) || path.contains(QLatin1Char('\r'))) return false;
     const QString resolved = info.canonicalFilePath();
     if (resolved.isEmpty()) return false;
     for (const QString &temporary : {QDir::tempPath(), QStringLiteral("/tmp"),
-                                    QStringLiteral("/var/tmp"), QStringLiteral("/workspace")}) {
+                                     QStringLiteral("/var/tmp"), QStringLiteral("/workspace")}) {
         if (!temporary.isEmpty() && (resolved == temporary || resolved.startsWith(temporary + QLatin1Char('/'))))
             return false;
     }
     const QStringList components = QDir::fromNativeSeparators(resolved).split(QLatin1Char('/'), Qt::SkipEmptyParts);
     for (const QString &entry : components) {
         const QString component = entry.toLower();
-        if (component == QStringLiteral("build") || component.startsWith(QStringLiteral("build-"))
-            || component.startsWith(QStringLiteral("cmake-build-"))
-            || component.startsWith(QStringLiteral(".mount_"))) return false;
+        if (component == QStringLiteral("build") || component.startsWith(QStringLiteral("build-")) || component.startsWith(QStringLiteral("cmake-build-")) || component.startsWith(QStringLiteral(".mount_"))) return false;
     }
     return true;
 }
@@ -308,16 +307,14 @@ Shortcut parseShortcut(const QString &text)
 #else
             component = QStringLiteral("Ctrl");
 #endif
-        }
-        else if (token == QStringLiteral("option")) component = QStringLiteral("Alt");
+        } else if (token == QStringLiteral("option")) component = QStringLiteral("Alt");
         else if (token == QStringLiteral("super") || token == QStringLiteral("win")) {
 #ifdef Q_OS_MACOS
             component = QStringLiteral("Ctrl"); // Qt Control is the physical Command key on macOS.
 #else
             component = QStringLiteral("Meta");
 #endif
-        }
-        else if (token == QStringLiteral("cmd") || token == QStringLiteral("command")) {
+        } else if (token == QStringLiteral("cmd") || token == QStringLiteral("command")) {
 #ifdef Q_OS_MACOS
             component = QStringLiteral("Ctrl"); // Qt's portable Control means Command on macOS.
 #else
@@ -329,20 +326,28 @@ Shortcut parseShortcut(const QString &text)
     if (sequence.count() != 1 || sequence.isEmpty()) return result;
     result.key = sequence[0].key();
     result.modifiers = sequence[0].keyboardModifiers();
-    if (result.modifiers.testFlag(Qt::ShiftModifier)) { result.nativeModifiers << QStringLiteral("SHIFT"); result.hyprMask |= 1; }
-    if (result.modifiers.testFlag(Qt::ControlModifier)) { result.nativeModifiers << QStringLiteral("CTRL"); result.hyprMask |= 4; }
-    if (result.modifiers.testFlag(Qt::AltModifier)) { result.nativeModifiers << QStringLiteral("ALT"); result.hyprMask |= 8; }
-    if (result.modifiers.testFlag(Qt::MetaModifier)) { result.nativeModifiers << QStringLiteral("SUPER"); result.hyprMask |= 64; }
+    if (result.modifiers.testFlag(Qt::ShiftModifier)) {
+        result.nativeModifiers << QStringLiteral("SHIFT");
+        result.hyprMask |= 1;
+    }
+    if (result.modifiers.testFlag(Qt::ControlModifier)) {
+        result.nativeModifiers << QStringLiteral("CTRL");
+        result.hyprMask |= 4;
+    }
+    if (result.modifiers.testFlag(Qt::AltModifier)) {
+        result.nativeModifiers << QStringLiteral("ALT");
+        result.hyprMask |= 8;
+    }
+    if (result.modifiers.testFlag(Qt::MetaModifier)) {
+        result.nativeModifiers << QStringLiteral("SUPER");
+        result.hyprMask |= 64;
+    }
     if (result.key >= Qt::Key_A && result.key <= Qt::Key_Z) result.nativeKey = QChar(int(result.key));
     else if (result.key >= Qt::Key_0 && result.key <= Qt::Key_9) result.nativeKey = QChar(int(result.key));
     else if (result.key >= Qt::Key_F1 && result.key <= Qt::Key_F35)
         result.nativeKey = QStringLiteral("F%1").arg(int(result.key) - int(Qt::Key_F1) + 1);
     else {
-        const QHash<int, QString> keys{{Qt::Key_Space, "space"}, {Qt::Key_Tab, "Tab"},
-            {Qt::Key_Return, "Return"}, {Qt::Key_Enter, "Return"}, {Qt::Key_Escape, "Escape"},
-            {Qt::Key_Home, "Home"}, {Qt::Key_End, "End"}, {Qt::Key_Left, "Left"},
-            {Qt::Key_Right, "Right"}, {Qt::Key_Up, "Up"}, {Qt::Key_Down, "Down"},
-            {Qt::Key_PageUp, "Prior"}, {Qt::Key_PageDown, "Next"}, {Qt::Key_Insert, "Insert"}};
+        const QHash<int, QString> keys{{Qt::Key_Space, "space"}, {Qt::Key_Tab, "Tab"}, {Qt::Key_Return, "Return"}, {Qt::Key_Enter, "Return"}, {Qt::Key_Escape, "Escape"}, {Qt::Key_Home, "Home"}, {Qt::Key_End, "End"}, {Qt::Key_Left, "Left"}, {Qt::Key_Right, "Right"}, {Qt::Key_Up, "Up"}, {Qt::Key_Down, "Down"}, {Qt::Key_PageUp, "Prior"}, {Qt::Key_PageDown, "Next"}, {Qt::Key_Insert, "Insert"}};
         result.nativeKey = keys.value(int(result.key));
     }
     return result;
@@ -355,12 +360,16 @@ struct PortalShortcut {
 };
 QDBusArgument &operator<<(QDBusArgument &argument, const PortalShortcut &shortcut)
 {
-    argument.beginStructure(); argument << shortcut.id << shortcut.properties; argument.endStructure();
+    argument.beginStructure();
+    argument << shortcut.id << shortcut.properties;
+    argument.endStructure();
     return argument;
 }
 const QDBusArgument &operator>>(const QDBusArgument &argument, PortalShortcut &shortcut)
 {
-    argument.beginStructure(); argument >> shortcut.id >> shortcut.properties; argument.endStructure();
+    argument.beginStructure();
+    argument >> shortcut.id >> shortcut.properties;
+    argument.endStructure();
     return argument;
 }
 #endif
@@ -389,35 +398,43 @@ public:
     void setPath(const QString &path)
     {
         if (path == m_path || !path.startsWith(QStringLiteral("/org/freedesktop/portal/desktop/request/"))) return;
-        disconnectSignal(); m_path = path; connectSignal();
+        disconnectSignal();
+        m_path = path;
+        connectSignal();
     }
     void cancel()
     {
         m_deadline.stop();
         QDBusMessage close = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
-            m_path, QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Close"));
+                                                            m_path, QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Close"));
         QDBusConnection::sessionBus().asyncCall(close, 1000);
     }
-    void fail() { cancel(); finish(2, {}); }
+    void fail()
+    {
+        cancel();
+        finish(2, {});
+    }
 private slots:
     void response(uint code, const QVariantMap &results) { finish(code, results); }
+
 private:
     void connectSignal()
     {
         QDBusConnection::sessionBus().connect(QStringLiteral("org.freedesktop.portal.Desktop"), m_path,
-            QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), this,
-            SLOT(response(uint,QVariantMap)));
+                                              QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), this,
+                                              SLOT(response(uint, QVariantMap)));
     }
     void disconnectSignal()
     {
         QDBusConnection::sessionBus().disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), m_path,
-            QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), this,
-            SLOT(response(uint,QVariantMap)));
+                                                 QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), this,
+                                                 SLOT(response(uint, QVariantMap)));
     }
     void finish(uint code, const QVariantMap &results)
     {
         if (!m_completion) return;
-        m_deadline.stop(); disconnectSignal();
+        m_deadline.stop();
+        disconnectSignal();
         auto callback = std::exchange(m_completion, {});
         callback(code, results);
         deleteLater();
@@ -435,9 +452,16 @@ public:
 private slots:
     void activated(const QDBusObjectPath &session, const QString &shortcut,
                    qulonglong timestamp, const QVariantMap &options)
-    { Q_UNUSED(timestamp) Q_UNUSED(options) if (activation) activation(session.path(), shortcut); }
+    {
+        Q_UNUSED(timestamp)
+        Q_UNUSED(options)
+        if (activation) activation(session.path(), shortcut);
+    }
     void sessionClosed(const QVariantMap &details, const QDBusMessage &message)
-    { Q_UNUSED(details) if (closed) closed(message.path()); }
+    {
+        Q_UNUSED(details)
+        if (closed) closed(message.path());
+    }
 };
 #endif
 
@@ -477,7 +501,9 @@ struct Desktop::Native {
     std::optional<QPoint> moveOffset;
     // Hyprland 0.55+ reads `hyprctl dispatch` as Lua; older releases use the
     // classic dispatcher names. Learned from the first accepted dispatch.
-    enum class HyprSyntax { Unknown, Lua, Legacy };
+    enum class HyprSyntax { Unknown,
+                            Lua,
+                            Legacy };
     HyprSyntax hyprSyntax = HyprSyntax::Unknown;
     int hyprRounding = -1;
     QPointer<QWindow> placedWindow;
@@ -508,7 +534,9 @@ struct Desktop::Native {
 #endif
     bool hyprland() const { return !hyprctl.isEmpty() && !hyprSignature.isEmpty(); }
     QStringList hyprArguments(const QStringList &arguments) const
-    { return QStringList{QStringLiteral("-i"), hyprSignature} + arguments; }
+    {
+        return QStringList{QStringLiteral("-i"), hyprSignature} + arguments;
+    }
 };
 
 Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>())
@@ -528,20 +556,20 @@ Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>(
         setShortcutStatus(QStringLiteral("Desktop shortcut session closed; reapply the shortcut to reconnect"));
     };
     QDBusConnection::sessionBus().connect(QStringLiteral("org.freedesktop.portal.Desktop"),
-        QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.portal.GlobalShortcuts"),
-        QStringLiteral("Activated"), d->portalSignals,
-        SLOT(activated(QDBusObjectPath,QString,qulonglong,QVariantMap)));
+                                          QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.portal.GlobalShortcuts"),
+                                          QStringLiteral("Activated"), d->portalSignals,
+                                          SLOT(activated(QDBusObjectPath, QString, qulonglong, QVariantMap)));
     auto *watcher = new QDBusServiceWatcher(QStringLiteral("org.freedesktop.portal.Desktop"),
-        QDBusConnection::sessionBus(), QDBusServiceWatcher::WatchForOwnerChange, this);
+                                            QDBusConnection::sessionBus(), QDBusServiceWatcher::WatchForOwnerChange, this);
     QObject::connect(watcher, &QDBusServiceWatcher::serviceOwnerChanged, this,
-        [this](const QString &, const QString &, const QString &newOwner) {
-            d->portalSession.clear();
-            d->portalRegistered = false;
-            if (!newOwner.isEmpty() && !d->accelerator.isEmpty() && !d->isolated)
-                startPortalShortcut(++d->generation);
-            else if (!d->accelerator.isEmpty())
-                setShortcutStatus(QStringLiteral("Desktop shortcut portal disconnected"));
-        });
+                     [this](const QString &, const QString &, const QString &newOwner) {
+                         d->portalSession.clear();
+                         d->portalRegistered = false;
+                         if (!newOwner.isEmpty() && !d->accelerator.isEmpty() && !d->isolated)
+                             startPortalShortcut(++d->generation);
+                         else if (!d->accelerator.isEmpty())
+                             setShortcutStatus(QStringLiteral("Desktop shortcut portal disconnected"));
+                     });
 #endif
     if (d->hyprland()) {
         const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
@@ -549,14 +577,20 @@ Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>(
         d->hyprEvents = new QLocalSocket(this);
         QObject::connect(d->hyprEvents, &QLocalSocket::readyRead, this, [this] {
             d->hyprEventBuffer.append(d->hyprEvents->readAll());
-            if (d->hyprEventBuffer.size() > 65536) { d->hyprEventBuffer.clear(); return; }
+            if (d->hyprEventBuffer.size() > 65536) {
+                d->hyprEventBuffer.clear();
+                return;
+            }
             qsizetype newline;
             while ((newline = d->hyprEventBuffer.indexOf('\n')) >= 0) {
                 const QByteArray event = d->hyprEventBuffer.left(newline);
                 d->hyprEventBuffer.remove(0, newline + 1);
                 if (event.startsWith("configreloaded>>")) {
                     queryHyprlandRounding();
-                    if (!d->accelerator.isEmpty()) { d->hyprBound = false; installHyprlandShortcut(d->generation); }
+                    if (!d->accelerator.isEmpty()) {
+                        d->hyprBound = false;
+                        installHyprlandShortcut(d->generation);
+                    }
                 } else if (event.startsWith("openwindow>>") && d->placementValid) {
                     // ADDRESS,WORKSPACE,CLASS,TITLE. Every map (first show, or
                     // after hiding for a fullscreen app) lands wherever the
@@ -581,13 +615,13 @@ Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>(
 void Desktop::queryHyprlandRounding()
 {
     runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("getoption"), QStringLiteral("decoration:rounding")}),
-        [this](bool ok, const QByteArray &output) {
-            const QJsonValue value = QJsonDocument::fromJson(output).object().value(QStringLiteral("int"));
-            const int rounding = ok && value.isDouble() ? qBound(0, value.toInt(), 64) : -1;
-            if (rounding == d->hyprRounding) return;
-            d->hyprRounding = rounding;
-            emit compositorChanged();
-        });
+               [this](bool ok, const QByteArray &output) {
+                   const QJsonValue value = QJsonDocument::fromJson(output).object().value(QStringLiteral("int"));
+                   const int rounding = ok && value.isDouble() ? qBound(0, value.toInt(), 64) : -1;
+                   if (rounding == d->hyprRounding) return;
+                   d->hyprRounding = rounding;
+                   emit compositorChanged();
+               });
 }
 
 QRect Desktop::availableGeometry(const QString &screenName) const
@@ -666,7 +700,8 @@ bool Desktop::move(QWindow *window)
 #ifdef Q_OS_MACOS
     // Cocoa's performWindowDragWithEvent runs the native gesture synchronously.
     // Observe the final frame on the next event turn, after Qt synchronizes it.
-    else QTimer::singleShot(0, this, [this, generation] { completeMove(generation); });
+    else
+        QTimer::singleShot(0, this, [this, generation] { completeMove(generation); });
 #else
     Q_UNUSED(generation)
 #endif
@@ -688,27 +723,34 @@ void Desktop::clearMove()
 
 void Desktop::sampleMove(quint64 generation)
 {
-    if (generation != d->moveGeneration || !d->movingWindow) { clearMove(); return; }
-    if (++d->movePolls > 200) { clearMove(); return; } // 30 s: give up quietly.
+    if (generation != d->moveGeneration || !d->movingWindow) {
+        clearMove();
+        return;
+    }
+    if (++d->movePolls > 200) {
+        clearMove();
+        return;
+    } // 30 s: give up quietly.
     if (d->moveSampling) return;
     d->moveSampling = true;
     const QPointer<QWindow> guard = d->movingWindow;
     runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("cursorpos")}),
-        [this, guard, generation](bool ok, const QByteArray &output) {
-            const QJsonObject cursor = QJsonDocument::fromJson(output).object();
-            if (!ok || !guard || generation != d->moveGeneration || !cursor.contains("x")) { d->moveSampling = false; return; }
-            const QPoint pointer(cursor.value("x").toInt(), cursor.value("y").toInt());
-            ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard,
-                [this, generation, pointer](const QJsonObject &client) {
+               [this, guard, generation](bool ok, const QByteArray &output) {
+                   const QJsonObject cursor = QJsonDocument::fromJson(output).object();
+                   if (!ok || !guard || generation != d->moveGeneration || !cursor.contains("x")) {
+                       d->moveSampling = false;
+                       return;
+                   }
+                   const QPoint pointer(cursor.value("x").toInt(), cursor.value("y").toInt());
+                   ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard, [this, generation, pointer](const QJsonObject &client) {
                     d->moveSampling = false;
                     if (generation != d->moveGeneration) return;
                     const auto at = client.value("at").toArray();
                     if (at.size() != 2) return;
                     const QPoint offset = pointer - QPoint(at[0].toInt(), at[1].toInt());
                     if (!d->moveOffset) { d->moveOffset = offset; return; }
-                    if ((offset - *d->moveOffset).manhattanLength() > 2) completeMove(generation);
-                }, [this](const QString &) { d->moveSampling = false; });
-        });
+                    if ((offset - *d->moveOffset).manhattanLength() > 2) completeMove(generation); }, [this](const QString &) { d->moveSampling = false; });
+               });
 }
 
 bool Desktop::eventFilter(QObject *watched, QEvent *event)
@@ -748,9 +790,7 @@ bool Desktop::eventFilter(QObject *watched, QEvent *event)
 bool Desktop::resize(QWindow *window, int edges)
 {
     const auto flags = Qt::Edges(edges);
-    if (!window || flags == Qt::Edges() || (edges & ~int(Qt::TopEdge | Qt::BottomEdge | Qt::LeftEdge | Qt::RightEdge))
-        || (flags.testFlag(Qt::TopEdge) && flags.testFlag(Qt::BottomEdge))
-        || (flags.testFlag(Qt::LeftEdge) && flags.testFlag(Qt::RightEdge))) return false;
+    if (!window || flags == Qt::Edges() || (edges & ~int(Qt::TopEdge | Qt::BottomEdge | Qt::LeftEdge | Qt::RightEdge)) || (flags.testFlag(Qt::TopEdge) && flags.testFlag(Qt::BottomEdge)) || (flags.testFlag(Qt::LeftEdge) && flags.testFlag(Qt::RightEdge))) return false;
     clearMove();
     const bool resized = window->startSystemResize(flags);
     if (!resized) setError(QStringLiteral("The desktop did not accept resizing this window"));
@@ -784,12 +824,13 @@ QString Desktop::nearestEdge(const QRect &geometry, const QRect &available, int 
     for (const auto &candidate : candidates) {
         const bool vertical = candidate.first == QStringLiteral("left") || candidate.first == QStringLiteral("right");
         const bool overlaps = vertical
-            ? qint64(geometry.bottom()) >= qint64(available.top()) - distance
-                && qint64(geometry.top()) <= qint64(available.bottom()) + distance
-            : qint64(geometry.right()) >= qint64(available.left()) - distance
-                && qint64(geometry.left()) <= qint64(available.right()) + distance;
+                                  ? qint64(geometry.bottom()) >= qint64(available.top()) - distance && qint64(geometry.top()) <= qint64(available.bottom()) + distance
+                                  : qint64(geometry.right()) >= qint64(available.left()) - distance && qint64(geometry.left()) <= qint64(available.right()) + distance;
         if (!overlaps) continue;
-        if (candidate.second < closest) { edge = candidate.first; closest = candidate.second; }
+        if (candidate.second < closest) {
+            edge = candidate.first;
+            closest = candidate.second;
+        }
     }
     return edge;
 }
@@ -797,8 +838,7 @@ QString Desktop::nearestEdge(const QRect &geometry, const QRect &available, int 
 QRect Desktop::snappedGeometry(const QRect &geometry, const QRect &available, const QString &edge)
 {
     if (!geometry.isValid() || !available.isValid()) return geometry;
-    if (edge != QStringLiteral("left") && edge != QStringLiteral("right")
-        && edge != QStringLiteral("top") && edge != QStringLiteral("bottom")) return geometry;
+    if (edge != QStringLiteral("left") && edge != QStringLiteral("right") && edge != QStringLiteral("top") && edge != QStringLiteral("bottom")) return geometry;
     // Edge tabs can be smaller than the expanded panel's minimum dimensions.
     QRect result = clampGeometry(geometry, available, QSize(1, 1));
     if (edge == QStringLiteral("left")) result.moveLeft(available.left());
@@ -816,27 +856,37 @@ static void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QS
 {
     const QPointer<QWindow> guard(window);
     runProgram(context, hyprctl, prefix + QStringList{QStringLiteral("-j"), QStringLiteral("clients")},
-        [guard, callback = std::move(callback), failed = std::move(failed)](bool ok, const QByteArray &output) {
-            if (!guard) { failed(QStringLiteral("Shelf's window closed")); return; }
-            QJsonObject found;
-            int matches = 0;
-            if (ok) for (const auto &value : QJsonDocument::fromJson(output).array()) {
-                const auto client = value.toObject();
-                if (client.value("pid").toInteger() != QCoreApplication::applicationPid()
-                    || client.value("title").toString() != guard->title()) continue;
-                if (!QRegularExpression(QStringLiteral("^0x[0-9a-fA-F]+$")).match(client.value("address").toString()).hasMatch()) continue;
-                found = client; ++matches;
-            }
-            if (matches != 1) { failed(QStringLiteral("Couldn't identify Shelf's mapped window in Hyprland")); return; }
-            callback(found);
-        });
+               [guard, callback = std::move(callback), failed = std::move(failed)](bool ok, const QByteArray &output) {
+                   if (!guard) {
+                       failed(QStringLiteral("Shelf's window closed"));
+                       return;
+                   }
+                   QJsonObject found;
+                   int matches = 0;
+                   if (ok)
+                       for (const auto &value : QJsonDocument::fromJson(output).array()) {
+                           const auto client = value.toObject();
+                           if (client.value("pid").toInteger() != QCoreApplication::applicationPid() || client.value("title").toString() != guard->title()) continue;
+                           if (!QRegularExpression(QStringLiteral("^0x[0-9a-fA-F]+$")).match(client.value("address").toString()).hasMatch()) continue;
+                           found = client;
+                           ++matches;
+                       }
+                   if (matches != 1) {
+                       failed(QStringLiteral("Couldn't identify Shelf's mapped window in Hyprland"));
+                       return;
+                   }
+                   callback(found);
+               });
 }
 
 void Desktop::completeMove(quint64 generation)
 {
     if (generation != d->moveGeneration || !d->movingWindow) return;
     const QPointer<QWindow> guard = d->movingWindow;
-    if (!guard->isVisible()) { clearMove(); return; }
+    if (!guard->isVisible()) {
+        clearMove();
+        return;
+    }
     if (!isWayland()) {
         const QRect geometry = guard->geometry();
         QScreen *screen = screenFor(guard, {}, geometry);
@@ -844,9 +894,11 @@ void Desktop::completeMove(quint64 generation)
         if (geometry.isValid()) emit moveFinished(geometry, screen ? screen->name() : QString());
         return;
     }
-    if (!d->hyprland()) { clearMove(); return; }
-    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard,
-        [this, guard, generation](const QJsonObject &client) {
+    if (!d->hyprland()) {
+        clearMove();
+        return;
+    }
+    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), guard, [this, guard, generation](const QJsonObject &client) {
             if (!guard || generation != d->moveGeneration || guard != d->movingWindow) return;
             const auto position = client.value("at").toArray();
             const auto size = client.value("size").toArray();
@@ -857,10 +909,8 @@ void Desktop::completeMove(quint64 generation)
             clearMove();
             if (geometry.isValid()) { d->lastGeometry = geometry; d->returnTo = {}; }
             if (geometry.isValid())
-                emit moveFinished(geometry, screen ? screen->name() : QString());
-        }, [this, generation](const QString &) {
-            if (generation == d->moveGeneration) clearMove();
-        });
+                emit moveFinished(geometry, screen ? screen->name() : QString()); }, [this, generation](const QString &) {
+            if (generation == d->moveGeneration) clearMove(); });
 }
 
 void Desktop::restoreGeometry(QWindow *window, const QRect &geometry, const QString &screenName)
@@ -872,7 +922,10 @@ void Desktop::restoreGeometry(QWindow *window, const QRect &geometry, const QStr
     window->setScreen(screen);
     const QRect bounded = clampGeometry(geometry, screen->availableGeometry(), window->minimumSize());
     window->resize(bounded.size());
-    if (!isWayland()) { window->setPosition(bounded.topLeft()); return; }
+    if (!isWayland()) {
+        window->setPosition(bounded.topLeft());
+        return;
+    }
     if (!d->hyprland()) return; // xdg-shell delegates placement to compositor.
     arrange(window, Placement{bounded.size(), {}, true, bounded, screen->name()});
 }
@@ -880,7 +933,8 @@ void Desktop::restoreGeometry(QWindow *window, const QRect &geometry, const QStr
 void Desktop::dock(QWindow *window, const QString &edge)
 {
     if (!window || !QStringList{QStringLiteral("left"), QStringLiteral("right"),
-                              QStringLiteral("top"), QStringLiteral("bottom")}.contains(edge)) return;
+                                QStringLiteral("top"), QStringLiteral("bottom")}
+                        .contains(edge)) return;
     QScreen *screen = screenFor(window);
     if (!screen) return;
     QRect geometry = clampGeometry(window->geometry(), screen->availableGeometry(), window->minimumSize());
@@ -895,7 +949,10 @@ void Desktop::dock(QWindow *window, const QString &edge)
     }
     // Qt does not know a Wayland window's position; Hyprland snaps from the
     // compositor's own geometry instead.
-    if (d->hyprland()) { arrange(window, Placement{window->size(), edge, false, {}, {}}); return; }
+    if (d->hyprland()) {
+        arrange(window, Placement{window->size(), edge, false, {}, {}});
+        return;
+    }
     restoreGeometry(window, geometry, screen->name());
 }
 
@@ -908,8 +965,7 @@ void Desktop::captureGeometry(QWindow *window)
     }
     if (!d->hyprland() || !window->isVisible()) return;
     const QPointer<QWindow> guard(window);
-    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), window,
-        [this, guard](const QJsonObject &client) {
+    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), window, [this, guard](const QJsonObject &client) {
             if (!guard) return;
             const auto position = client.value("at").toArray();
             const auto size = client.value("size").toArray();
@@ -920,8 +976,7 @@ void Desktop::captureGeometry(QWindow *window)
             if (geometry.topLeft() != d->lastGeometry.topLeft()) d->returnTo = {};
             d->lastGeometry = geometry;
             QScreen *screen = screenFor(guard, {}, geometry);
-            emit geometryObserved(geometry, screen ? screen->name() : QString());
-        }, [](const QString &) { /* Window may have unmapped while observation was pending. */ });
+            emit geometryObserved(geometry, screen ? screen->name() : QString()); }, [](const QString &) { /* Window may have unmapped while observation was pending. */ });
 }
 
 void Desktop::setAlwaysOnTop(QWindow *window, bool enabled)
@@ -984,7 +1039,10 @@ void Desktop::reconcileHyprland()
 {
     const QPointer<QWindow> window = d->placedWindow;
     if (!window || !d->hyprland()) return;
-    if (d->reconciling) { d->reconcileAgain = true; return; }
+    if (d->reconciling) {
+        d->reconcileAgain = true;
+        return;
+    }
     if (!window->isVisible()) return; // The next openwindow event applies it.
     d->reconciling = true;
     d->reconcileAgain = false;
@@ -996,98 +1054,98 @@ void Desktop::reconcileHyprland()
         d->reconciling = false;
         if (std::exchange(d->reconcileAgain, false)) reconcileHyprland();
     };
-    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), window,
-        [this, window, placement, placed, serial, pinned, finish](const QJsonObject &client) {
-            runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("monitors")}),
-                [this, window, placement, placed, serial, pinned, finish, client](bool ok, const QByteArray &output) {
-                    if (!window) { finish(); return; }
-                    const QString address = client.value("address").toString();
-                    const auto at = client.value("at").toArray();
-                    const auto size = client.value("size").toArray();
-                    const QRect current = at.size() == 2 && size.size() == 2
-                        ? QRect(at[0].toInt(), at[1].toInt(), size[0].toInt(), size[1].toInt()) : QRect();
-                    // Hyprland reports monitor size in pixels, positions and
-                    // reservations (bars, gaps) in layout coordinates.
-                    const auto usableArea = [](const QJsonObject &monitor) {
-                        const double scale = monitor.value("scale").toDouble(1) > 0 ? monitor.value("scale").toDouble(1) : 1;
-                        int width = qRound(monitor.value("width").toDouble() / scale);
-                        int height = qRound(monitor.value("height").toDouble() / scale);
-                        if (monitor.value("transform").toInt() % 2) std::swap(width, height);
-                        const auto reserved = monitor.value("reserved").toArray();
-                        const int left = reserved.size() == 4 ? reserved[0].toInt() : 0, top = reserved.size() == 4 ? reserved[1].toInt() : 0;
-                        const int right = reserved.size() == 4 ? reserved[2].toInt() : 0, bottom = reserved.size() == 4 ? reserved[3].toInt() : 0;
-                        return QRect(monitor.value("x").toInt() + left, monitor.value("y").toInt() + top,
-                                     width - left - right, height - top - bottom);
-                    };
-                    QRect usable;
-                    const QJsonArray monitors = ok ? QJsonDocument::fromJson(output).array() : QJsonArray();
-                    for (const auto &value : monitors)
-                        d->usableAreas.insert(value.toObject().value("name").toString(), usableArea(value.toObject()));
-                    if (placement.restore && !placement.screen.isEmpty())
-                        for (const auto &value : monitors)
-                            if (value.toObject().value("name").toString() == placement.screen) usable = usableArea(value.toObject());
-                    if (!usable.isValid())
-                        for (const auto &value : monitors)
-                            if (value.toObject().value("id").toInt(-1) == client.value("monitor").toInt(-2)) usable = usableArea(value.toObject());
-                    QList<std::pair<QString, QString>> commands;
-                    if (!client.value("floating").toBool())
-                        commands.append({QStringLiteral("hl.dsp.window.float({action='on', window='address:%1'})").arg(address),
-                                         QStringLiteral("setfloating address:%1").arg(address)});
-                    if (placed && usable.isValid()) {
-                        // A new minimum size makes Hyprland grow the window
-                        // before this query runs. Anchor on the last settled
-                        // geometry unless only its position changed (a move
-                        // through the compositor's own bindings).
-                        const QRect anchor = d->lastGeometry.isValid() && current.size() != d->lastGeometry.size()
-                            ? d->lastGeometry : current;
-                        const bool returning = !placement.restore && d->returnTo.size() == placement.size
-                            && anchor == d->lastGeometry && usable.contains(d->returnTo);
-                        const QRect target = returning
-                            ? (placement.edge.isEmpty() ? d->returnTo : snappedGeometry(d->returnTo, usable, placement.edge))
-                            : arrangedGeometry(anchor, usable, placement.size, placement.edge,
-                                               placement.restore, placement.saved);
-                        d->returnTo = placement.restore || returning || anchor.size() == target.size() ? QRect() : anchor;
-                        if (target.size() != current.size())
-                            commands.append({QStringLiteral("hl.dsp.window.resize({x=%2, y=%3, relative=false, window='address:%1'})").arg(address).arg(target.width()).arg(target.height()),
-                                             QStringLiteral("resizewindowpixel exact %2 %3,address:%1").arg(address).arg(target.width()).arg(target.height())});
-                        if (target.topLeft() != current.topLeft())
-                            commands.append({QStringLiteral("hl.dsp.window.move({x=%2, y=%3, relative=false, window='address:%1'})").arg(address).arg(target.x()).arg(target.y()),
-                                             QStringLiteral("movewindowpixel exact %2 %3,address:%1").arg(address).arg(target.x()).arg(target.y())});
-                        qCDebug(lcPlacement) << "current" << current << "anchor" << anchor << "usable" << usable
-                                             << "size" << placement.size << "edge" << placement.edge
-                                             << "restore" << placement.restore << placement.saved << "->" << target;
-                        d->lastGeometry = target;
-                        // Later rounds keep the window where it now is.
-                        if (serial == d->placementSerial) d->placement.restore = false;
-                    } else if (placed) qWarning("Arcade Shelf: Hyprland did not report the monitor showing Shelf");
-                    if (placed && d->tabStyled != placement.tab) {
-                        // Window properties for Shelf's own window only, reset when it leaves the edge.
-                        static const std::array<std::array<const char *, 3>, 4> properties{{
-                            {"rounding", "rounding", "0"}, {"border_size", "bordersize", "0"},
-                            {"no_shadow", "noshadow", "1"}, {"no_blur", "noblur", "1"}}};
-                        for (const auto &[lua, legacy, on] : properties) {
-                            const QString value = placement.tab ? QString::fromLatin1(on) : QStringLiteral("unset");
-                            commands.append({QStringLiteral("hl.dsp.window.set_prop({prop='%2', value='%3', window='address:%1'})").arg(address, QLatin1String(lua), value),
-                                             QStringLiteral("setprop address:%1 %2 %3").arg(address, QLatin1String(legacy), value)});
-                        }
-                        d->tabStyled = placement.tab;
-                    }
-                    // The legacy dispatcher toggles, so only send it on a change.
-                    if (client.value("pinned").toBool() != pinned)
-                        commands.append({QStringLiteral("hl.dsp.window.pin({action='%2', window='address:%1'})").arg(address, pinned ? QStringLiteral("on") : QStringLiteral("off")),
-                                         QStringLiteral("pin address:%1").arg(address)});
-                    if (commands.isEmpty()) { finish(); return; }
-                    dispatchHyprland(commands, [this, finish](bool done) {
-                        if (!done) setError(QStringLiteral("Hyprland did not accept Shelf's window placement"));
-                        finish();
-                    });
-                });
-        },
-        [finish](const QString &error) {
+    ownHyprlandWindow(this, d->hyprctl, d->hyprArguments({}), window, [this, window, placement, placed, serial, pinned, finish](const QJsonObject &client) { runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("monitors")}),
+                                                                                                                                                                        [this, window, placement, placed, serial, pinned, finish, client](bool ok, const QByteArray &output) {
+                                                                                                                                                                            if (!window) {
+                                                                                                                                                                                finish();
+                                                                                                                                                                                return;
+                                                                                                                                                                            }
+                                                                                                                                                                            const QString address = client.value("address").toString();
+                                                                                                                                                                            const auto at = client.value("at").toArray();
+                                                                                                                                                                            const auto size = client.value("size").toArray();
+                                                                                                                                                                            const QRect current = at.size() == 2 && size.size() == 2
+                                                                                                                                                                                                      ? QRect(at[0].toInt(), at[1].toInt(), size[0].toInt(), size[1].toInt())
+                                                                                                                                                                                                      : QRect();
+                                                                                                                                                                            // Hyprland reports monitor size in pixels, positions and
+                                                                                                                                                                            // reservations (bars, gaps) in layout coordinates.
+                                                                                                                                                                            const auto usableArea = [](const QJsonObject &monitor) {
+                                                                                                                                                                                const double scale = monitor.value("scale").toDouble(1) > 0 ? monitor.value("scale").toDouble(1) : 1;
+                                                                                                                                                                                int width = qRound(monitor.value("width").toDouble() / scale);
+                                                                                                                                                                                int height = qRound(monitor.value("height").toDouble() / scale);
+                                                                                                                                                                                if (monitor.value("transform").toInt() % 2) std::swap(width, height);
+                                                                                                                                                                                const auto reserved = monitor.value("reserved").toArray();
+                                                                                                                                                                                const int left = reserved.size() == 4 ? reserved[0].toInt() : 0, top = reserved.size() == 4 ? reserved[1].toInt() : 0;
+                                                                                                                                                                                const int right = reserved.size() == 4 ? reserved[2].toInt() : 0, bottom = reserved.size() == 4 ? reserved[3].toInt() : 0;
+                                                                                                                                                                                return QRect(monitor.value("x").toInt() + left, monitor.value("y").toInt() + top,
+                                                                                                                                                                                             width - left - right, height - top - bottom);
+                                                                                                                                                                            };
+                                                                                                                                                                            QRect usable;
+                                                                                                                                                                            const QJsonArray monitors = ok ? QJsonDocument::fromJson(output).array() : QJsonArray();
+                                                                                                                                                                            for (const auto &value : monitors)
+                                                                                                                                                                                d->usableAreas.insert(value.toObject().value("name").toString(), usableArea(value.toObject()));
+                                                                                                                                                                            if (placement.restore && !placement.screen.isEmpty())
+                                                                                                                                                                                for (const auto &value : monitors)
+                                                                                                                                                                                    if (value.toObject().value("name").toString() == placement.screen) usable = usableArea(value.toObject());
+                                                                                                                                                                            if (!usable.isValid())
+                                                                                                                                                                                for (const auto &value : monitors)
+                                                                                                                                                                                    if (value.toObject().value("id").toInt(-1) == client.value("monitor").toInt(-2)) usable = usableArea(value.toObject());
+                                                                                                                                                                            QList<std::pair<QString, QString>> commands;
+                                                                                                                                                                            if (!client.value("floating").toBool())
+                                                                                                                                                                                commands.append({QStringLiteral("hl.dsp.window.float({action='on', window='address:%1'})").arg(address),
+                                                                                                                                                                                                 QStringLiteral("setfloating address:%1").arg(address)});
+                                                                                                                                                                            if (placed && usable.isValid()) {
+                                                                                                                                                                                // A new minimum size makes Hyprland grow the window
+                                                                                                                                                                                // before this query runs. Anchor on the last settled
+                                                                                                                                                                                // geometry unless only its position changed (a move
+                                                                                                                                                                                // through the compositor's own bindings).
+                                                                                                                                                                                const QRect anchor = d->lastGeometry.isValid() && current.size() != d->lastGeometry.size()
+                                                                                                                                                                                                         ? d->lastGeometry
+                                                                                                                                                                                                         : current;
+                                                                                                                                                                                const bool returning = !placement.restore && d->returnTo.size() == placement.size && anchor == d->lastGeometry && usable.contains(d->returnTo);
+                                                                                                                                                                                const QRect target = returning
+                                                                                                                                                                                                         ? (placement.edge.isEmpty() ? d->returnTo : snappedGeometry(d->returnTo, usable, placement.edge))
+                                                                                                                                                                                                         : arrangedGeometry(anchor, usable, placement.size, placement.edge,
+                                                                                                                                                                                                                            placement.restore, placement.saved);
+                                                                                                                                                                                d->returnTo = placement.restore || returning || anchor.size() == target.size() ? QRect() : anchor;
+                                                                                                                                                                                if (target.size() != current.size())
+                                                                                                                                                                                    commands.append({QStringLiteral("hl.dsp.window.resize({x=%2, y=%3, relative=false, window='address:%1'})").arg(address).arg(target.width()).arg(target.height()),
+                                                                                                                                                                                                     QStringLiteral("resizewindowpixel exact %2 %3,address:%1").arg(address).arg(target.width()).arg(target.height())});
+                                                                                                                                                                                if (target.topLeft() != current.topLeft())
+                                                                                                                                                                                    commands.append({QStringLiteral("hl.dsp.window.move({x=%2, y=%3, relative=false, window='address:%1'})").arg(address).arg(target.x()).arg(target.y()),
+                                                                                                                                                                                                     QStringLiteral("movewindowpixel exact %2 %3,address:%1").arg(address).arg(target.x()).arg(target.y())});
+                                                                                                                                                                                qCDebug(lcPlacement) << "current" << current << "anchor" << anchor << "usable" << usable
+                                                                                                                                                                                                     << "size" << placement.size << "edge" << placement.edge
+                                                                                                                                                                                                     << "restore" << placement.restore << placement.saved << "->" << target;
+                                                                                                                                                                                d->lastGeometry = target;
+                                                                                                                                                                                // Later rounds keep the window where it now is.
+                                                                                                                                                                                if (serial == d->placementSerial) d->placement.restore = false;
+                                                                                                                                                                            } else if (placed) qWarning("Arcade Shelf: Hyprland did not report the monitor showing Shelf");
+                                                                                                                                                                            if (placed && d->tabStyled != placement.tab) {
+                                                                                                                                                                                // Window properties for Shelf's own window only, reset when it leaves the edge.
+                                                                                                                                                                                static const std::array<std::array<const char *, 3>, 4> properties{{{"rounding", "rounding", "0"}, {"border_size", "bordersize", "0"}, {"no_shadow", "noshadow", "1"}, {"no_blur", "noblur", "1"}}};
+                                                                                                                                                                                for (const auto &[lua, legacy, on] : properties) {
+                                                                                                                                                                                    const QString value = placement.tab ? QString::fromLatin1(on) : QStringLiteral("unset");
+                                                                                                                                                                                    commands.append({QStringLiteral("hl.dsp.window.set_prop({prop='%2', value='%3', window='address:%1'})").arg(address, QLatin1String(lua), value),
+                                                                                                                                                                                                     QStringLiteral("setprop address:%1 %2 %3").arg(address, QLatin1String(legacy), value)});
+                                                                                                                                                                                }
+                                                                                                                                                                                d->tabStyled = placement.tab;
+                                                                                                                                                                            }
+                                                                                                                                                                            // The legacy dispatcher toggles, so only send it on a change.
+                                                                                                                                                                            if (client.value("pinned").toBool() != pinned)
+                                                                                                                                                                                commands.append({QStringLiteral("hl.dsp.window.pin({action='%2', window='address:%1'})").arg(address, pinned ? QStringLiteral("on") : QStringLiteral("off")),
+                                                                                                                                                                                                 QStringLiteral("pin address:%1").arg(address)});
+                                                                                                                                                                            if (commands.isEmpty()) {
+                                                                                                                                                                                finish();
+                                                                                                                                                                                return;
+                                                                                                                                                                            }
+                                                                                                                                                                            dispatchHyprland(commands, [this, finish](bool done) {
+                                                                                                                                                                                if (!done) setError(QStringLiteral("Hyprland did not accept Shelf's window placement"));
+                                                                                                                                                                                finish();
+                                                                                                                                                                            });
+                                                                                                                                                                        }); }, [finish](const QString &error) {
             // Expected while the surface is still mapping; openwindow retries.
             qCDebug(lcPlacement) << error;
-            finish();
-        });
+            finish(); });
 }
 
 void Desktop::dispatchHyprland(const QList<std::pair<QString, QString>> &commands, std::function<void(bool)> done)
@@ -1107,35 +1165,51 @@ void Desktop::dispatchHyprland(const QList<std::pair<QString, QString>> &command
     const QString lua = batch(true), legacy = batch(false);
     const auto tryLegacy = [this, legacy, accepted, done] {
         runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("--batch"), legacy}),
-            [this, accepted, done](bool ok, const QByteArray &reply) {
-                const bool good = accepted(ok, reply);
-                if (good) d->hyprSyntax = Native::HyprSyntax::Legacy;
-                else qWarning("Arcade Shelf: hyprctl rejected placement: %s", reply.trimmed().constData());
-                done(good);
-            });
+                   [this, accepted, done](bool ok, const QByteArray &reply) {
+                       const bool good = accepted(ok, reply);
+                       if (good) d->hyprSyntax = Native::HyprSyntax::Legacy;
+                       else qWarning("Arcade Shelf: hyprctl rejected placement: %s", reply.trimmed().constData());
+                       done(good);
+                   });
     };
-    if (d->hyprSyntax == Native::HyprSyntax::Legacy) { tryLegacy(); return; }
+    if (d->hyprSyntax == Native::HyprSyntax::Legacy) {
+        tryLegacy();
+        return;
+    }
     runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("--batch"), lua}),
-        [this, accepted, done, tryLegacy](bool ok, const QByteArray &reply) {
-            if (accepted(ok, reply)) { d->hyprSyntax = Native::HyprSyntax::Lua; done(true); return; }
-            if (d->hyprSyntax == Native::HyprSyntax::Unknown) { tryLegacy(); return; }
-            qWarning("Arcade Shelf: hyprctl rejected placement: %s", reply.trimmed().constData());
-            done(false);
-        });
+               [this, accepted, done, tryLegacy](bool ok, const QByteArray &reply) {
+                   if (accepted(ok, reply)) {
+                       d->hyprSyntax = Native::HyprSyntax::Lua;
+                       done(true);
+                       return;
+                   }
+                   if (d->hyprSyntax == Native::HyprSyntax::Unknown) {
+                       tryLegacy();
+                       return;
+                   }
+                   qWarning("Arcade Shelf: hyprctl rejected placement: %s", reply.trimmed().constData());
+                   done(false);
+               });
 }
 
 bool Desktop::open(const QString &pathOrUrl)
 {
-    if (pathOrUrl.contains(QChar::Null)) { setError(QStringLiteral("Invalid path")); return false; }
+    if (pathOrUrl.contains(QChar::Null)) {
+        setError(QStringLiteral("Invalid path"));
+        return false;
+    }
     QUrl url;
     if (QDir::isAbsolutePath(pathOrUrl)) {
-        if (!availablePath(pathOrUrl) || !QFileInfo::exists(pathOrUrl)) { setError(QStringLiteral("The original item is unavailable")); return false; }
+        if (!availablePath(pathOrUrl) || !QFileInfo::exists(pathOrUrl)) {
+            setError(QStringLiteral("The original item is unavailable"));
+            return false;
+        }
         url = QUrl::fromLocalFile(pathOrUrl);
     } else {
         url = QUrl(pathOrUrl, QUrl::StrictMode);
-        if (!url.isValid() || url.host().isEmpty()
-            || (url.scheme() != QStringLiteral("https") && url.scheme() != QStringLiteral("http"))) {
-            setError(QStringLiteral("Only local files and HTTP or HTTPS URLs can be opened")); return false;
+        if (!url.isValid() || url.host().isEmpty() || (url.scheme() != QStringLiteral("https") && url.scheme() != QStringLiteral("http"))) {
+            setError(QStringLiteral("Only local files and HTTP or HTTPS URLs can be opened"));
+            return false;
         }
     }
     const bool opened = QDesktopServices::openUrl(url);
@@ -1145,26 +1219,28 @@ bool Desktop::open(const QString &pathOrUrl)
 
 void Desktop::reveal(const QString &path)
 {
-    if (!availablePath(path)) { setError(QStringLiteral("The original item is unavailable")); return; }
+    if (!availablePath(path)) {
+        setError(QStringLiteral("The original item is unavailable"));
+        return;
+    }
 #ifdef Q_OS_WIN
     const QString explorer = QDir(qEnvironmentVariable("WINDIR")).filePath(QStringLiteral("explorer.exe"));
     runProgram(this, explorer, {QStringLiteral("/select,"), QDir::toNativeSeparators(path)},
-        [this, path](bool ok, const QByteArray &) {
-            if (!ok && !QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
-                setError(QStringLiteral("Couldn't show this in its folder. File Explorer didn't open it."));
-        });
+               [this, path](bool ok, const QByteArray &) {
+                   if (!ok && !QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
+                       setError(QStringLiteral("Couldn't show this in its folder. File Explorer didn't open it."));
+               });
 #elif defined(Q_OS_MACOS)
     runProgram(this, QStringLiteral("/usr/bin/open"), {QStringLiteral("-R"), path},
-        [this](bool ok, const QByteArray &) { if (!ok) setError(QStringLiteral("Couldn't show this in its folder. Finder didn't open it.")); });
+               [this](bool ok, const QByteArray &) { if (!ok) setError(QStringLiteral("Couldn't show this in its folder. Finder didn't open it.")); });
 #else
 #ifdef ARCADE_SHELF_HAVE_DBUS
     QDBusMessage request = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.FileManager1"),
-        QStringLiteral("/org/freedesktop/FileManager1"), QStringLiteral("org.freedesktop.FileManager1"), QStringLiteral("ShowItems"));
+                                                          QStringLiteral("/org/freedesktop/FileManager1"), QStringLiteral("org.freedesktop.FileManager1"), QStringLiteral("ShowItems"));
     request << QStringList{QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded)} << QString();
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(request, 2000), this);
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, path] {
-        if (watcher->reply().type() == QDBusMessage::ErrorMessage
-            && !QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
+        if (watcher->reply().type() == QDBusMessage::ErrorMessage && !QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
             setError(QStringLiteral("Couldn't show this in its folder. The file manager didn't open it."));
         watcher->deleteLater();
     });
@@ -1225,7 +1301,7 @@ QMimeData *Desktop::mimeDataForContents(const QJsonArray &contents)
             for (const auto &id : ids)
                 valid = valid && id.isString() && !id.toString().isEmpty() && id.toString().size() <= 128;
             if (valid) mime->setData(QStringLiteral("application/x-arcade-shelf-items"),
-                                    QJsonDocument(QJsonObject{{"profile", profile}, {"ids", ids}}).toJson(QJsonDocument::Compact));
+                                     QJsonDocument(QJsonObject{{"profile", profile}, {"ids", ids}}).toJson(QJsonDocument::Compact));
         }
     }
     if (!urls.isEmpty()) mime->setUrls(urls);
@@ -1243,7 +1319,10 @@ void Desktop::startDrag(QWindow *window, const QJsonArray &contents)
 {
     if (!window || contents.isEmpty()) return;
     std::unique_ptr<QMimeData> mime(mimeDataForContents(contents));
-    if (mime->formats().isEmpty()) { setError(QStringLiteral("No available items to drag")); return; }
+    if (mime->formats().isEmpty()) {
+        setError(QStringLiteral("No available items to drag"));
+        return;
+    }
     auto *drag = new QDrag(window);
     drag->setMimeData(mime.release());
     auto action = std::make_shared<int>(int(Qt::IgnoreAction));
@@ -1265,17 +1344,14 @@ QString Desktop::validateShortcut(const QString &accelerator)
     const auto shortcut = parseShortcut(accelerator);
     if (shortcut.key == Qt::Key_unknown || shortcut.nativeKey.isEmpty())
         return QStringLiteral("Choose one letter, number, function key or navigation key");
-    if (shortcut.modifiers.testFlag(Qt::KeypadModifier)
-        || shortcut.modifiers.testFlag(Qt::GroupSwitchModifier)) return QStringLiteral("This shortcut modifier is not supported");
+    if (shortcut.modifiers.testFlag(Qt::KeypadModifier) || shortcut.modifiers.testFlag(Qt::GroupSwitchModifier)) return QStringLiteral("This shortcut modifier is not supported");
     const auto mods = shortcut.modifiers;
 #ifdef Q_OS_MACOS
     const auto physicalControl = Qt::MetaModifier; // "Ctrl" parses to Qt Meta on macOS.
 #else
     const auto physicalControl = Qt::ControlModifier;
 #endif
-    const bool clipboard = ((mods == Qt::ControlModifier || mods == Qt::MetaModifier)
-        && (shortcut.key == Qt::Key_C || shortcut.key == Qt::Key_V || shortcut.key == Qt::Key_X))
-        || (shortcut.key == Qt::Key_Insert && (mods == physicalControl || mods == Qt::ShiftModifier));
+    const bool clipboard = ((mods == Qt::ControlModifier || mods == Qt::MetaModifier) && (shortcut.key == Qt::Key_C || shortcut.key == Qt::Key_V || shortcut.key == Qt::Key_X)) || (shortcut.key == Qt::Key_Insert && (mods == physicalControl || mods == Qt::ShiftModifier));
     if (clipboard) return QStringLiteral("Couldn't use this shortcut. Copy, cut and paste keys can't be global; choose another.");
     if (mods == Qt::NoModifier && !(shortcut.key >= Qt::Key_F1 && shortcut.key <= Qt::Key_F35))
         return QStringLiteral("Use a modifier with a letter or navigation key");
@@ -1283,12 +1359,18 @@ QString Desktop::validateShortcut(const QString &accelerator)
 }
 
 void Desktop::rebindShortcut(const QString &accelerator, const QString &executable,
-                            std::function<void(QJsonObject, ArcadeLink::Error)> reply)
+                             std::function<void(QJsonObject, ArcadeLink::Error)> reply)
 {
     const QString canonical = ArcadeLink::normalizeAccelerator(accelerator);
     const QString error = canonical.isEmpty() ? QStringLiteral("Invalid accelerator.") : validateShortcut(canonical);
-    if (!error.isEmpty()) { reply({}, ArcadeLink::Error::make("denied", error)); return; }
-    if (m_shortcutReply) { reply({}, ArcadeLink::Error::make("busy", "A shortcut change is in progress.")); return; }
+    if (!error.isEmpty()) {
+        reply({}, ArcadeLink::Error::make("denied", error));
+        return;
+    }
+    if (m_shortcutReply) {
+        reply({}, ArcadeLink::Error::make("busy", "A shortcut change is in progress."));
+        return;
+    }
     const QString previous = d->accelerator;
     m_shortcutReply = [this, previous, executable, reply = std::move(reply)](QJsonObject result, ArcadeLink::Error error) {
         if (error.isError()) configureShortcut(previous, executable);
@@ -1303,10 +1385,19 @@ void Desktop::configureShortcut(const QString &accelerator, const QString &execu
     d->executable = executable;
     const quint64 generation = ++d->generation;
     d->bindingToken = QStringLiteral("arcadeShelf_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
-    if (d->accelerator.isEmpty()) { setShortcutStatus(QStringLiteral("No global shortcut")); return; }
+    if (d->accelerator.isEmpty()) {
+        setShortcutStatus(QStringLiteral("No global shortcut"));
+        return;
+    }
     const QString error = validateShortcut(d->accelerator);
-    if (!error.isEmpty()) { setShortcutStatus(error); return; }
-    if (d->isolated) { setShortcutStatus(QStringLiteral("Global shortcuts are disabled in this isolated instance")); return; }
+    if (!error.isEmpty()) {
+        setShortcutStatus(error);
+        return;
+    }
+    if (d->isolated) {
+        setShortcutStatus(QStringLiteral("Global shortcuts are disabled in this isolated instance"));
+        return;
+    }
 #ifdef Q_OS_WIN
     const auto shortcut = parseShortcut(d->accelerator);
     UINT modifiers = MOD_NOREPEAT;
@@ -1318,35 +1409,15 @@ void Desktop::configureShortcut(const QString &accelerator, const QString &execu
     if ((shortcut.key >= Qt::Key_A && shortcut.key <= Qt::Key_Z) || (shortcut.key >= Qt::Key_0 && shortcut.key <= Qt::Key_9)) key = UINT(shortcut.key);
     else if (shortcut.key >= Qt::Key_F1 && shortcut.key <= Qt::Key_F24) key = VK_F1 + UINT(shortcut.key - Qt::Key_F1);
     else {
-        const QHash<int, UINT> keys{{Qt::Key_Space, VK_SPACE}, {Qt::Key_Tab, VK_TAB}, {Qt::Key_Return, VK_RETURN},
-            {Qt::Key_Enter, VK_RETURN}, {Qt::Key_Escape, VK_ESCAPE}, {Qt::Key_Home, VK_HOME}, {Qt::Key_End, VK_END},
-            {Qt::Key_Left, VK_LEFT}, {Qt::Key_Right, VK_RIGHT}, {Qt::Key_Up, VK_UP}, {Qt::Key_Down, VK_DOWN},
-            {Qt::Key_PageUp, VK_PRIOR}, {Qt::Key_PageDown, VK_NEXT}, {Qt::Key_Insert, VK_INSERT}};
+        const QHash<int, UINT> keys{{Qt::Key_Space, VK_SPACE}, {Qt::Key_Tab, VK_TAB}, {Qt::Key_Return, VK_RETURN}, {Qt::Key_Enter, VK_RETURN}, {Qt::Key_Escape, VK_ESCAPE}, {Qt::Key_Home, VK_HOME}, {Qt::Key_End, VK_END}, {Qt::Key_Left, VK_LEFT}, {Qt::Key_Right, VK_RIGHT}, {Qt::Key_Up, VK_UP}, {Qt::Key_Down, VK_DOWN}, {Qt::Key_PageUp, VK_PRIOR}, {Qt::Key_PageDown, VK_NEXT}, {Qt::Key_Insert, VK_INSERT}};
         key = keys.value(int(shortcut.key));
     }
     d->hotkeyRegistered = key && RegisterHotKey(nullptr, d->hotkeyId, modifiers, key);
     setShortcutStatus(d->hotkeyRegistered ? QStringLiteral("Ready · %1").arg(d->accelerator)
-                                         : QStringLiteral("This shortcut is unavailable or already used by another application"));
+                                          : QStringLiteral("This shortcut is unavailable or already used by another application"));
 #elif defined(Q_OS_MACOS)
     const auto shortcut = parseShortcut(d->accelerator);
-    const QHash<int, UInt32> keys{{Qt::Key_A, kVK_ANSI_A}, {Qt::Key_B, kVK_ANSI_B}, {Qt::Key_C, kVK_ANSI_C},
-        {Qt::Key_D, kVK_ANSI_D}, {Qt::Key_E, kVK_ANSI_E}, {Qt::Key_F, kVK_ANSI_F}, {Qt::Key_G, kVK_ANSI_G},
-        {Qt::Key_H, kVK_ANSI_H}, {Qt::Key_I, kVK_ANSI_I}, {Qt::Key_J, kVK_ANSI_J}, {Qt::Key_K, kVK_ANSI_K},
-        {Qt::Key_L, kVK_ANSI_L}, {Qt::Key_M, kVK_ANSI_M}, {Qt::Key_N, kVK_ANSI_N}, {Qt::Key_O, kVK_ANSI_O},
-        {Qt::Key_P, kVK_ANSI_P}, {Qt::Key_Q, kVK_ANSI_Q}, {Qt::Key_R, kVK_ANSI_R}, {Qt::Key_S, kVK_ANSI_S},
-        {Qt::Key_T, kVK_ANSI_T}, {Qt::Key_U, kVK_ANSI_U}, {Qt::Key_V, kVK_ANSI_V}, {Qt::Key_W, kVK_ANSI_W},
-        {Qt::Key_X, kVK_ANSI_X}, {Qt::Key_Y, kVK_ANSI_Y}, {Qt::Key_Z, kVK_ANSI_Z},
-        {Qt::Key_0, kVK_ANSI_0}, {Qt::Key_1, kVK_ANSI_1}, {Qt::Key_2, kVK_ANSI_2}, {Qt::Key_3, kVK_ANSI_3},
-        {Qt::Key_4, kVK_ANSI_4}, {Qt::Key_5, kVK_ANSI_5}, {Qt::Key_6, kVK_ANSI_6}, {Qt::Key_7, kVK_ANSI_7},
-        {Qt::Key_8, kVK_ANSI_8}, {Qt::Key_9, kVK_ANSI_9}, {Qt::Key_F1, kVK_F1}, {Qt::Key_F2, kVK_F2},
-        {Qt::Key_F3, kVK_F3}, {Qt::Key_F4, kVK_F4}, {Qt::Key_F5, kVK_F5}, {Qt::Key_F6, kVK_F6},
-        {Qt::Key_F7, kVK_F7}, {Qt::Key_F8, kVK_F8}, {Qt::Key_F9, kVK_F9}, {Qt::Key_F10, kVK_F10},
-        {Qt::Key_F11, kVK_F11}, {Qt::Key_F12, kVK_F12}, {Qt::Key_F13, kVK_F13}, {Qt::Key_F14, kVK_F14},
-        {Qt::Key_F15, kVK_F15}, {Qt::Key_F16, kVK_F16}, {Qt::Key_F17, kVK_F17}, {Qt::Key_F18, kVK_F18},
-        {Qt::Key_F19, kVK_F19}, {Qt::Key_F20, kVK_F20}, {Qt::Key_Space, kVK_Space}, {Qt::Key_Tab, kVK_Tab},
-        {Qt::Key_Return, kVK_Return}, {Qt::Key_Enter, kVK_ANSI_KeypadEnter}, {Qt::Key_Escape, kVK_Escape},
-        {Qt::Key_Home, kVK_Home}, {Qt::Key_End, kVK_End}, {Qt::Key_Left, kVK_LeftArrow}, {Qt::Key_Right, kVK_RightArrow},
-        {Qt::Key_Up, kVK_UpArrow}, {Qt::Key_Down, kVK_DownArrow}, {Qt::Key_PageUp, kVK_PageUp}, {Qt::Key_PageDown, kVK_PageDown}};
+    const QHash<int, UInt32> keys{{Qt::Key_A, kVK_ANSI_A}, {Qt::Key_B, kVK_ANSI_B}, {Qt::Key_C, kVK_ANSI_C}, {Qt::Key_D, kVK_ANSI_D}, {Qt::Key_E, kVK_ANSI_E}, {Qt::Key_F, kVK_ANSI_F}, {Qt::Key_G, kVK_ANSI_G}, {Qt::Key_H, kVK_ANSI_H}, {Qt::Key_I, kVK_ANSI_I}, {Qt::Key_J, kVK_ANSI_J}, {Qt::Key_K, kVK_ANSI_K}, {Qt::Key_L, kVK_ANSI_L}, {Qt::Key_M, kVK_ANSI_M}, {Qt::Key_N, kVK_ANSI_N}, {Qt::Key_O, kVK_ANSI_O}, {Qt::Key_P, kVK_ANSI_P}, {Qt::Key_Q, kVK_ANSI_Q}, {Qt::Key_R, kVK_ANSI_R}, {Qt::Key_S, kVK_ANSI_S}, {Qt::Key_T, kVK_ANSI_T}, {Qt::Key_U, kVK_ANSI_U}, {Qt::Key_V, kVK_ANSI_V}, {Qt::Key_W, kVK_ANSI_W}, {Qt::Key_X, kVK_ANSI_X}, {Qt::Key_Y, kVK_ANSI_Y}, {Qt::Key_Z, kVK_ANSI_Z}, {Qt::Key_0, kVK_ANSI_0}, {Qt::Key_1, kVK_ANSI_1}, {Qt::Key_2, kVK_ANSI_2}, {Qt::Key_3, kVK_ANSI_3}, {Qt::Key_4, kVK_ANSI_4}, {Qt::Key_5, kVK_ANSI_5}, {Qt::Key_6, kVK_ANSI_6}, {Qt::Key_7, kVK_ANSI_7}, {Qt::Key_8, kVK_ANSI_8}, {Qt::Key_9, kVK_ANSI_9}, {Qt::Key_F1, kVK_F1}, {Qt::Key_F2, kVK_F2}, {Qt::Key_F3, kVK_F3}, {Qt::Key_F4, kVK_F4}, {Qt::Key_F5, kVK_F5}, {Qt::Key_F6, kVK_F6}, {Qt::Key_F7, kVK_F7}, {Qt::Key_F8, kVK_F8}, {Qt::Key_F9, kVK_F9}, {Qt::Key_F10, kVK_F10}, {Qt::Key_F11, kVK_F11}, {Qt::Key_F12, kVK_F12}, {Qt::Key_F13, kVK_F13}, {Qt::Key_F14, kVK_F14}, {Qt::Key_F15, kVK_F15}, {Qt::Key_F16, kVK_F16}, {Qt::Key_F17, kVK_F17}, {Qt::Key_F18, kVK_F18}, {Qt::Key_F19, kVK_F19}, {Qt::Key_F20, kVK_F20}, {Qt::Key_Space, kVK_Space}, {Qt::Key_Tab, kVK_Tab}, {Qt::Key_Return, kVK_Return}, {Qt::Key_Enter, kVK_ANSI_KeypadEnter}, {Qt::Key_Escape, kVK_Escape}, {Qt::Key_Home, kVK_Home}, {Qt::Key_End, kVK_End}, {Qt::Key_Left, kVK_LeftArrow}, {Qt::Key_Right, kVK_RightArrow}, {Qt::Key_Up, kVK_UpArrow}, {Qt::Key_Down, kVK_DownArrow}, {Qt::Key_PageUp, kVK_PageUp}, {Qt::Key_PageDown, kVK_PageDown}};
     UInt32 modifiers = 0;
     if (shortcut.modifiers.testFlag(Qt::ControlModifier)) modifiers |= cmdKey;
     if (shortcut.modifiers.testFlag(Qt::AltModifier)) modifiers |= optionKey;
@@ -1359,12 +1430,12 @@ void Desktop::configureShortcut(const QString &accelerator, const QString &execu
             if (GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, nullptr,
                                   sizeof(id), nullptr, &id) != noErr || id.signature != 0x41534846 || id.id != 1) return eventNotHandledErr;
             emit static_cast<Desktop *>(context)->activated();
-            return noErr;
-        }, 1, &type, this, &d->eventHandler);
+            return noErr; }, 1, &type, this, &d->eventHandler);
     }
     const auto status = keys.contains(int(shortcut.key))
-        ? RegisterEventHotKey(keys.value(int(shortcut.key)), modifiers, EventHotKeyID{0x41534846, 1},
-                              GetApplicationEventTarget(), 0, &d->hotkey) : paramErr;
+                            ? RegisterEventHotKey(keys.value(int(shortcut.key)), modifiers, EventHotKeyID{0x41534846, 1},
+                                                  GetApplicationEventTarget(), 0, &d->hotkey)
+                            : paramErr;
     setShortcutStatus(status == noErr ? QStringLiteral("Ready · %1").arg(d->accelerator)
                                       : QStringLiteral("This shortcut is unavailable or already used by another application"));
 #else
@@ -1375,7 +1446,8 @@ void Desktop::configureShortcut(const QString &accelerator, const QString &execu
 
 bool Desktop::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
 {
-    Q_UNUSED(eventType) Q_UNUSED(result)
+    Q_UNUSED(eventType)
+    Q_UNUSED(result)
 #ifdef Q_OS_WIN
     const auto *event = static_cast<MSG *>(message);
     if (event && d->movingWindow && event->hwnd == reinterpret_cast<HWND>(d->movingNativeId)) {
@@ -1386,7 +1458,8 @@ bool Desktop::nativeEventFilter(const QByteArray &eventType, void *message, qint
         }
     }
     if (event && event->message == WM_HOTKEY && event->wParam == WPARAM(d->hotkeyId)) {
-        emit activated(); return true;
+        emit activated();
+        return true;
     }
 #elif defined(ARCADE_SHELF_NATIVE_XCB_EVENTS)
     if (eventType == QByteArrayLiteral("xcb_generic_event_t") && message && d->movingWindow) {
@@ -1420,10 +1493,10 @@ void Desktop::clearShortcut()
     for (ShelfPortalRequest *request : findChildren<ShelfPortalRequest *>()) request->fail();
     if (!d->portalSession.isEmpty()) {
         QDBusConnection::sessionBus().disconnect(QStringLiteral("org.freedesktop.portal.Desktop"),
-            d->portalSession, QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Closed"),
-            d->portalSignals, SLOT(sessionClosed(QVariantMap,QDBusMessage)));
+                                                 d->portalSession, QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Closed"),
+                                                 d->portalSignals, SLOT(sessionClosed(QVariantMap, QDBusMessage)));
         QDBusMessage close = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
-            std::exchange(d->portalSession, {}), QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Close"));
+                                                            std::exchange(d->portalSession, {}), QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Close"));
         QDBusConnection::sessionBus().asyncCall(close, 1000);
     }
 #endif
@@ -1444,90 +1517,108 @@ void Desktop::startPortalShortcut(quint64 generation)
 #else
     if (generation != d->generation || d->isolated || d->accelerator.isEmpty()) return;
     if (!QDBusConnection::sessionBus().isConnected()) {
-        setShortcutStatus(QStringLiteral("A desktop session bus is required for global shortcuts")); return;
+        setShortcutStatus(QStringLiteral("A desktop session bus is required for global shortcuts"));
+        return;
     }
     setShortcutStatus(QStringLiteral("Connecting desktop shortcut…"));
     const auto create = [this, generation] {
         if (generation != d->generation) return;
         const QString token = QStringLiteral("arcade_shelf_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
         QString sender = QDBusConnection::sessionBus().baseService();
-        sender.remove(QLatin1Char(':')); sender.replace(QLatin1Char('.'), QLatin1Char('_'));
+        sender.remove(QLatin1Char(':'));
+        sender.replace(QLatin1Char('.'), QLatin1Char('_'));
         const QString predicted = QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, token);
         auto *request = new ShelfPortalRequest(predicted, this,
-            [this, generation](uint response, const QVariantMap &results) {
-                if (generation != d->generation) return;
-                if (response != 0) {
-                    setShortcutStatus(results.value("timeout").toBool() ? QStringLiteral("Desktop shortcut request timed out")
-                        : QStringLiteral("Desktop shortcut session was declined; bind arcade-shelf --toggle in your desktop settings")); return;
-                }
-                const QVariant handle = results.value(QStringLiteral("session_handle"));
-                const QString session = handle.canConvert<QDBusObjectPath>() ? handle.value<QDBusObjectPath>().path() : handle.toString();
-                if (!session.startsWith(QStringLiteral("/org/freedesktop/portal/desktop/session/"))) {
-                    setShortcutStatus(QStringLiteral("Desktop portal returned an invalid shortcut session")); return;
-                }
-                d->portalSession = session;
-                QDBusConnection::sessionBus().connect(QStringLiteral("org.freedesktop.portal.Desktop"), session,
-                    QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Closed"),
-                    d->portalSignals, SLOT(sessionClosed(QVariantMap,QDBusMessage)));
-                const QString bindToken = QStringLiteral("arcade_shelf_bind_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
-                QString sender = QDBusConnection::sessionBus().baseService();
-                sender.remove(QLatin1Char(':')); sender.replace(QLatin1Char('.'), QLatin1Char('_'));
-                auto *binding = new ShelfPortalRequest(QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, bindToken), this,
-                    [this, generation](uint code, const QVariantMap &) {
-                        if (generation != d->generation) return;
-                        if (code != 0) { clearShortcut(); setShortcutStatus(QStringLiteral("Desktop shortcut was not granted")); return; }
-                        setShortcutStatus(QStringLiteral("Ready · %1").arg(d->accelerator));
-                        if (d->hyprland()) installHyprlandShortcut(generation);
-                    });
-                const auto parsed = parseShortcut(d->accelerator);
-                QStringList modifiers = parsed.nativeModifiers;
-                modifiers.replaceInStrings(QStringLiteral("SUPER"), QStringLiteral("LOGO"));
-                const QString preferred = (modifiers.isEmpty() ? QString() : modifiers.join(QLatin1Char('+')) + QLatin1Char('+')) + parsed.nativeKey;
-                const QList<PortalShortcut> shortcuts{{QStringLiteral("arcade-shelf-show"),
-                    {{QStringLiteral("description"), QStringLiteral("Show Arcade Shelf")}, {QStringLiteral("preferred_trigger"), preferred}}}};
-                QDBusMessage bind = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
-                    QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.portal.GlobalShortcuts"), QStringLiteral("BindShortcuts"));
-                bind << QDBusObjectPath(session) << QVariant::fromValue(shortcuts) << QString()
-                     << QVariantMap{{QStringLiteral("handle_token"), bindToken}};
-                auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(bind, 5000), this);
-                const QPointer<ShelfPortalRequest> guard(binding);
-                QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher, guard] {
-                    const auto reply = watcher->reply(); watcher->deleteLater();
-                    if (!guard) return;
-                    if (reply.type() == QDBusMessage::ErrorMessage) { guard->fail(); return; }
-                    if (!reply.arguments().isEmpty()) guard->setPath(reply.arguments().first().value<QDBusObjectPath>().path());
-                });
-            });
+                                               [this, generation](uint response, const QVariantMap &results) {
+                                                   if (generation != d->generation) return;
+                                                   if (response != 0) {
+                                                       setShortcutStatus(results.value("timeout").toBool() ? QStringLiteral("Desktop shortcut request timed out")
+                                                                                                           : QStringLiteral("Desktop shortcut session was declined; bind arcade-shelf --toggle in your desktop settings"));
+                                                       return;
+                                                   }
+                                                   const QVariant handle = results.value(QStringLiteral("session_handle"));
+                                                   const QString session = handle.canConvert<QDBusObjectPath>() ? handle.value<QDBusObjectPath>().path() : handle.toString();
+                                                   if (!session.startsWith(QStringLiteral("/org/freedesktop/portal/desktop/session/"))) {
+                                                       setShortcutStatus(QStringLiteral("Desktop portal returned an invalid shortcut session"));
+                                                       return;
+                                                   }
+                                                   d->portalSession = session;
+                                                   QDBusConnection::sessionBus().connect(QStringLiteral("org.freedesktop.portal.Desktop"), session,
+                                                                                         QStringLiteral("org.freedesktop.portal.Session"), QStringLiteral("Closed"),
+                                                                                         d->portalSignals, SLOT(sessionClosed(QVariantMap, QDBusMessage)));
+                                                   const QString bindToken = QStringLiteral("arcade_shelf_bind_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
+                                                   QString sender = QDBusConnection::sessionBus().baseService();
+                                                   sender.remove(QLatin1Char(':'));
+                                                   sender.replace(QLatin1Char('.'), QLatin1Char('_'));
+                                                   auto *binding = new ShelfPortalRequest(QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, bindToken), this,
+                                                                                          [this, generation](uint code, const QVariantMap &) {
+                                                                                              if (generation != d->generation) return;
+                                                                                              if (code != 0) {
+                                                                                                  clearShortcut();
+                                                                                                  setShortcutStatus(QStringLiteral("Desktop shortcut was not granted"));
+                                                                                                  return;
+                                                                                              }
+                                                                                              setShortcutStatus(QStringLiteral("Ready · %1").arg(d->accelerator));
+                                                                                              if (d->hyprland()) installHyprlandShortcut(generation);
+                                                                                          });
+                                                   const auto parsed = parseShortcut(d->accelerator);
+                                                   QStringList modifiers = parsed.nativeModifiers;
+                                                   modifiers.replaceInStrings(QStringLiteral("SUPER"), QStringLiteral("LOGO"));
+                                                   const QString preferred = (modifiers.isEmpty() ? QString() : modifiers.join(QLatin1Char('+')) + QLatin1Char('+')) + parsed.nativeKey;
+                                                   const QList<PortalShortcut> shortcuts{{QStringLiteral("arcade-shelf-show"),
+                                                                                          {{QStringLiteral("description"), QStringLiteral("Show Arcade Shelf")}, {QStringLiteral("preferred_trigger"), preferred}}}};
+                                                   QDBusMessage bind = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
+                                                                                                      QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.portal.GlobalShortcuts"), QStringLiteral("BindShortcuts"));
+                                                   bind << QDBusObjectPath(session) << QVariant::fromValue(shortcuts) << QString()
+                                                        << QVariantMap{{QStringLiteral("handle_token"), bindToken}};
+                                                   auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(bind, 5000), this);
+                                                   const QPointer<ShelfPortalRequest> guard(binding);
+                                                   QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher, guard] {
+                                                       const auto reply = watcher->reply();
+                                                       watcher->deleteLater();
+                                                       if (!guard) return;
+                                                       if (reply.type() == QDBusMessage::ErrorMessage) {
+                                                           guard->fail();
+                                                           return;
+                                                       }
+                                                       if (!reply.arguments().isEmpty()) guard->setPath(reply.arguments().first().value<QDBusObjectPath>().path());
+                                                   });
+                                               });
         QDBusMessage message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
-            QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.portal.GlobalShortcuts"), QStringLiteral("CreateSession"));
+                                                              QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.portal.GlobalShortcuts"), QStringLiteral("CreateSession"));
         message << QVariantMap{{QStringLiteral("handle_token"), token},
                                {QStringLiteral("session_handle_token"), token + QStringLiteral("_session")}};
         auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message, 5000), this);
         const QPointer<ShelfPortalRequest> guard(request);
         QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher, guard] {
-            const auto reply = watcher->reply(); watcher->deleteLater();
+            const auto reply = watcher->reply();
+            watcher->deleteLater();
             if (!guard) return;
-            if (reply.type() == QDBusMessage::ErrorMessage) { guard->fail(); return; }
+            if (reply.type() == QDBusMessage::ErrorMessage) {
+                guard->fail();
+                return;
+            }
             if (!reply.arguments().isEmpty()) guard->setPath(reply.arguments().first().value<QDBusObjectPath>().path());
         });
     };
-    if (d->portalRegistered) { create(); return; }
+    if (d->portalRegistered) {
+        create();
+        return;
+    }
     QDBusMessage registration = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
-        QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.host.portal.Registry"), QStringLiteral("Register"));
+                                                               QStringLiteral("/org/freedesktop/portal/desktop"), QStringLiteral("org.freedesktop.host.portal.Registry"), QStringLiteral("Register"));
     registration << OsId << QVariantMap{};
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(registration, 2500), this);
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, create] {
-        const auto reply = watcher->reply(); watcher->deleteLater();
+        const auto reply = watcher->reply();
+        watcher->deleteLater();
         if (generation != d->generation) return;
-        if (reply.type() == QDBusMessage::ErrorMessage
-            && reply.errorName() != QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod")
-            && reply.errorName() != QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface")) {
+        if (reply.type() == QDBusMessage::ErrorMessage && reply.errorName() != QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod") && reply.errorName() != QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface")) {
             // No portal at all (common on X11 desktops) is not a missing launcher.
-            const bool noPortal = reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.ServiceUnknown")
-                || reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.NameHasNoOwner");
+            const bool noPortal = reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.ServiceUnknown") || reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.NameHasNoOwner");
             setShortcutStatus(noPortal
-                ? QStringLiteral("This desktop has no portal for global shortcuts; bind arcade-shelf --toggle in its keyboard settings")
-                : QStringLiteral("Desktop identity registration failed; install dev.arcade.Shelf.desktop or bind arcade-shelf --toggle manually"));
+                                  ? QStringLiteral("This desktop has no portal for global shortcuts; bind arcade-shelf --toggle in its keyboard settings")
+                                  : QStringLiteral("Desktop identity registration failed; install dev.arcade.Shelf.desktop or bind arcade-shelf --toggle manually"));
             return;
         }
         d->portalRegistered = true;
@@ -1542,49 +1633,57 @@ void Desktop::installHyprlandShortcut(quint64 generation)
     if (generation != d->generation || !d->hyprland() || d->portalSession.isEmpty()) return;
     const auto parsed = parseShortcut(d->accelerator);
     runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("globalshortcuts")}),
-        [this, generation, parsed](bool ok, const QByteArray &output) {
-            if (generation != d->generation) return;
-            QStringList candidates;
-            if (ok) for (const auto &value : QJsonDocument::fromJson(output).array()) {
-                const QString name = value.toObject().value("name").toString();
-                if (name.endsWith(QStringLiteral(":arcade-shelf-show"))) candidates << name;
-            }
-            candidates.removeDuplicates();
-            const QString expected = OsId + QStringLiteral(":arcade-shelf-show");
-            const QString target = candidates.contains(expected) ? expected : (candidates.size() == 1 ? candidates.first() : QString());
-            if (!QRegularExpression(QStringLiteral("^[A-Za-z0-9_.:-]+$")).match(target).hasMatch()) {
-                setShortcutStatus(QStringLiteral("Portal connected; Hyprland has not published Shelf's shortcut target")); return;
-            }
-            runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("binds")}),
-                [this, generation, parsed, target](bool read, const QByteArray &bindings) {
-                    if (generation != d->generation) return;
-                    if (!read || !QJsonDocument::fromJson(bindings).isArray()) {
-                        setShortcutStatus(QStringLiteral("Couldn't check desktop shortcut collisions")); return;
-                    }
-                    bool owned = false;
-                    for (const auto &value : QJsonDocument::fromJson(bindings).array()) {
-                        const auto bind = value.toObject();
-                        if (bind.value("modmask").toInt() != parsed.hyprMask
-                            || bind.value("key").toString().compare(parsed.nativeKey, Qt::CaseInsensitive) != 0) continue;
-                        if (bind.value("description").toString() == d->bindingToken) owned = true;
-                        else if (bind.value("dispatcher").toString() == QStringLiteral("global") && bind.value("arg").toString() == target) owned = true;
-                        else { setShortcutStatus(QStringLiteral("Used by a desktop shortcut; choose another accelerator")); return; }
-                    }
-                    if (owned) { setShortcutStatus(QStringLiteral("Ready · %1").arg(d->accelerator)); return; }
-                    const QString chord = parsed.nativeModifiers.isEmpty() ? parsed.nativeKey
-                        : parsed.nativeModifiers.join(QStringLiteral(" + ")) + QStringLiteral(" + ") + parsed.nativeKey;
-                    const QString lua = QStringLiteral("if _G.%1 then pcall(function() _G.%1:remove() end) end; _G.%1=hl.bind(\"%2\",hl.dsp.global(\"%3\"),{description=\"%1\"})")
-                        .arg(d->bindingToken, chord, target);
-                    runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("eval"), lua}),
-                        [this, generation](bool installed, const QByteArray &reply) {
-                            if (generation != d->generation) return;
-                            if (installed && reply.trimmed() == QByteArrayLiteral("ok")) {
-                                d->hyprBound = true;
-                                setShortcutStatus(QStringLiteral("Ready · %1").arg(d->accelerator));
-                            } else setShortcutStatus(QStringLiteral("Portal connected; on older Hyprland bind its global Shelf target in compositor settings"));
-                        });
-                });
-        });
+               [this, generation, parsed](bool ok, const QByteArray &output) {
+                   if (generation != d->generation) return;
+                   QStringList candidates;
+                   if (ok)
+                       for (const auto &value : QJsonDocument::fromJson(output).array()) {
+                           const QString name = value.toObject().value("name").toString();
+                           if (name.endsWith(QStringLiteral(":arcade-shelf-show"))) candidates << name;
+                       }
+                   candidates.removeDuplicates();
+                   const QString expected = OsId + QStringLiteral(":arcade-shelf-show");
+                   const QString target = candidates.contains(expected) ? expected : (candidates.size() == 1 ? candidates.first() : QString());
+                   if (!QRegularExpression(QStringLiteral("^[A-Za-z0-9_.:-]+$")).match(target).hasMatch()) {
+                       setShortcutStatus(QStringLiteral("Portal connected; Hyprland has not published Shelf's shortcut target"));
+                       return;
+                   }
+                   runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("-j"), QStringLiteral("binds")}),
+                              [this, generation, parsed, target](bool read, const QByteArray &bindings) {
+                                  if (generation != d->generation) return;
+                                  if (!read || !QJsonDocument::fromJson(bindings).isArray()) {
+                                      setShortcutStatus(QStringLiteral("Couldn't check desktop shortcut collisions"));
+                                      return;
+                                  }
+                                  bool owned = false;
+                                  for (const auto &value : QJsonDocument::fromJson(bindings).array()) {
+                                      const auto bind = value.toObject();
+                                      if (bind.value("modmask").toInt() != parsed.hyprMask || bind.value("key").toString().compare(parsed.nativeKey, Qt::CaseInsensitive) != 0) continue;
+                                      if (bind.value("description").toString() == d->bindingToken) owned = true;
+                                      else if (bind.value("dispatcher").toString() == QStringLiteral("global") && bind.value("arg").toString() == target) owned = true;
+                                      else {
+                                          setShortcutStatus(QStringLiteral("Used by a desktop shortcut; choose another accelerator"));
+                                          return;
+                                      }
+                                  }
+                                  if (owned) {
+                                      setShortcutStatus(QStringLiteral("Ready · %1").arg(d->accelerator));
+                                      return;
+                                  }
+                                  const QString chord = parsed.nativeModifiers.isEmpty() ? parsed.nativeKey
+                                                                                         : parsed.nativeModifiers.join(QStringLiteral(" + ")) + QStringLiteral(" + ") + parsed.nativeKey;
+                                  const QString lua = QStringLiteral("if _G.%1 then pcall(function() _G.%1:remove() end) end; _G.%1=hl.bind(\"%2\",hl.dsp.global(\"%3\"),{description=\"%1\"})")
+                                                          .arg(d->bindingToken, chord, target);
+                                  runProgram(this, d->hyprctl, d->hyprArguments({QStringLiteral("eval"), lua}),
+                                             [this, generation](bool installed, const QByteArray &reply) {
+                                                 if (generation != d->generation) return;
+                                                 if (installed && reply.trimmed() == QByteArrayLiteral("ok")) {
+                                                     d->hyprBound = true;
+                                                     setShortcutStatus(QStringLiteral("Ready · %1").arg(d->accelerator));
+                                                 } else setShortcutStatus(QStringLiteral("Portal connected; on older Hyprland bind its global Shelf target in compositor settings"));
+                                             });
+                              });
+               });
 #else
     Q_UNUSED(generation)
 #endif
@@ -1609,8 +1708,7 @@ bool Desktop::startAtLogin() const
 
 bool Desktop::migrateLoginEntry(const QString &executable)
 {
-    const bool testingLogin = qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") == 1
-        && QDir::isAbsolutePath(qEnvironmentVariable("ARCADE_HOME"));
+    const bool testingLogin = qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") == 1 && QDir::isAbsolutePath(qEnvironmentVariable("ARCADE_HOME"));
     if (d->isolated && !testingLogin) return true;
     const QString legacy = legacyStartupPath(), target = startupPath();
     if (legacy.isEmpty() || target.isEmpty()) return true;
@@ -1630,21 +1728,29 @@ bool Desktop::migrateLoginEntry(const QString &executable)
 
 bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
 {
-    const bool testingLogin = qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") == 1
-        && QDir::isAbsolutePath(qEnvironmentVariable("ARCADE_HOME"));
-    if (d->isolated && !testingLogin) { setError(QStringLiteral("Login changes are disabled in isolated instances")); return false; }
+    const bool testingLogin = qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") == 1 && QDir::isAbsolutePath(qEnvironmentVariable("ARCADE_HOME"));
+    if (d->isolated && !testingLogin) {
+        setError(QStringLiteral("Login changes are disabled in isolated instances"));
+        return false;
+    }
     const auto receipts = ArcadeLink::ReceiptStore::discover();
-    QJsonObject receipt; QString error;
-    if (!receipts.read(QStringLiteral("arcade.shelf"), &receipt, &error)
-        || (!receipt.isEmpty() && !ArcadeLink::validateNativeReceiptPaths(receipt, &error))) {
-        setError(error); return false;
+    QJsonObject receipt;
+    QString error;
+    if (!receipts.read(QStringLiteral("arcade.shelf"), &receipt, &error) || (!receipt.isEmpty() && !ArcadeLink::validateNativeReceiptPaths(receipt, &error))) {
+        setError(error);
+        return false;
     }
     const QString target = startupPath();
-    if (target.isEmpty()) { setError(QStringLiteral("The per-user login directory is unavailable")); return false; }
+    if (target.isEmpty()) {
+        setError(QStringLiteral("The per-user login directory is unavailable"));
+        return false;
+    }
     const QString oldExecutable = receipt.isEmpty() ? executable : receiptExecutable(receipt);
     const QString recorded = receipt.value(QStringLiteral("integration")).toObject().value(QStringLiteral("autostart")).toString();
-    if (!recorded.isEmpty() && QDir::cleanPath(recorded) != QDir::cleanPath(target)
-        && QDir::cleanPath(recorded) != QDir::cleanPath(legacyStartupPath())) { setError(QStringLiteral("The receipt names a different login entry; it was kept")); return false; }
+    if (!recorded.isEmpty() && QDir::cleanPath(recorded) != QDir::cleanPath(target) && QDir::cleanPath(recorded) != QDir::cleanPath(legacyStartupPath())) {
+        setError(QStringLiteral("The receipt names a different login entry; it was kept"));
+        return false;
+    }
     const auto syncReceipt = [&] {
         if (receipt.isEmpty()) return true; // A manual run must not invent an install receipt.
         auto integration = receipt.value(QStringLiteral("integration")).toObject();
@@ -1652,63 +1758,82 @@ bool Desktop::setStartAtLogin(bool enabled, const QString &executable)
         receipt.insert(QStringLiteral("integration"), integration);
         receipt.insert(QStringLiteral("updatedAt"), ArcadeLink::nowRfc3339());
         if (receipts.write(receipt, &error)) return true;
-        setError(error); return false;
+        setError(error);
+        return false;
     };
     const auto removeLegacy = [&] {
         const QString legacy = legacyStartupPath();
         if (!legacy.isEmpty() && ownedLoginEntry(legacy, oldExecutable) && !QFile::remove(legacy)) {
-            setError(QStringLiteral("Couldn't remove Shelf's old login entry.")); return false;
+            setError(QStringLiteral("Couldn't remove Shelf's old login entry."));
+            return false;
         }
         return true;
     };
     const QFileInfo existing(target);
     const bool targetExists = loginEntryExists(target);
-    if (existing.isSymbolicLink()) { setError(QStringLiteral("The login entry is a symlink; Shelf will not replace it")); return false; }
+    if (existing.isSymbolicLink()) {
+        setError(QStringLiteral("The login entry is a symlink; Shelf will not replace it"));
+        return false;
+    }
     if (targetExists) {
         if (!ownedLoginEntry(target, oldExecutable)) {
-            setError(QStringLiteral("An unrelated login entry already uses Shelf's name")); return false;
+            setError(QStringLiteral("An unrelated login entry already uses Shelf's name"));
+            return false;
         }
     }
     if (!enabled) {
         if (!targetExists || QFile::remove(target)) return removeLegacy() && syncReceipt();
-        setError(QStringLiteral("Couldn't remove Shelf's login entry")); return false;
+        setError(QStringLiteral("Couldn't remove Shelf's login entry"));
+        return false;
     }
     const QFileInfo installed(executable);
-    const bool receiptOwned = !receipt.isEmpty() && receiptExecutable(receipt) == executable
-        && installed.isFile() && installed.isExecutable() && !executable.contains(QChar::Null)
-        && !executable.contains(QLatin1Char('\n')) && !executable.contains(QLatin1Char('\r'));
+    const bool receiptOwned = !receipt.isEmpty() && receiptExecutable(receipt) == executable && installed.isFile() && installed.isExecutable() && !executable.contains(QChar::Null) && !executable.contains(QLatin1Char('\n')) && !executable.contains(QLatin1Char('\r'));
     if (!stableExecutable(executable) && !receiptOwned) {
-        setError(QStringLiteral("Install Shelf in a permanent location before enabling start at login")); return false;
+        setError(QStringLiteral("Install Shelf in a permanent location before enabling start at login"));
+        return false;
     }
-    if (!QDir().mkpath(existing.absolutePath())) { setError(QStringLiteral("Couldn't create the per-user login directory")); return false; }
+    if (!QDir().mkpath(existing.absolutePath())) {
+        setError(QStringLiteral("Couldn't create the per-user login directory"));
+        return false;
+    }
     QByteArray bytes;
 #ifdef Q_OS_WIN
     const QString pending = target + QStringLiteral(".pending-%1.lnk").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    if (!windowsLoginShortcut(pending, executable, true)
-        || (targetExists && !QFile::remove(target)) || !QFile::rename(pending, target)) {
-        QFile::remove(pending); setError(QStringLiteral("Couldn't save Shelf's login shortcut")); return false;
+    if (!windowsLoginShortcut(pending, executable, true) || (targetExists && !QFile::remove(target)) || !QFile::rename(pending, target)) {
+        QFile::remove(pending);
+        setError(QStringLiteral("Couldn't save Shelf's login shortcut"));
+        return false;
     }
     return removeLegacy() && syncReceipt();
 #elif defined(Q_OS_MACOS)
     QXmlStreamWriter xml(&bytes);
-    xml.setAutoFormatting(true); xml.writeStartDocument();
+    xml.setAutoFormatting(true);
+    xml.writeStartDocument();
     xml.writeDTD(QStringLiteral("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"));
     xml.writeComment(QStringLiteral("Arcade Shelf managed login entry"));
-    xml.writeStartElement(QStringLiteral("plist")); xml.writeAttribute(QStringLiteral("version"), QStringLiteral("1.0"));
+    xml.writeStartElement(QStringLiteral("plist"));
+    xml.writeAttribute(QStringLiteral("version"), QStringLiteral("1.0"));
     xml.writeStartElement(QStringLiteral("dict"));
-    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("Label")); xml.writeTextElement(QStringLiteral("string"), OsId);
-    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("ProgramArguments")); xml.writeStartElement(QStringLiteral("array"));
-    xml.writeTextElement(QStringLiteral("string"), executable); xml.writeTextElement(QStringLiteral("string"), QStringLiteral("--background")); xml.writeEndElement();
-    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("RunAtLoad")); xml.writeEmptyElement(QStringLiteral("true"));
-    xml.writeEndElement(); xml.writeEndElement(); xml.writeEndDocument();
+    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("Label"));
+    xml.writeTextElement(QStringLiteral("string"), OsId);
+    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("ProgramArguments"));
+    xml.writeStartElement(QStringLiteral("array"));
+    xml.writeTextElement(QStringLiteral("string"), executable);
+    xml.writeTextElement(QStringLiteral("string"), QStringLiteral("--background"));
+    xml.writeEndElement();
+    xml.writeTextElement(QStringLiteral("key"), QStringLiteral("RunAtLoad"));
+    xml.writeEmptyElement(QStringLiteral("true"));
+    xml.writeEndElement();
+    xml.writeEndElement();
+    xml.writeEndDocument();
 #else
-    bytes = (QStringLiteral("# Arcade Shelf managed login entry\n[Desktop Entry]\nType=Application\nName=Arcade Shelf\n")
-        + QStringLiteral("Exec=%1 --background\nTerminal=false\nX-GNOME-Autostart-enabled=true\nX-Arcade-Id=arcade.shelf\n").arg(quotedDesktopExec(executable))).toUtf8();
+    bytes = (QStringLiteral("# Arcade Shelf managed login entry\n[Desktop Entry]\nType=Application\nName=Arcade Shelf\n") + QStringLiteral("Exec=%1 --background\nTerminal=false\nX-GNOME-Autostart-enabled=true\nX-Arcade-Id=arcade.shelf\n").arg(quotedDesktopExec(executable))).toUtf8();
 #endif
 #ifndef Q_OS_WIN
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
-        setError(QStringLiteral("Couldn't save Shelf's login entry")); return false;
+        setError(QStringLiteral("Couldn't save Shelf's login entry"));
+        return false;
     }
     QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     return removeLegacy() && syncReceipt();
