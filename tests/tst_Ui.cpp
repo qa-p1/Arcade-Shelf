@@ -316,7 +316,14 @@ private slots:
         QCoreApplication::processEvents();
         QVERIFY(recorder->property("recording").toBool());
         QCOMPARE(m_controller->shortcut(), QString());
-        QTest::keyClick(settings, Qt::Key_J, Qt::ControlModifier | Qt::AltModifier);
+        // The physical Control key: Qt reports it as MetaModifier on macOS
+        // (ControlModifier is Command there, which records as Super).
+#ifdef Q_OS_MACOS
+        const Qt::KeyboardModifier control = Qt::MetaModifier;
+#else
+        const Qt::KeyboardModifier control = Qt::ControlModifier;
+#endif
+        QTest::keyClick(settings, Qt::Key_J, control | Qt::AltModifier);
         QTRY_COMPARE(m_controller->shortcut(), QString("Ctrl+Alt+J"));
         QVERIFY(!recorder->property("recording").toBool());
         m_controller->attachWindow(nullptr);
