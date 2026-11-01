@@ -6,14 +6,18 @@
 #include "platform/FullscreenGuard.h"
 #include "ArcadeTrayHost.h"
 #include <QObject>
+#include <QtQml/qqmlregistration.h>
 #include <QSet>
 #include <QThread>
 #include <QVariantList>
 #include <QWindow>
 
 namespace Shelf {
+// The QML root receives the one instance as `required property ShelfController shelf`.
 class Controller : public QObject {
     Q_OBJECT
+    QML_NAMED_ELEMENT(ShelfController)
+    QML_UNCREATABLE("Created by main.cpp")
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
     Q_PROPERTY(QVariantList shelves READ shelves NOTIFY shelvesChanged)
     Q_PROPERTY(QVariantList offers READ offers NOTIFY changed)
@@ -21,7 +25,9 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantList peers READ peers NOTIFY changed)
     Q_PROPERTY(QVariantMap preferences READ preferences NOTIFY changed)
     Q_PROPERTY(QVariantMap analysisResult READ analysisResult NOTIFY changed)
-    Q_PROPERTY(QObject* backdrop READ backdrop CONSTANT)
+    // The platform backdrop behind the surface (Backdrop stays out of QML).
+    Q_PROPERTY(bool backdropActive READ backdropActive NOTIFY changed)
+    Q_PROPERTY(QString backdropStatus READ backdropStatus NOTIFY changed)
     Q_PROPERTY(QString activeShelf READ activeShelf NOTIFY changed)
     Q_PROPERTY(QString activeName READ activeName NOTIFY changed)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY changed)
@@ -31,6 +37,8 @@ class Controller : public QObject {
     Q_PROPERTY(QString shortcutWarning READ shortcutWarning NOTIFY changed)
     Q_PROPERTY(QString platformStatus READ platformStatus NOTIFY changed)
     Q_PROPERTY(QString dockEdge READ dockEdge NOTIFY changed)
+    // The remembered edge, also while the panel is open (empty when floating).
+    Q_PROPERTY(QString dockedTo READ dockedTo NOTIFY changed)
     Q_PROPERTY(int compositorRadius READ compositorRadius NOTIFY changed)
     Q_PROPERTY(int count READ count NOTIFY itemsChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY changed)
@@ -46,9 +54,15 @@ class Controller : public QObject {
     Q_PROPERTY(bool linkEnabled READ linkEnabled WRITE setLinkEnabled NOTIFY changed)
     Q_PROPERTY(bool alwaysOnTop READ alwaysOnTop WRITE setAlwaysOnTop NOTIFY changed)
     Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY changed)
+    Q_PROPERTY(bool backdropEnabled READ backdropEnabled WRITE setBackdropEnabled NOTIFY changed)
+    Q_PROPERTY(bool hoverPeek READ hoverPeek WRITE setHoverPeek NOTIFY changed)
     Q_PROPERTY(bool undoAvailable READ undoAvailable NOTIFY changed)
     Q_PROPERTY(qint64 ownedContentBytes READ ownedContentBytes NOTIFY changed)
     Q_PROPERTY(double progress READ progress NOTIFY changed)
+    // The install channel from the receipt ("stable", "nightly"); empty when
+    // this copy is not installed.
+    Q_PROPERTY(QString channel READ channel CONSTANT)
+    Q_PROPERTY(QString logsPath READ logsPath CONSTANT)
 public:
     explicit Controller(QString root, bool background, QObject *parent = nullptr);
     ~Controller() override;
@@ -60,7 +74,11 @@ public:
     QVariantList sources() const { return m_peers.sources().toVariantList(); }
     QVariantList peers() const;
     QVariantMap preferences() const;
-    QObject *backdrop() { return &m_backdrop; }
+    Backdrop *backdrop() { return &m_backdrop; }
+    bool backdropActive() const { return m_backdrop.active(); }
+    QString backdropStatus() const { return m_backdrop.status(); }
+    Q_INVOKABLE void setBackdropRegion(const QRectF &region, qreal radius) { m_backdrop.setRegion(region, radius); }
+    Q_INVOKABLE void setBackdropDark(bool dark) { m_backdrop.setDark(dark); }
     QVariantMap analysisResult() const { return m_analysis.toVariantMap(); }
     QString activeShelf() const { return m_active; }
     QString activeName() const;
@@ -73,6 +91,7 @@ public:
     // Preserve the user's edge while the panel is open; only the compact tab
     // exposes it to QML. Closing the panel returns to the same edge.
     QString dockEdge() const { return m_expanded ? QString() : m_dock; }
+    QString dockedTo() const { return m_dock; }
     // When the compositor rounds and blurs Shelf's whole window itself, the
     // surface fills the window and matches its corners.
     int compositorRadius() const { return m_desktop.compositorRadius(); }
@@ -90,6 +109,10 @@ public:
     bool linkEnabled() const { return m_settings["linkEnabled"].toBool(true); }
     bool alwaysOnTop() const { return m_settings["alwaysOnTop"].toBool(false); }
     bool reducedMotion() const { return m_settings["reducedMotion"].toBool(false); }
+    // The platform blur behind the capsule and panel (where the desktop offers one).
+    bool backdropEnabled() const { return m_settings["backdrop"].toBool(true); }
+    // Hovering the docked tab peeks the panel without taking keyboard focus.
+    bool hoverPeek() const { return m_settings["hoverPeek"].toBool(true); }
     bool undoAvailable() const { return m_undoAvailable; }
     qint64 ownedContentBytes() const { return m_ownedContentBytes; }
     double progress() const { return m_progress; }
@@ -101,6 +124,8 @@ public:
     void setLinkEnabled(bool value);
     void setAlwaysOnTop(bool value);
     void setReducedMotion(bool value);
+    void setBackdropEnabled(bool value);
+    void setHoverPeek(bool value);
     Q_INVOKABLE void toggle();
     Q_INVOKABLE void show();
     Q_INVOKABLE void peek();
@@ -127,12 +152,22 @@ public:
     Q_INVOKABLE void runPeer(QString app, QString action);
     Q_INVOKABLE void runSource(QString app, QString action);
     Q_INVOKABLE void cancelJob();
-    Q_INVOKABLE void dismissAnalysis() { m_analysis = {}; emit changed(); }
+    Q_INVOKABLE void dismissAnalysis()
+    {
+        m_analysis = {};
+        emit changed();
+    }
     Q_INVOKABLE void confirmPick();
     Q_INVOKABLE void cancelPick();
     Q_INVOKABLE void showSettings();
     Q_INVOKABLE void newCollectionFromTray();
     Q_INVOKABLE void restart();
+    Q_INVOKABLE void openLogsFolder();
+    Q_INVOKABLE void openUserGuide();
+    Q_INVOKABLE void openLicences();
+    Q_INVOKABLE void copyDiagnostics();
+    QString channel() const;
+    QString logsPath() const { return m_root + QStringLiteral("/logs"); }
     ArcadeLink::ArcadeTrayHost *trayHost() { return &m_trayHost; }
     Q_INVOKABLE void exportPortableSettings();
     Q_INVOKABLE void importPortableSettings();
@@ -144,7 +179,7 @@ public:
     Q_INVOKABLE void setPeerEnabled(QString id, bool enabled);
     Q_INVOKABLE void getPeer(QString id);
     Q_INVOKABLE void setRetention(int days);
-    Q_INVOKABLE void setQuota(int mib);
+    Q_INVOKABLE void setQuota(int mb);
     Q_INVOKABLE void setStartAtLogin(bool value);
 signals:
     void changed();
@@ -153,6 +188,9 @@ signals:
     void pulse();
     void nativeDragHoverChanged();
     void newCollectionRequested();
+    // Bring an already open Settings window to the front.
+    void settingsRaiseRequested();
+
 private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void stageImage(QImage image);
@@ -196,4 +234,4 @@ private:
     int m_dragRevision = -1;
     double m_progress = -1;
 };
-}
+} // namespace Shelf

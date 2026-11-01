@@ -151,9 +151,12 @@ The resident instance listens on a local socket and writes
 ```
 
 - Unix: a domain socket `<runtime>/<arcade-id>.sock` (mode 0600). If that path
-  exceeds 100 bytes (`sun_path` is 104 bytes on macOS), the socket goes in
-  `/tmp/arcade-<uid>/` (0700, owned by the user) under a hashed name. Clients
-  always read the address from the endpoint file.
+  exceeds 100 bytes (`sun_path` is 104 bytes on macOS), the socket goes in a
+  private `arcade-<uid>/` folder (0700, owned by the user) under a hashed name,
+  inside the first of `$XDG_RUNTIME_DIR`, `$TMPDIR` and `/tmp` (absolute values
+  only) that keeps the full path within 100 bytes. Isolated runs that set
+  `XDG_RUNTIME_DIR` or `TMPDIR` therefore keep their sockets inside their own
+  root. Clients always read the address from the endpoint file.
 - Windows: a named pipe `\\.\pipe\arcade-<hash>-<arcade-id>`, where the hash
   covers the user name and the runtime directory, with a DACL granting only
   the owner and SYSTEM (`D:P(A;;GA;;;SY)(A;;GA;;;OW)`).
@@ -688,7 +691,7 @@ at a different executable; preserve unrelated entries.
 
 - NotInstalled: “Install {app}?”; adds it to the app launcher and apps
   folder. Options Start at login and Remove the downloaded file; buttons
-  Install, Just run it once, Don't ask again for this file.
+  Install, Just run it, Don't ask again for this file.
 - InstalledElsewhere, older: “Update {app} {from} → {to}?”; Update or Run
   this copy once.
 - InstalledElsewhere, same/newer: “{app} {version} is already installed.”;
@@ -709,7 +712,7 @@ string kind, then broadcast WM_SETTINGCHANGE. Remove it when the last shim
 is gone. Never write machine Path. Publisher is qa-p1, homepage and Apps &
 features metadata are supplied. `/VERYSILENT` (Inno) and `/S` (NSIS) have
 interactive install parity; shared includes and sample verification live
-in [`packaging/windows`](packaging/windows/README.md). Their ARCADE_HOME
+in [`packaging/windows`](https://github.com/qa-p1/Arcade-Link/blob/main/packaging/windows/README.md). Their ARCADE_HOME
 test override writes an isolated registry key, never the login-critical Path.
 
 **macOS.** Offer move-to-Applications on first run (`~/Applications`, or

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Everything CI checks; see scripts/check.py.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+python=$(command -v python3 || command -v python)
+exec "$python" scripts/check.py "$@"

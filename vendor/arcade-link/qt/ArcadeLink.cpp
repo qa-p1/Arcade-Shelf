@@ -55,15 +55,21 @@ QString appName(const QString &id)
 
 QString appPitch(const QString &id)
 {
-    if (id == Ids::Box) return QStringLiteral("Convert, compress and transform files with one click.");
-    if (id == Ids::Lens) return QStringLiteral("Recognize text, codes and colors on screen, and pick a region.");
-    if (id == Ids::Look) return QStringLiteral("Preview any file instantly.");
-    if (id == Ids::Wheel) return QStringLiteral("Put any action on a one-gesture radial launcher.");
-    if (id == Ids::Clipboard) return QStringLiteral("Send content to all your devices, end-to-end encrypted.");
-    if (id == Ids::Tools) return QStringLiteral("Install and update the Arcade apps.");
-    if (id == Ids::Shelf) return QStringLiteral("Collect, organize and transfer desktop content.");
-    if (id == Ids::Find) return QStringLiteral("Find files and folders instantly.");
+    if (id == Ids::Box) return QStringLiteral("File, media, text, web and system tasks in one searchable desktop tool.");
+    if (id == Ids::Lens) return QStringLiteral("Select anything on screen and act on it.");
+    if (id == Ids::Look) return QStringLiteral("Press Space, see anything.");
+    if (id == Ids::Wheel) return QStringLiteral("A radial launcher for the desktop. Hold a key, flick toward an action, release.");
+    if (id == Ids::Clipboard) return QStringLiteral("An encrypted copy history, synced across your own devices.");
+    if (id == Ids::Tools) return QStringLiteral("The optional home for the Arcade apps.");
+    if (id == Ids::Shelf) return QStringLiteral("A floating workspace for desktop content.");
+    if (id == Ids::Find) return QStringLiteral("Press a shortcut, type, and any file or folder shows up.");
     return {};
+}
+
+QString osIdentifier(const QString &id)
+{
+    const QString name = appName(id);
+    return name.startsWith(QStringLiteral("Arcade ")) ? QStringLiteral("dev.arcade.") + name.mid(7) : QString();
 }
 
 QString releasesUrl(const QString &id)
@@ -739,11 +745,24 @@ QString socketAddress(const Locations &locations, const QString &appId)
 #else
     const QString path = QDir(locations.runtime).filePath(appId + QStringLiteral(".sock"));
     if (path.toUtf8().size() <= 100) return path;
-    const QString dir = QStringLiteral("/tmp/arcade-%1").arg(geteuid());
-    // Another local user may have created it first: never listen in a folder
-    // that is not ours and private (same rule as the Rust transport).
-    if (!ensurePrivateDir(dir)) return QString();
-    return QDir(dir).filePath(shortHash(locations.runtime + QLatin1Char('|') + appId) + QStringLiteral(".sock"));
+    // A hashed name in a private arcade-<uid>/ under the first of
+    // XDG_RUNTIME_DIR, TMPDIR and /tmp that keeps the path short (SPEC §4.1).
+    const QString name = shortHash(locations.runtime + QLatin1Char('|') + appId) + QStringLiteral(".sock");
+    QStringList bases;
+    for (const char *variable : {"XDG_RUNTIME_DIR", "TMPDIR"}) {
+        const QString value = qEnvironmentVariable(variable);
+        if (!value.isEmpty() && QDir::isAbsolutePath(value)) bases.append(value);
+    }
+    bases.append(QStringLiteral("/tmp"));
+    for (const QString &base : bases) {
+        const QString dir = QDir(base).filePath(QStringLiteral("arcade-%1").arg(geteuid()));
+        const QString candidate = QDir(dir).filePath(name);
+        if (candidate.toUtf8().size() > 100) continue;
+        // Another local user may have created it first: never listen in a folder
+        // that is not ours and private (same rule as the Rust transport).
+        return ensurePrivateDir(dir) ? candidate : QString();
+    }
+    return QString();
 #endif
 }
 

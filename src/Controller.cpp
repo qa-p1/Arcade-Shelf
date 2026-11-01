@@ -1,4 +1,6 @@
 #include "Controller.h"
+#include "ArcadeInstall.h"
+#include "ArcadePaths.h"
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
@@ -25,30 +27,42 @@
 
 namespace Shelf {
 Controller::Controller(QString root, bool background, QObject *parent)
-    : QObject(parent), m_service(new Service(root,nullptr,background)), m_peers(this), m_desktop(this), m_backdrop(this), m_fullscreen(this), m_root(std::move(root)), m_visible(!background)
+    : QObject(parent), m_service(new Service(root, nullptr, background)), m_peers(this), m_desktop(this), m_backdrop(this), m_fullscreen(this), m_root(std::move(root)), m_visible(!background)
 {
     m_service->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_service, &QObject::deleteLater);
-    connect(m_service, &Service::snapshot, this, [this](QJsonArray collections, QJsonArray content, QString active,
-                                                        QJsonObject settings, bool undo, qint64 ownedContentBytes) {
+    connect(&m_backdrop, &Backdrop::changed, this, &Controller::changed);
+    connect(m_service, &Service::snapshot, this, [this](QJsonArray collections, QJsonArray content, QString active, QJsonObject settings, bool undo, qint64 ownedContentBytes) {
         const bool first = m_settings.isEmpty();
         const QString previousShortcut = shortcut();
         const bool previousAlwaysOnTop = alwaysOnTop();
         const QString oldActive = m_active;
         const bool contentsChanged = m_items != content || m_active != active;
         const bool collectionsChanged = m_shelves != collections;
-        m_shelves = collections; m_items = content; m_active = active; m_settings = settings; m_undoAvailable = undo;
+        m_shelves = collections;
+        m_items = content;
+        m_active = active;
+        m_settings = settings;
+        m_undoAvailable = undo;
         m_ownedContentBytes = ownedContentBytes;
         // An earlier worker snapshot must not roll back an edit that is still
         // queued. Send per-key patches so intervening edits cannot overwrite
         // other preferences when acknowledgements arrive asynchronously.
         for (auto it = m_pendingSettings.begin(); it != m_pendingSettings.end(); ++it)
             m_settings[it.key()] = it.value();
-        if (oldActive != active) { m_selected.clear(); m_anchor.clear(); }
+        if (oldActive != active) {
+            m_selected.clear();
+            m_anchor.clear();
+        }
         QSet<QString> existing;
         for (auto v : m_items) existing.insert(v.toObject()["id"].toString());
         m_selected.intersect(existing);
-        if (contentsChanged) { m_itemsCacheValid = false; ++m_selectionRevision; if (!m_selected.isEmpty()) prepareSelection(); emit itemsChanged(); }
+        if (contentsChanged) {
+            m_itemsCacheValid = false;
+            ++m_selectionRevision;
+            if (!m_selected.isEmpty()) prepareSelection();
+            emit itemsChanged();
+        }
         if (collectionsChanged) emit shelvesChanged();
         m_peers.setEnabled(linkEnabled());
         const auto peerSettings = m_settings["peers"].toObject();
@@ -70,17 +84,23 @@ Controller::Controller(QString root, bool background, QObject *parent)
     });
     connect(m_service, &Service::feedback, this, [this](QString message, bool reveal) {
         feedback(message);
-        if (reveal) { m_visible = true; updateFullscreenPolicy(); emit changed(); emit pulse(); } // No requestActivate on noninteractive add.
+        if (reveal) {
+            m_visible = true;
+            updateFullscreenPolicy();
+            emit changed();
+            emit pulse();
+        } // No requestActivate on noninteractive add.
     });
     connect(m_service, &Service::showRequested, this, [this](QString, bool settings) { if (settings) showSettings(); else show(); });
     connect(m_service, &Service::toggleRequested, this, &Controller::toggle);
+    connect(m_service, &Service::hideRequested, this, &Controller::collapse);
     connect(m_service, &Service::newCollectionRequested, this, &Controller::newCollectionFromTray);
     connect(m_service, &Service::shortcutRequested, this, [this](QString accelerator) {
         m_desktop.rebindShortcut(accelerator, ArcadeLink::executablePath(),
-            [this, accelerator](QJsonObject result, ArcadeLink::Error error) {
-                if (!error.isError()) m_appliedShortcut = accelerator;
-                QMetaObject::invokeMethod(m_service, [this, result, error] { m_service->completeShortcutBinding(result, error); });
-            });
+                                 [this, accelerator](QJsonObject result, ArcadeLink::Error error) {
+                                     if (!error.isError()) m_appliedShortcut = accelerator;
+                                     QMetaObject::invokeMethod(m_service, [this, result, error] { m_service->completeShortcutBinding(result, error); });
+                                 });
     });
     connect(&m_trayHost, &ArcadeLink::ArcadeTrayHost::stateChanged, this, [this](QString state) {
         QMetaObject::invokeMethod(m_service, [this, state] { m_service->setTrayState(state); });
@@ -95,15 +115,19 @@ Controller::Controller(QString root, bool background, QObject *parent)
     connect(&m_peers, &PeerHub::finished, this, [this](QJsonObject result, ArcadeLink::Error error) {
         m_progress = -1;
         QMetaObject::invokeMethod(m_service, [this] { m_service->release(); });
-        if (error.isError()) { feedback(error.userMessage("Arcade app")); return; }
+        if (error.isError()) {
+            feedback(error.userMessage("Arcade app"));
+            return;
+        }
         const QJsonArray outputs = result["outputs"].toArray();
         QJsonArray imports;
         for (auto v : outputs) {
-            const auto o = v.toObject(); const auto type = o["type"].toString();
+            const auto o = v.toObject();
+            const auto type = o["type"].toString();
             if (type.startsWith("file/") || type == "folder/reference" || type.startsWith("text/")) imports << o;
             else if (type.startsWith("structured/") && type != "structured/region" && type != "structured/pipelines") {
                 const auto data = o["data"];
-                m_analysis = {{"title",type == "structured/file-info" ? "File inspection" : "Analysis results"},{"message",result["message"]},{"formatted",QString::fromUtf8(QJsonDocument(data.isArray() ? QJsonDocument(data.toArray()) : QJsonDocument(data.toObject())).toJson(QJsonDocument::Indented))}};
+                m_analysis = {{"title", type == "structured/file-info" ? "File inspection" : "Analysis results"}, {"message", result["message"]}, {"formatted", QString::fromUtf8(QJsonDocument(data.isArray() ? QJsonDocument(data.toArray()) : QJsonDocument(data.toObject())).toJson(QJsonDocument::Indented))}};
             }
         }
         if (!imports.isEmpty()) QMetaObject::invokeMethod(m_service, [this, imports] { m_service->add(imports); });
@@ -116,19 +140,31 @@ Controller::Controller(QString root, bool background, QObject *parent)
     connect(&m_fullscreen, &FullscreenGuard::changed, this, &Controller::changed);
     connect(&m_desktop, &Desktop::errorOccurred, this, &Controller::feedback);
     connect(&m_desktop, &Desktop::compositorChanged, this, &Controller::changed);
-    connect(&m_desktop, &Desktop::geometryObserved, this, [this](QRect actual,QString screen) {
+    connect(&m_desktop, &Desktop::geometryObserved, this, [this](QRect actual, QString screen) {
         auto geometry = m_settings["geometry"].toObject();
-        geometry["x"] = actual.x(); geometry["y"] = actual.y(); geometry["screen"] = screen;
-        geometry["frameWidth"] = actual.width(); geometry["frameHeight"] = actual.height();
-        if (m_expanded) { geometry["width"] = actual.width(); geometry["height"] = actual.height(); }
-        saveSetting("geometry",geometry);
+        geometry["x"] = actual.x();
+        geometry["y"] = actual.y();
+        geometry["screen"] = screen;
+        geometry["frameWidth"] = actual.width();
+        geometry["frameHeight"] = actual.height();
+        if (m_expanded) {
+            geometry["width"] = actual.width();
+            geometry["height"] = actual.height();
+        }
+        saveSetting("geometry", geometry);
     });
     connect(&m_desktop, &Desktop::moveFinished, this, [this](QRect actual, QString screenName) {
         if (!m_window || !actual.isValid()) return;
         auto geometry = m_settings["geometry"].toObject();
-        geometry["x"] = actual.x(); geometry["y"] = actual.y(); geometry["screen"] = screenName;
-        geometry["frameWidth"] = actual.width(); geometry["frameHeight"] = actual.height();
-        if (m_expanded) { geometry["width"] = actual.width(); geometry["height"] = actual.height(); }
+        geometry["x"] = actual.x();
+        geometry["y"] = actual.y();
+        geometry["screen"] = screenName;
+        geometry["frameWidth"] = actual.width();
+        geometry["frameHeight"] = actual.height();
+        if (m_expanded) {
+            geometry["width"] = actual.width();
+            geometry["height"] = actual.height();
+        }
         saveSetting("geometry", geometry);
         const QString edge = Desktop::nearestEdge(actual, m_desktop.availableGeometry(screenName));
         if (!edge.isEmpty()) dock(edge);
@@ -138,9 +174,21 @@ Controller::~Controller()
 {
     m_trayHost.stop();
     m_peers.cancel();
-    if (m_thread.isRunning()) { QMetaObject::invokeMethod(m_service, &Service::stop, Qt::BlockingQueuedConnection); m_thread.quit(); m_thread.wait(); }
+    if (m_thread.isRunning()) {
+        QMetaObject::invokeMethod(m_service, &Service::stop, Qt::BlockingQueuedConnection);
+        m_thread.quit();
+        m_thread.wait();
+    }
 }
-void Controller::start() { m_thread.start(); QMetaObject::invokeMethod(m_service, &Service::start); m_peers.start(); }
+void Controller::start()
+{
+    m_thread.start();
+    QMetaObject::invokeMethod(m_service, &Service::start);
+    m_peers.start();
+    // The login entry from before 0.4 (arcade.shelf) moves to dev.arcade.Shelf.
+    if (!m_desktop.migrateLoginEntry(ArcadeLink::executablePath()))
+        qWarning("Couldn't move the login entry to its new name: %s", qPrintable(m_desktop.lastError()));
+}
 void Controller::attachWindow(QWindow *window)
 {
     if (m_window) m_window->removeEventFilter(this);
@@ -157,9 +205,10 @@ void Controller::applyWindowPreferences()
 {
     if (!m_window) return;
     const auto g = m_settings["geometry"].toObject();
-    m_window->setProperty("panelWidth",qBound(440,g["width"].toInt(640),2000));
-    m_window->setProperty("panelHeight",qBound(350,g["height"].toInt(490),1600));
-    m_desktop.setAlwaysOnTop(m_window,alwaysOnTop());
+    m_window->setProperty("panelWidth", qBound(440, g["width"].toInt(640), 2000));
+    m_window->setProperty("panelHeight", qBound(350, g["height"].toInt(490), 1600));
+    m_desktop.setAlwaysOnTop(m_window, alwaysOnTop());
+    m_backdrop.setEnabled(backdropEnabled());
     alignWindow(true);
 }
 QVariantMap Controller::preferences() const
@@ -177,7 +226,7 @@ QVariantMap Controller::preferences() const
 }
 bool Controller::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched != m_window || m_picking) return QObject::eventFilter(watched,event);
+    if (watched != m_window || m_picking) return QObject::eventFilter(watched, event);
     // Hover/drag edge reveals stay noninteractive. A deliberate press promotes
     // the panel before normal QML dispatch, preserving the same click's action.
     if (event->type() == QEvent::MouseButtonPress && m_expanded && !m_focusPanel) show();
@@ -188,7 +237,10 @@ bool Controller::eventFilter(QObject *watched, QEvent *event)
         auto *drag = static_cast<QDragMoveEvent *>(event);
         const bool image = drag->mimeData()->hasImage() && !drag->mimeData()->hasUrls();
         setNativeDragHover(image);
-        if (image) { drag->acceptProposedAction(); return true; }
+        if (image) {
+            drag->acceptProposedAction();
+            return true;
+        }
     } else if (event->type() == QEvent::DragLeave) {
         setNativeDragHover(false);
     } else if (event->type() == QEvent::Drop) {
@@ -197,24 +249,43 @@ bool Controller::eventFilter(QObject *watched, QEvent *event)
         const auto *mime = drop->mimeData();
         if (mime->hasFormat("application/x-arcade-shelf-items")) {
             const auto marker = QJsonDocument::fromJson(mime->data("application/x-arcade-shelf-items")).object();
-            const QString profile = QString::fromLatin1(QCryptographicHash::hash(m_root.toUtf8(),QCryptographicHash::Sha256).toHex());
+            const QString profile = QString::fromLatin1(QCryptographicHash::hash(m_root.toUtf8(), QCryptographicHash::Sha256).toHex());
             if (marker["profile"].toString() == profile) {
                 QString before;
                 QVariant beforeValue;
-                QMetaObject::invokeMethod(m_window,"itemBeforeAt",Q_RETURN_ARG(QVariant,beforeValue),Q_ARG(QVariant,drop->position().x()),Q_ARG(QVariant,drop->position().y()));
+                QMetaObject::invokeMethod(m_window, "itemBeforeAt", Q_RETURN_ARG(QVariant, beforeValue), Q_ARG(QVariant, drop->position().x()), Q_ARG(QVariant, drop->position().y()));
                 before = beforeValue.toString();
                 QStringList moving, order;
-                for (auto id : marker["ids"].toArray()) if (!item(id.toString()).isEmpty()) moving << id.toString();
-                for (auto v : m_items) if (!moving.contains(v.toObject()["id"].toString())) order << v.toObject()["id"].toString();
-                if (!moving.contains(before)) { int index = order.indexOf(before); if (index < 0) index = order.size(); for (const auto &id : moving) order.insert(index++,id); const auto active = m_active; QMetaObject::invokeMethod(m_service,[this,active,order] { m_service->reorder(active,order); }); }
-                drop->setDropAction(Qt::CopyAction); drop->accept(); return true;
+                for (auto id : marker["ids"].toArray())
+                    if (!item(id.toString()).isEmpty()) moving << id.toString();
+                for (auto v : m_items)
+                    if (!moving.contains(v.toObject()["id"].toString())) order << v.toObject()["id"].toString();
+                if (!moving.contains(before)) {
+                    int index = order.indexOf(before);
+                    if (index < 0) index = order.size();
+                    for (const auto &id : moving) order.insert(index++, id);
+                    const auto active = m_active;
+                    QMetaObject::invokeMethod(m_service, [this, active, order] { m_service->reorder(active, order); });
+                }
+                drop->setDropAction(Qt::CopyAction);
+                drop->accept();
+                return true;
             }
         }
-        if (mime->hasImage() && !mime->hasUrls()) { stageImage(qvariant_cast<QImage>(mime->imageData())); drop->acceptProposedAction(); return true; }
+        if (mime->hasImage() && !mime->hasUrls()) {
+            stageImage(qvariant_cast<QImage>(mime->imageData()));
+            drop->acceptProposedAction();
+            return true;
+        }
     }
-    return QObject::eventFilter(watched,event);
+    return QObject::eventFilter(watched, event);
 }
-QString Controller::activeName() const { for (auto v : m_shelves) if (v.toObject()["id"] == m_active) return v.toObject()["name"].toString(); return "Quick Shelf"; }
+QString Controller::activeName() const
+{
+    for (auto v : m_shelves)
+        if (v.toObject()["id"] == m_active) return v.toObject()["name"].toString();
+    return "Quick Shelf";
+}
 bool Controller::eligible(const QJsonObject &o) const
 {
     if (!m_picking) return true;
@@ -222,7 +293,8 @@ bool Controller::eligible(const QJsonObject &o) const
     if (!o["available"].toBool(true)) return false;
     if (m_pickTypes.isEmpty()) return true;
     const QJsonObject content{{"type", o["type"]}};
-    for (const auto &pattern : m_pickTypes) if (ArcadeLink::contentMatches(pattern, content)) return true;
+    for (const auto &pattern : m_pickTypes)
+        if (ArcadeLink::contentMatches(pattern, content)) return true;
     return false;
 }
 QVariantList Controller::items() const
@@ -240,19 +312,41 @@ QVariantList Controller::items() const
     m_itemsCacheValid = true;
     return m_itemsCache;
 }
-QJsonObject Controller::item(QString id) const { for (auto v : m_items) if (v.toObject()["id"] == id) return v.toObject(); return {}; }
-QStringList Controller::selectedIds() const { QStringList ids; for (auto v : m_items) if (m_selected.contains(v.toObject()["id"].toString())) ids << v.toObject()["id"].toString(); return ids; }
+QJsonObject Controller::item(QString id) const
+{
+    for (auto v : m_items)
+        if (v.toObject()["id"] == id) return v.toObject();
+    return {};
+}
+QStringList Controller::selectedIds() const
+{
+    QStringList ids;
+    for (auto v : m_items)
+        if (m_selected.contains(v.toObject()["id"].toString())) ids << v.toObject()["id"].toString();
+    return ids;
+}
 QJsonArray Controller::cachedContents() const
 {
     QJsonArray result, paths;
     QString kind;
     qint64 total = 0;
     for (auto v : m_items) {
-        auto o = v.toObject(); if (!m_selected.contains(o["id"].toString())) continue;
+        auto o = v.toObject();
+        if (!m_selected.contains(o["id"].toString())) continue;
         const QString type = o["type"].toString() == "text/rich" ? QStringLiteral("text/plain") : o["type"].toString();
-        if (type.startsWith("file/")) { paths << o["path"]; if (kind.isEmpty()) kind = type; else if (kind != type) kind = "file/any"; total += o["size"].toInteger(); }
-        else if (type == "folder/reference") result << QJsonObject{{"type", type}, {"path", o["path"]}};
-        else { QJsonObject c{{"type", type}, {"size", o["size"]}}; if (o["size"].toInteger() > 256 * 1024) c["path"] = o["path"]; else c["text"] = o["text"]; if (type == "text/rich") c["html"] = o["html"]; result << c; }
+        if (type.startsWith("file/")) {
+            paths << o["path"];
+            if (kind.isEmpty()) kind = type;
+            else if (kind != type) kind = "file/any";
+            total += o["size"].toInteger();
+        } else if (type == "folder/reference") result << QJsonObject{{"type", type}, {"path", o["path"]}};
+        else {
+            QJsonObject c{{"type", type}, {"size", o["size"]}};
+            if (o["size"].toInteger() > 256 * 1024) c["path"] = o["path"];
+            else c["text"] = o["text"];
+            if (type == "text/rich") c["html"] = o["html"];
+            result << c;
+        }
     }
     if (paths.size() == 1) result.prepend(QJsonObject{{"type", kind}, {"path", paths[0]}, {"size", total}});
     else if (!paths.isEmpty()) result.prepend(QJsonObject{{"type", kind + "[]"}, {"paths", paths}, {"size", total}});
@@ -261,10 +355,13 @@ QJsonArray Controller::cachedContents() const
 QVariantList Controller::offers() const { return m_peers.offers(cachedContents()).toVariantList(); }
 QVariantList Controller::peers() const
 {
-    QVariantList rows; QSet<QString> known;
+    QVariantList rows;
+    QSet<QString> known;
     for (auto v : m_peers.manifests()) {
-        auto o = v.toObject(); if (o["id"] == AppId) continue;
-        const QString id = o["id"].toString(); known.insert(id);
+        auto o = v.toObject();
+        if (o["id"] == AppId) continue;
+        const QString id = o["id"].toString();
+        known.insert(id);
         rows << QVariantMap{{"id", id}, {"name", o["name"].toString()}, {"version", o["version"].toString()}, {"installed", true}, {"running", o["running"].toBool()}, {"enabled", m_settings["peers"].toObject()[id].toBool(true)}, {"linkEnabled", o["settings"].toObject()["linkEnabled"].toBool(true)}};
     }
     for (const auto &id : QStringList{"arcade.look", "arcade.lens", "arcade.box", "arcade.wheel", "arcade.clipboard", "arcade.find", "arcade.tools"}) {
@@ -275,27 +372,91 @@ QVariantList Controller::peers() const
 QString Controller::shortcutWarning() const
 {
     const QString normalized = ArcadeLink::normalizeAccelerator(shortcut());
-    for (auto v : m_peers.manifests()) { auto app = v.toObject(); if (app["id"] == AppId) continue; for (auto s : app["shortcuts"].toArray()) if (!normalized.isEmpty() && ArcadeLink::normalizeAccelerator(s.toObject()["accelerator"].toString()) == normalized) return "Used by " + app["name"].toString(); }
+    for (auto v : m_peers.manifests()) {
+        auto app = v.toObject();
+        if (app["id"] == AppId) continue;
+        for (auto s : app["shortcuts"].toArray())
+            if (!normalized.isEmpty() && ArcadeLink::normalizeAccelerator(s.toObject()["accelerator"].toString()) == normalized) return "Used by " + app["name"].toString();
+    }
     return {};
 }
 void Controller::saveSetting(QString key, QJsonValue value)
 {
     if (m_settings[key] == value) return;
-    m_settings[key] = value; m_pendingSettings[key] = value;
-    const QJsonObject patch{{key,value}};
+    m_settings[key] = value;
+    m_pendingSettings[key] = value;
+    const QJsonObject patch{{key, value}};
     QMetaObject::invokeMethod(m_service, [this, patch] { m_service->saveSettings(patch); });
     emit changed();
 }
-void Controller::feedback(QString message) { m_message = std::move(message); emit changed(); }
-void Controller::setFilter(QString value) { if (m_filter == value) return; m_filter = std::move(value); m_itemsCacheValid = false; emit itemsChanged(); emit changed(); }
-void Controller::setTheme(QString value) { if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value); }
-void Controller::setShortcut(QString value) { if (value.size() > 100) return; saveSetting("shortcut", value); if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(value, ArcadeLink::executablePath()); else feedback(shortcutWarning()); }
-void Controller::setExpanded(bool value) { if (value) show(); else collapse(); }
-void Controller::setSettingsOpen(bool value) { m_settingsOpen = value; if (value) { refreshStartAtLogin(); show(); } emit changed(); }
-void Controller::setLinkEnabled(bool value) { saveSetting("linkEnabled", value); m_peers.setEnabled(value); }
-void Controller::setAlwaysOnTop(bool value) { saveSetting("alwaysOnTop", value); if (m_window) m_desktop.setAlwaysOnTop(m_window, value); }
+void Controller::feedback(QString message)
+{
+    m_message = std::move(message);
+    emit changed();
+    // "Copied" shows for 1.5 s as in every Arcade app (STANDARD §8.1), other
+    // notes for 5 s; an error stays until the next message.
+    if (m_message.isEmpty() || m_message.startsWith(QStringLiteral("Couldn't"))) return;
+    const QString shown = m_message;
+    QTimer::singleShot(shown.startsWith(QStringLiteral("Copied")) ? 1500 : 5000, this, [this, shown] {
+        if (m_message != shown) return;
+        m_message.clear();
+        emit changed();
+    });
+}
+void Controller::setFilter(QString value)
+{
+    if (m_filter == value) return;
+    m_filter = std::move(value);
+    m_itemsCacheValid = false;
+    emit itemsChanged();
+    emit changed();
+}
+void Controller::setTheme(QString value)
+{
+    if (QStringList{"system", "dark", "light"}.contains(value)) saveSetting("theme", value);
+}
+void Controller::setShortcut(QString value)
+{
+    if (value.size() > 100) return;
+    saveSetting("shortcut", value);
+    if (shortcutWarning().isEmpty()) m_desktop.configureShortcut(value, ArcadeLink::executablePath());
+    else feedback(shortcutWarning());
+}
+void Controller::setExpanded(bool value)
+{
+    if (value) show();
+    else collapse();
+}
+// Settings is its own window: opening or closing it leaves the panel alone.
+void Controller::setSettingsOpen(bool value)
+{
+    if (m_settingsOpen == value) return;
+    m_settingsOpen = value;
+    if (value) refreshStartAtLogin();
+    emit changed();
+}
+void Controller::setLinkEnabled(bool value)
+{
+    saveSetting("linkEnabled", value);
+    m_peers.setEnabled(value);
+}
+void Controller::setAlwaysOnTop(bool value)
+{
+    saveSetting("alwaysOnTop", value);
+    if (m_window) m_desktop.setAlwaysOnTop(m_window, value);
+}
 void Controller::setReducedMotion(bool value) { saveSetting("reducedMotion", value); }
-void Controller::toggle() { if (m_expanded) collapse(); else show(); }
+void Controller::setBackdropEnabled(bool value)
+{
+    saveSetting("backdrop", value);
+    m_backdrop.setEnabled(value);
+}
+void Controller::setHoverPeek(bool value) { saveSetting("hoverPeek", value); }
+void Controller::toggle()
+{
+    if (m_expanded) collapse();
+    else show();
+}
 void Controller::alignWindow(bool restore)
 {
     // QML must apply the new panel/tab size before the native adapter aligns
@@ -319,7 +480,8 @@ void Controller::alignWindow(bool restore)
 void Controller::setNativeDragHover(bool hovering)
 {
     if (m_nativeDragHover == hovering) return;
-    m_nativeDragHover = hovering; emit nativeDragHoverChanged();
+    m_nativeDragHover = hovering;
+    emit nativeDragHoverChanged();
 }
 void Controller::updateFullscreenPolicy()
 {
@@ -329,19 +491,27 @@ void Controller::updateFullscreenPolicy()
 void Controller::show()
 {
     const bool opening = !m_expanded;
-    m_visible = true; m_expanded = true; m_focusPanel = true;
+    m_visible = true;
+    m_expanded = true;
+    m_focusPanel = true;
     updateFullscreenPolicy();
     emit changed();
     // QWindow::show() on a mapped Wayland window sends unset_maximized, which
     // Hyprland answers by maximizing it. QML already maps it from `visible`.
-    if (m_window) { if (!m_window->isVisible()) m_window->show(); m_window->raise(); m_window->requestActivate(); }
+    if (m_window) {
+        if (!m_window->isVisible()) m_window->show();
+        m_window->raise();
+        m_window->requestActivate();
+    }
     if (opening) alignWindow();
     QMetaObject::invokeMethod(m_service, &Service::refresh);
 }
 void Controller::peek()
 {
     if (m_expanded || m_dock.isEmpty() || m_picking) return;
-    m_visible = true; m_expanded = true; m_focusPanel = false;
+    m_visible = true;
+    m_expanded = true;
+    m_focusPanel = false;
     updateFullscreenPolicy();
     emit changed();
     if (m_window && !m_window->isVisible()) m_window->show();
@@ -350,9 +520,13 @@ void Controller::peek()
 }
 void Controller::collapse()
 {
-    if (m_picking) { cancelPick(); return; }
+    if (m_picking) {
+        cancelPick();
+        return;
+    }
     const bool closing = m_expanded;
-    m_expanded = false; m_focusPanel = false; m_settingsOpen = false;
+    m_expanded = false;
+    m_focusPanel = false;
     updateFullscreenPolicy();
     emit changed();
     if (closing) alignWindow();
@@ -371,78 +545,164 @@ void Controller::acceptDrop(QVariant urls, QString text, QString html)
     if (inputs.isEmpty() && !text.isEmpty()) {
         const QUrl url(text.trimmed());
         QString type = !html.isEmpty() ? "text/rich" : ((url.isValid() && (url.scheme() == "http" || url.scheme() == "https") && !text.contains('\n')) ? "text/url" : "text/plain");
-        QJsonObject c = ArcadeLink::textContent(type, text); if (!html.isEmpty()) c["html"] = html; inputs << c;
+        QJsonObject c = ArcadeLink::textContent(type, text);
+        if (!html.isEmpty()) c["html"] = html;
+        inputs << c;
     }
-    if (inputs.isEmpty()) { feedback("This content cannot be staged."); return; }
+    if (inputs.isEmpty()) {
+        feedback("Couldn't collect this. Shelf keeps files, folders, images, text and links.");
+        return;
+    }
     QMetaObject::invokeMethod(m_service, [this, inputs] {
         QJsonArray normalized;
         QStringList generated;
         for (auto v : inputs) {
-            auto o = v.toObject(); const auto bytes = o["text"].toString().toUtf8();
-            if (o["type"].toString().startsWith("text/") && bytes.size() + o["html"].toString().toUtf8().size() > 256*1024) {
-                if (bytes.size() > 16*1024*1024) { m_service->add({}); return; }
+            auto o = v.toObject();
+            const auto bytes = o["text"].toString().toUtf8();
+            if (o["type"].toString().startsWith("text/") && bytes.size() + o["html"].toString().toUtf8().size() > 256 * 1024) {
+                if (bytes.size() > 16 * 1024 * 1024) {
+                    m_service->add({});
+                    return;
+                }
                 const QString dir = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
                 if (!ArcadeLink::ensurePrivateDir(dir)) continue;
                 const QString path = dir + "/text.txt";
                 QSaveFile file(path);
-                if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFile::ReadOwner|QFile::WriteOwner) || file.write(bytes) != bytes.size() || !file.commit()) { QDir().rmdir(dir); continue; }
-                o.remove("text"); o["path"] = path; o["owner"] = AppId; generated << path;
+                if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFile::ReadOwner | QFile::WriteOwner) || file.write(bytes) != bytes.size() || !file.commit()) {
+                    QDir().rmdir(dir);
+                    continue;
+                }
+                o.remove("text");
+                o["path"] = path;
+                o["owner"] = AppId;
+                generated << path;
             }
             normalized << o;
         }
         m_service->add(normalized);
-        for (const auto &path : generated) { QFile::remove(path); QDir().rmdir(QFileInfo(path).absolutePath()); }
+        for (const auto &path : generated) {
+            QFile::remove(path);
+            QDir().rmdir(QFileInfo(path).absolutePath());
+        }
     });
 }
 void Controller::stageImage(QImage image)
 {
-    if (image.isNull() || image.sizeInBytes() > m_settings["quotaBytes"].toInteger(512*1024*1024)) { feedback("This image exceeds the storage limit."); return; }
-    QMetaObject::invokeMethod(m_service,[this,image] {
+    if (image.isNull() || image.sizeInBytes() > m_settings["quotaBytes"].toInteger(512 * 1024 * 1024)) {
+        feedback("This image exceeds the storage limit.");
+        return;
+    }
+    QMetaObject::invokeMethod(m_service, [this, image] {
         const QString dir = ArcadeLink::Locations::discover().handoff + "/" + QUuid::createUuid().toString(QUuid::Id128);
-        if (!ArcadeLink::ensurePrivateDir(dir)) { emit m_service->feedback("Could not stage this image.",false); return; }
+        if (!ArcadeLink::ensurePrivateDir(dir)) {
+            emit m_service->feedback("Couldn't stage this image.", false);
+            return;
+        }
         const QString path = dir + "/image.png";
-        if (!image.save(path,"PNG")) { QDir().rmdir(dir); emit m_service->feedback("Could not stage this image.",false); return; }
-        QFile::setPermissions(path,QFile::ReadOwner|QFile::WriteOwner);
-        auto input = ArcadeLink::fileContent(path); input["owner"] = AppId;
-        m_service->add({input}); QFile::remove(path); QDir().rmdir(dir);
+        if (!image.save(path, "PNG")) {
+            QDir().rmdir(dir);
+            emit m_service->feedback("Couldn't stage this image.", false);
+            return;
+        }
+        QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+        auto input = ArcadeLink::fileContent(path);
+        input["owner"] = AppId;
+        m_service->add({input});
+        QFile::remove(path);
+        QDir().rmdir(dir);
     });
 }
 void Controller::paste()
 {
     const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
-    if (mime->hasUrls()) { QVariantList urls; for (auto url : mime->urls()) urls << url; acceptDrop(urls, {}, {}); }
-    else if (mime->hasImage()) {
+    if (mime->hasUrls()) {
+        QVariantList urls;
+        for (auto url : mime->urls()) urls << url;
+        acceptDrop(urls, {}, {});
+    } else if (mime->hasImage()) {
         stageImage(qvariant_cast<QImage>(mime->imageData()));
     } else acceptDrop({}, mime->text(), mime->html());
 }
 void Controller::select(QString id, bool additive, bool range)
 {
     if (item(id).isEmpty() || !eligible(item(id))) return;
-    if (m_picking && !m_pickMultiple) { m_selected = {id}; }
-    else if (range && !m_anchor.isEmpty()) {
-        auto visibleItems = items(); int a = -1, b = -1; for (int i = 0; i < visibleItems.size(); ++i) { auto key = visibleItems[i].toMap()["id"].toString(); if (key == m_anchor) a = i; if (key == id) b = i; }
-        if (!additive) m_selected.clear(); if (a >= 0 && b >= 0) for (int i = qMin(a,b); i <= qMax(a,b); ++i) m_selected.insert(visibleItems[i].toMap()["id"].toString());
-    } else { if (!additive) m_selected.clear(); if (additive && m_selected.contains(id)) m_selected.remove(id); else m_selected.insert(id); m_anchor = id; }
-    ++m_selectionRevision; prepareSelection(); emit changed();
+    if (m_picking && !m_pickMultiple) {
+        m_selected = {id};
+    } else if (range && !m_anchor.isEmpty()) {
+        auto visibleItems = items();
+        int a = -1, b = -1;
+        for (int i = 0; i < visibleItems.size(); ++i) {
+            auto key = visibleItems[i].toMap()["id"].toString();
+            if (key == m_anchor) a = i;
+            if (key == id) b = i;
+        }
+        if (!additive) m_selected.clear();
+        if (a >= 0 && b >= 0)
+            for (int i = qMin(a, b); i <= qMax(a, b); ++i) m_selected.insert(visibleItems[i].toMap()["id"].toString());
+    } else {
+        if (!additive) m_selected.clear();
+        if (additive && m_selected.contains(id)) m_selected.remove(id);
+        else m_selected.insert(id);
+        m_anchor = id;
+    }
+    ++m_selectionRevision;
+    prepareSelection();
+    emit changed();
 }
 void Controller::prepareSelection()
 {
-    m_dragContent = {}; m_dragRevision = -1;
-    const auto ids = selectedIds(); const auto revision = m_selectionRevision;
+    m_dragContent = {};
+    m_dragRevision = -1;
+    const auto ids = selectedIds();
+    const auto revision = m_selectionRevision;
     QPointer<Controller> guard(this);
-    QMetaObject::invokeMethod(m_service,[this,ids,revision,guard] {
-        m_service->selectedContents(ids,[guard,revision](QJsonArray content,ArcadeLink::Error error) {
+    QMetaObject::invokeMethod(m_service, [this, ids, revision, guard] {
+        m_service->selectedContents(ids, [guard, revision](QJsonArray content, ArcadeLink::Error error) {
             if (!guard) return;
-            QMetaObject::invokeMethod(guard,[guard,revision,content,error] { if (guard && revision == guard->m_selectionRevision && !error.isError()) { guard->m_dragContent = content; guard->m_dragRevision = revision; } });
+            QMetaObject::invokeMethod(guard, [guard, revision, content, error] { if (guard && revision == guard->m_selectionRevision && !error.isError()) { guard->m_dragContent = content; guard->m_dragRevision = revision; } });
         });
     });
 }
-void Controller::selectAll() { if (m_picking && !m_pickMultiple) return; m_selected.clear(); for (auto v : items()) m_selected.insert(v.toMap()["id"].toString()); ++m_selectionRevision; prepareSelection(); emit changed(); }
-void Controller::clearSelection() { m_selected.clear(); m_dragContent = {}; m_dragRevision = -1; ++m_selectionRevision; emit changed(); }
-void Controller::removeSelected() { if (m_picking) return; auto ids = selectedIds(); QMetaObject::invokeMethod(m_service, [this, ids] { m_service->remove(ids); }); clearSelection(); }
+void Controller::selectAll()
+{
+    if (m_picking && !m_pickMultiple) return;
+    m_selected.clear();
+    for (auto v : items()) m_selected.insert(v.toMap()["id"].toString());
+    ++m_selectionRevision;
+    prepareSelection();
+    emit changed();
+}
+void Controller::clearSelection()
+{
+    m_selected.clear();
+    m_dragContent = {};
+    m_dragRevision = -1;
+    ++m_selectionRevision;
+    emit changed();
+}
+void Controller::removeSelected()
+{
+    if (m_picking) return;
+    auto ids = selectedIds();
+    QMetaObject::invokeMethod(m_service, [this, ids] { m_service->remove(ids); });
+    clearSelection();
+}
 void Controller::undo() { QMetaObject::invokeMethod(m_service, &Service::undo); }
-void Controller::openItem(QString id) { auto o = item(id); if (!o["available"].toBool(true)) { feedback("The original is unavailable."); return; } if (o["type"] == "text/url") QDesktopServices::openUrl(QUrl(o["text"].toString())); else if (!o["path"].toString().isEmpty()) m_desktop.open(o["path"].toString()); }
-void Controller::revealItem(QString id) { auto path = item(id)["path"].toString(); if (!path.isEmpty()) m_desktop.reveal(path); }
+void Controller::openItem(QString id)
+{
+    auto o = item(id);
+    if (!o["available"].toBool(true)) {
+        feedback("Couldn't open this item. Its original was moved or deleted.");
+        return;
+    }
+    if (o["type"] == "text/url") QDesktopServices::openUrl(QUrl(o["text"].toString()));
+    else if (!o["path"].toString().isEmpty()) m_desktop.open(o["path"].toString());
+}
+void Controller::revealItem(QString id)
+{
+    auto path = item(id)["path"].toString();
+    if (!path.isEmpty()) m_desktop.reveal(path);
+}
 void Controller::copySelected(QString mode)
 {
     const auto ids = selectedIds();
@@ -451,13 +711,40 @@ void Controller::copySelected(QString mode)
         m_service->selectedContents(ids, [guard, mode](QJsonArray content, ArcadeLink::Error error) {
             if (!guard) return;
             QMetaObject::invokeMethod(guard, [guard, mode, content, error] {
-                if (!guard) return; if (error.isError()) { guard->feedback(error.userMessage("Arcade Shelf")); return; }
-                auto *mime = new QMimeData; QList<QUrl> urls; QStringList text; QString html;
-                for (auto v : content) { auto o = v.toObject(); const QString type = o["type"].toString(); if (type.startsWith("file/") || type == "folder/reference") { if (o.contains("path")) urls << QUrl::fromLocalFile(o["path"].toString()); for (auto p : o["paths"].toArray()) urls << QUrl::fromLocalFile(p.toString()); } else { QString t = o["text"].toString(); if (o.contains("path")) { QFile f(o["path"].toString()); if (f.open(QIODevice::ReadOnly) && f.size() <= 16 * 1024 * 1024) t = QString::fromUtf8(f.readAll()); } text << t; html += o["html"].toString(); } }
-                if (mode == "paths") { for (auto url : urls) text << url.toLocalFile(); }
-                else if (mode == "content" && !urls.isEmpty()) mime->setUrls(urls);
-                if (!text.isEmpty()) mime->setText(text.join('\n')); if (!html.isEmpty() && mode != "paths") mime->setHtml(html);
-                QGuiApplication::clipboard()->setMimeData(mime); guard->feedback("Copied.");
+                if (!guard) return;
+                if (error.isError()) {
+                    guard->feedback(error.userMessage("Arcade Shelf"));
+                    return;
+                }
+                auto *mime = new QMimeData;
+                QList<QUrl> urls;
+                QStringList text;
+                QString html;
+                for (auto v : content) {
+                    auto o = v.toObject();
+                    const QString type = o["type"].toString();
+                    if (type.startsWith("file/") || type == "folder/reference") {
+                        if (o.contains("path")) urls << QUrl::fromLocalFile(o["path"].toString());
+                        for (auto p : o["paths"].toArray()) urls << QUrl::fromLocalFile(p.toString());
+                    } else {
+                        QString t = o["text"].toString();
+                        if (o.contains("path")) {
+                            QFile f(o["path"].toString());
+                            if (f.open(QIODevice::ReadOnly) && f.size() <= 16 * 1024 * 1024) t = QString::fromUtf8(f.readAll());
+                        }
+                        text << t;
+                        html += o["html"].toString();
+                    }
+                }
+                if (mode == "paths") {
+                    for (auto url : urls) text << url.toLocalFile();
+                } else if (mode == "content" && !urls.isEmpty()) mime->setUrls(urls);
+                if (!text.isEmpty()) mime->setText(text.join('\n'));
+                if (!html.isEmpty() && mode != "paths") mime->setHtml(html);
+                QGuiApplication::clipboard()->setMimeData(mime);
+                // The shared feedback (STANDARD §8.1): "Copied", or "Copied 3 paths" / "Copied 3 items".
+                const qsizetype n = mode == "paths" ? urls.size() : content.size();
+                guard->feedback(n > 1 ? QStringLiteral("Copied %1 %2").arg(n).arg(mode == "paths" ? "paths" : "items") : QStringLiteral("Copied"));
             });
         });
     });
@@ -468,68 +755,186 @@ void Controller::dragSelected()
     // References and bounded inline text are already cached; no IPC or file read here.
     if (!m_window || m_selected.isEmpty()) return;
     auto contents = cachedContents();
-    bool needsPrepared = false; for (auto v : m_items) if (m_selected.contains(v.toObject()["id"].toString()) && (v.toObject()["type"].toString().startsWith("text/") || v.toObject()["owned"].toBool())) needsPrepared = true;
-    if (needsPrepared) { if (m_dragRevision != m_selectionRevision) { feedback("Preparing selected content. Try again."); return; } contents = m_dragContent; }
-    contents << QJsonObject{{"type","structured/shelf-reorder"},{"data",QJsonObject{{"profile",QString::fromLatin1(QCryptographicHash::hash(m_root.toUtf8(),QCryptographicHash::Sha256).toHex())},{"ids",QJsonArray::fromStringList(selectedIds())}}}};
+    bool needsPrepared = false;
+    for (auto v : m_items)
+        if (m_selected.contains(v.toObject()["id"].toString()) && (v.toObject()["type"].toString().startsWith("text/") || v.toObject()["owned"].toBool())) needsPrepared = true;
+    if (needsPrepared) {
+        if (m_dragRevision != m_selectionRevision) {
+            feedback("Preparing selected content. Try again.");
+            return;
+        }
+        contents = m_dragContent;
+    }
+    contents << QJsonObject{{"type", "structured/shelf-reorder"}, {"data", QJsonObject{{"profile", QString::fromLatin1(QCryptographicHash::hash(m_root.toUtf8(), QCryptographicHash::Sha256).toHex())}, {"ids", QJsonArray::fromStringList(selectedIds())}}}};
     m_desktop.startDrag(m_window, contents);
 }
 void Controller::reorderItem(QString id, QString before)
 {
-    QStringList ids; for (auto v : m_items) if (v.toObject()["id"] != id) ids << v.toObject()["id"].toString(); auto at = ids.indexOf(before); ids.insert(at < 0 ? ids.size() : at, id); auto active = m_active; QMetaObject::invokeMethod(m_service, [this, active, ids] { m_service->reorder(active, ids); });
+    QStringList ids;
+    for (auto v : m_items)
+        if (v.toObject()["id"] != id) ids << v.toObject()["id"].toString();
+    auto at = ids.indexOf(before);
+    ids.insert(at < 0 ? ids.size() : at, id);
+    auto active = m_active;
+    QMetaObject::invokeMethod(m_service, [this, active, ids] { m_service->reorder(active, ids); });
 }
-void Controller::createShelf(QString name, bool temporary) { QMetaObject::invokeMethod(m_service, [this,name,temporary] { m_service->createShelf(name,temporary); }); }
-void Controller::renameShelf(QString id, QString name) { QMetaObject::invokeMethod(m_service, [this,id,name] { m_service->renameShelf(id,name); }); }
-void Controller::deleteShelf(QString id) { QMetaObject::invokeMethod(m_service, [this,id] { m_service->deleteShelf(id); }); }
-void Controller::switchShelf(QString id) { m_filter.clear(); clearSelection(); QMetaObject::invokeMethod(m_service, [this,id] { m_service->switchShelf(id); }); }
-void Controller::pinShelf(QString id, bool pin) { QMetaObject::invokeMethod(m_service, [this,id,pin] { m_service->pinShelf(id,pin); }); }
-void Controller::moveShelf(QString id, int delta) { QStringList ids; for (auto v : m_shelves) ids << v.toObject()["id"].toString(); int a = ids.indexOf(id); if (a < 0) return; int b = qBound(0,a+delta,int(ids.size())-1); ids.move(a,b); QMetaObject::invokeMethod(m_service,[this,ids] { m_service->reorderShelves(ids); }); }
+void Controller::createShelf(QString name, bool temporary)
+{
+    QMetaObject::invokeMethod(m_service, [this, name, temporary] { m_service->createShelf(name, temporary); });
+}
+void Controller::renameShelf(QString id, QString name)
+{
+    QMetaObject::invokeMethod(m_service, [this, id, name] { m_service->renameShelf(id, name); });
+}
+void Controller::deleteShelf(QString id)
+{
+    QMetaObject::invokeMethod(m_service, [this, id] { m_service->deleteShelf(id); });
+}
+void Controller::switchShelf(QString id)
+{
+    m_filter.clear();
+    clearSelection();
+    QMetaObject::invokeMethod(m_service, [this, id] { m_service->switchShelf(id); });
+}
+void Controller::pinShelf(QString id, bool pin)
+{
+    QMetaObject::invokeMethod(m_service, [this, id, pin] { m_service->pinShelf(id, pin); });
+}
+void Controller::moveShelf(QString id, int delta)
+{
+    QStringList ids;
+    for (auto v : m_shelves) ids << v.toObject()["id"].toString();
+    int a = ids.indexOf(id);
+    if (a < 0) return;
+    int b = qBound(0, a + delta, int(ids.size()) - 1);
+    ids.move(a, b);
+    QMetaObject::invokeMethod(m_service, [this, ids] { m_service->reorderShelves(ids); });
+}
 void Controller::peerCall(QString app, QString action, QJsonArray inputs, QJsonObject options)
 {
-    if (busy()) { feedback("An action is already running."); return; }
-    m_progress = -1; m_peers.invoke(app,action,inputs,options); emit changed();
+    if (busy()) {
+        feedback("An action is already running.");
+        return;
+    }
+    m_progress = -1;
+    m_peers.invoke(app, action, inputs, options);
+    emit changed();
 }
 void Controller::runPeer(QString app, QString action)
 {
     QJsonObject chosen;
-    for (auto v : m_peers.offers(cachedContents())) if (v.toObject()["app"] == app && v.toObject()["action"] == action) { chosen = v.toObject(); break; }
-    if (chosen.isEmpty() || !chosen["enabled"].toBool(true)) { feedback(chosen["reason"].toString("This action is unavailable.")); return; }
-    const auto ids = selectedIds(); const auto options = chosen["options"].toObject(); QPointer<Controller> guard(this);
-    QMetaObject::invokeMethod(m_service, [this,ids,guard,app,action,options] {
+    for (auto v : m_peers.offers(cachedContents()))
+        if (v.toObject()["app"] == app && v.toObject()["action"] == action) {
+            chosen = v.toObject();
+            break;
+        }
+    if (chosen.isEmpty() || !chosen["enabled"].toBool(true)) {
+        feedback(chosen["reason"].toString("This action is unavailable."));
+        return;
+    }
+    const auto ids = selectedIds();
+    const auto options = chosen["options"].toObject();
+    QPointer<Controller> guard(this);
+    QMetaObject::invokeMethod(m_service, [this, ids, guard, app, action, options] {
         m_service->retain(ids);
-        m_service->selectedContents(ids, [guard,app,action,options](QJsonArray inputs, ArcadeLink::Error error) {
+        m_service->selectedContents(ids, [guard, app, action, options](QJsonArray inputs, ArcadeLink::Error error) {
             if (!guard) return;
-            QMetaObject::invokeMethod(guard,[guard,app,action,options,inputs,error] { if (!guard) return; if (error.isError()) { guard->feedback(error.userMessage("Arcade Shelf")); QMetaObject::invokeMethod(guard->m_service,&Service::release); } else guard->peerCall(app,action,inputs,options); });
+            QMetaObject::invokeMethod(guard, [guard, app, action, options, inputs, error] { if (!guard) return; if (error.isError()) { guard->feedback(error.userMessage("Arcade Shelf")); QMetaObject::invokeMethod(guard->m_service,&Service::release); } else guard->peerCall(app,action,inputs,options); });
         });
     });
 }
 void Controller::runSource(QString app, QString action)
 {
     if (app == "arcade.wheel" && action == "wheel.add_action") {
-        peerCall(app,action,{QJsonObject{{"type","structured/arcade-action"},{"data",QJsonObject{{"app",AppId},{"action","shelf.show"},{"version",1},{"title","Show " + activeName()},{"options",QJsonObject{{"shelf",m_active}}},{"input","none"}}}}},{}); return;
+        peerCall(app, action, {QJsonObject{{"type", "structured/arcade-action"}, {"data", QJsonObject{{"app", AppId}, {"action", "shelf.show"}, {"version", 1}, {"title", "Show " + activeName()}, {"options", QJsonObject{{"shelf", m_active}}}, {"input", "none"}}}}}, {});
+        return;
     }
-    for (auto v : m_peers.sources()) if (v.toObject()["app"] == app && v.toObject()["action"] == action) { peerCall(app,action,{},v.toObject()["options"].toObject()); return; }
+    for (auto v : m_peers.sources())
+        if (v.toObject()["app"] == app && v.toObject()["action"] == action) {
+            peerCall(app, action, {}, v.toObject()["options"].toObject());
+            return;
+        }
     feedback("This action is unavailable.");
 }
 void Controller::cancelJob() { m_peers.cancel(); }
-void Controller::confirmPick() { auto ids = selectedIds(); QMetaObject::invokeMethod(m_service,[this,ids] { m_service->completePick(ids); }); }
-void Controller::cancelPick() { QMetaObject::invokeMethod(m_service,&Service::cancelPick); }
-void Controller::showSettings() { m_settingsOpen = true; refreshStartAtLogin(); show(); emit changed(); }
-void Controller::newCollectionFromTray() { show(); emit newCollectionRequested(); }
+void Controller::confirmPick()
+{
+    auto ids = selectedIds();
+    QMetaObject::invokeMethod(m_service, [this, ids] { m_service->completePick(ids); });
+}
+void Controller::cancelPick() { QMetaObject::invokeMethod(m_service, &Service::cancelPick); }
+void Controller::showSettings()
+{
+    setSettingsOpen(true);
+    emit settingsRaiseRequested();
+}
+void Controller::newCollectionFromTray()
+{
+    show();
+    emit newCollectionRequested();
+}
+QString Controller::channel() const
+{
+    static const QString cached = [] {
+        QJsonObject receipt; // a missing receipt reads as empty: not installed
+        if (!ArcadeLink::ReceiptStore::discover().read(AppId, &receipt)) return QString();
+        return receipt.value(QStringLiteral("channel")).toString();
+    }();
+    return cached;
+}
+void Controller::openLogsFolder()
+{
+    QDir().mkpath(logsPath());
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(logsPath())))
+        feedback(QStringLiteral("Couldn't open the logs folder. It is %1.").arg(QDir::toNativeSeparators(logsPath())));
+}
+void Controller::openUserGuide()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/blob/main/docs/user/index.md")));
+}
+void Controller::openLicences()
+{
+    // The packaged copy (Linux share/, macOS Resources/), else the notices online.
+    const QString app = QCoreApplication::applicationDirPath();
+    for (const QString &folder : {app + QStringLiteral("/../share/arcade-shelf/licenses"), app + QStringLiteral("/../Resources/licenses")}) {
+        if (QFileInfo(folder).isDir()) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(folder).absolutePath()));
+            return;
+        }
+    }
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/qa-p1/Arcade-Shelf/blob/main/THIRD_PARTY_NOTICES.md")));
+}
+void Controller::copyDiagnostics()
+{
+    auto header = ArcadeLink::DiagnosticsHeader::create(AppId, Version, channel().isEmpty() ? QStringLiteral("not installed") : channel());
+    header.linkEnabled = linkEnabled();
+    header.peersFrom(ArcadeLink::Locations::discover());
+    QString text = header.render();
+    text += QStringLiteral("Window: %1, %2\n").arg(m_expanded ? QStringLiteral("panel") : m_dock.isEmpty() ? QStringLiteral("capsule")
+                                                                                                           : QStringLiteral("docked ") + m_dock,
+                                                   m_window ? QGuiApplication::platformName() : QStringLiteral("none"));
+    text += QStringLiteral("Backdrop: %1\n").arg(m_backdrop.status());
+    text += QStringLiteral("Shortcut: %1\n").arg(platformStatus());
+    text += QStringLiteral("Collections: %1, owned content %2 bytes\n").arg(m_shelves.size()).arg(m_ownedContentBytes);
+    QGuiApplication::clipboard()->setText(text);
+    feedback(QStringLiteral("Copied"));
+}
 void Controller::restart() { QMetaObject::invokeMethod(m_service, &Service::restartResident); }
 void Controller::exportPortableSettings()
 {
     const QString path = QFileDialog::getSaveFileName(nullptr, QStringLiteral("Export Arcade Shelf backup"),
-        QDir::homePath() + QStringLiteral("/Arcade-Shelf-backup.arcade-shelf"),
-        QStringLiteral("Arcade Shelf backup (*.arcade-shelf)"));
+                                                      QDir::homePath() + QStringLiteral("/Arcade-Shelf-backup.arcade-shelf"),
+                                                      QStringLiteral("Arcade Shelf backup (*.arcade-shelf)"));
     if (path.isEmpty()) return;
 
     bool includeOwned = false;
     if (m_ownedContentBytes > 0) {
         QMessageBox prompt(QMessageBox::Question, QStringLiteral("Include owned content?"),
-            QStringLiteral("Shelf currently stores %1 of owned content. Include a copy in this backup?\n\n"
-                           "Without it, collections and preferences are exported while owned items are left out. "
-                           "Referenced original files are never copied.")
-                .arg(QLocale().formattedDataSize(m_ownedContentBytes)), QMessageBox::NoButton);
+                           QStringLiteral("Shelf currently stores %1 of owned content. Include a copy in this backup?\n\n"
+                                          "Without it, collections and preferences are exported while owned items are left out. "
+                                          "Referenced original files are never copied.")
+                               .arg(QLocale().formattedDataSize(m_ownedContentBytes, 1, QLocale::DataSizeSIFormat)),
+                           QMessageBox::NoButton);
         auto *metadataOnly = prompt.addButton(QStringLiteral("Metadata only"), QMessageBox::ActionRole);
         auto *includeButton = prompt.addButton(QStringLiteral("Include owned content"), QMessageBox::AcceptRole);
         prompt.addButton(QMessageBox::Cancel);
@@ -538,69 +943,112 @@ void Controller::exportPortableSettings()
         if (prompt.clickedButton() != metadataOnly && prompt.clickedButton() != includeButton) return;
         includeOwned = prompt.clickedButton() == includeButton;
     }
-    QMetaObject::invokeMethod(m_service, [this, path, includeOwned] {
-        m_service->exportPortableSettings(path, includeOwned);
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_service, [this, path, includeOwned] { m_service->exportPortableSettings(path, includeOwned); }, Qt::QueuedConnection);
 }
 void Controller::importPortableSettings()
 {
     const QString path = QFileDialog::getOpenFileName(nullptr, QStringLiteral("Import Arcade Shelf backup"),
-        QDir::homePath(), QStringLiteral("Arcade Shelf backup (*.arcade-shelf);;All files (*)"));
+                                                      QDir::homePath(), QStringLiteral("Arcade Shelf backup (*.arcade-shelf);;All files (*)"));
     if (path.isEmpty()) return;
     QMessageBox confirm(QMessageBox::Warning, QStringLiteral("Replace Shelf data?"),
-        QStringLiteral("This backup replaces your current collections and portable preferences. Existing Shelf-owned content is removed after a successful restore. Referenced original files are never deleted."),
-        QMessageBox::NoButton);
+                        QStringLiteral("This backup replaces your current collections and portable preferences. Existing Shelf-owned content is removed after a successful restore. Referenced original files are never deleted."),
+                        QMessageBox::NoButton);
     auto *replace = confirm.addButton(QStringLiteral("Replace current data"), QMessageBox::DestructiveRole);
     confirm.addButton(QMessageBox::Cancel);
     confirm.setDefaultButton(QMessageBox::Cancel);
     confirm.exec();
     if (confirm.clickedButton() != replace) return;
-    QMetaObject::invokeMethod(m_service, [this, path] {
-        m_service->importPortableSettings(path);
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_service, [this, path] { m_service->importPortableSettings(path); }, Qt::QueuedConnection);
 }
 void Controller::nativeMove()
 {
     if (!m_window) return;
     if (!m_dock.isEmpty()) {
-        m_dock.clear(); saveSetting("dockEdge",QString()); emit changed();
+        m_dock.clear();
+        saveSetting("dockEdge", QString());
+        emit changed();
         // Let the compositor own the ensuing gesture. A deferred restore here
         // would reposition the surface while its native move is in progress.
     }
     m_desktop.move(m_window);
 }
-void Controller::nativeResize(int edges) { if (m_window) m_desktop.resize(m_window,edges); }
+void Controller::nativeResize(int edges)
+{
+    if (m_window) m_desktop.resize(m_window, edges);
+}
 void Controller::dock(QString edge)
 {
-    if (!QStringList{"","left","right","top","bottom"}.contains(edge)) return;
+    if (!QStringList{"", "left", "right", "top", "bottom"}.contains(edge)) return;
     m_dock = edge;
-    saveSetting("dockEdge",edge);
+    saveSetting("dockEdge", edge);
     emit changed();
     alignWindow();
 }
-void Controller::saveGeometry(int x,int y,int w,int h) {
-    QJsonObject geometry{{"x",x},{"y",y},{"width",m_expanded ? w : m_settings["geometry"].toObject()["width"].toInt(640)},{"height",m_expanded ? h : m_settings["geometry"].toObject()["height"].toInt(490)}};
+void Controller::saveGeometry(int x, int y, int w, int h)
+{
+    QJsonObject geometry{{"x", x}, {"y", y}, {"width", m_expanded ? w : m_settings["geometry"].toObject()["width"].toInt(640)}, {"height", m_expanded ? h : m_settings["geometry"].toObject()["height"].toInt(490)}};
     if (m_window && m_window->screen()) geometry["screen"] = m_window->screen()->name();
-    if (QGuiApplication::platformName() != "wayland") saveSetting("geometry",geometry);
-    else { auto saved = m_settings["geometry"].toObject(); saved["width"] = geometry["width"]; saved["height"] = geometry["height"]; saveSetting("geometry",saved); }
+    if (QGuiApplication::platformName() != "wayland") saveSetting("geometry", geometry);
+    else {
+        auto saved = m_settings["geometry"].toObject();
+        saved["width"] = geometry["width"];
+        saved["height"] = geometry["height"];
+        saveSetting("geometry", saved);
+    }
     if (m_window) m_desktop.captureGeometry(m_window);
 }
-QVariantMap Controller::restoreGeometry() const { auto o = m_settings["geometry"].toObject(); if (!o.contains("width")) o["width"] = 620; if (!o.contains("height")) o["height"] = 480; o["dockEdge"] = m_dock; return o.toVariantMap(); }
-void Controller::setPeerEnabled(QString id,bool enabled) { auto p = m_settings["peers"].toObject(); p[id] = enabled; saveSetting("peers",p); m_peers.setPeerEnabled(id,enabled); }
-void Controller::getPeer(QString id) {
+QVariantMap Controller::restoreGeometry() const
+{
+    auto o = m_settings["geometry"].toObject();
+    if (!o.contains("width")) o["width"] = 620;
+    if (!o.contains("height")) o["height"] = 480;
+    o["dockEdge"] = m_dock;
+    return o.toVariantMap();
+}
+void Controller::setPeerEnabled(QString id, bool enabled)
+{
+    auto p = m_settings["peers"].toObject();
+    p[id] = enabled;
+    saveSetting("peers", p);
+    m_peers.setPeerEnabled(id, enabled);
+}
+void Controller::getPeer(QString id)
+{
     const auto toolsPolicy = m_settings["peers"].toObject()["arcade.tools"].toBool(true);
     if (linkEnabled() && toolsPolicy) {
         for (auto v : m_peers.manifests()) {
-            const auto app = v.toObject(); if (app["id"] != "arcade.tools") continue;
-            for (auto a : app["actions"].toArray()) if (a.toObject()["id"] == "tools.install" && ArcadeLink::actionUsable(app,a.toObject())) { peerCall("arcade.tools","tools.install",{ArcadeLink::textContent("text/plain",id)},{{"app",id}}); return; }
+            const auto app = v.toObject();
+            if (app["id"] != "arcade.tools") continue;
+            for (auto a : app["actions"].toArray())
+                if (a.toObject()["id"] == "tools.install" && ArcadeLink::actionUsable(app, a.toObject())) {
+                    peerCall("arcade.tools", "tools.install", {ArcadeLink::textContent("text/plain", id)}, {{"app", id}});
+                    return;
+                }
         }
     }
     QDesktopServices::openUrl(QUrl(ArcadeLink::releasesUrl(id)));
 }
-void Controller::setRetention(int days) { if (days >= 0 && days <= 3650) saveSetting("retentionDays",days); }
-void Controller::setQuota(int mib) { if (mib >= 1 && mib <= 4096) saveSetting("quotaBytes",qint64(mib)*1024*1024); }
-void Controller::setStartAtLogin(bool value) { if (m_desktop.setStartAtLogin(value,ArcadeLink::executablePath())) { m_startAtLogin = value; saveSetting("startAtLogin",value); emit changed(); } else { refreshStartAtLogin(); feedback(m_desktop.lastError()); } }
+void Controller::setRetention(int days)
+{
+    if (days >= 0 && days <= 3650) saveSetting("retentionDays", days);
+}
+// Size settings use decimal MB (STANDARD §8.1); the setting itself is bytes.
+void Controller::setQuota(int mb)
+{
+    if (mb >= 1 && mb <= 4000) saveSetting("quotaBytes", qint64(mb) * 1000 * 1000);
+}
+void Controller::setStartAtLogin(bool value)
+{
+    if (m_desktop.setStartAtLogin(value, ArcadeLink::executablePath())) {
+        m_startAtLogin = value;
+        saveSetting("startAtLogin", value);
+        emit changed();
+    } else {
+        refreshStartAtLogin();
+        feedback(m_desktop.lastError());
+    }
+}
 // The login entry, not the saved preference: Tools and the installer set it
 // without touching Shelf's settings, and the desktop can switch it off.
 void Controller::refreshStartAtLogin() { m_startAtLogin = m_desktop.startAtLogin(); }
-}
+} // namespace Shelf

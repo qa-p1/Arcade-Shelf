@@ -142,11 +142,10 @@ bool validItemType(const QString &type)
         QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("audio"), QStringLiteral("pdf"),
         QStringLiteral("document"), QStringLiteral("spreadsheet"), QStringLiteral("presentation"),
         QStringLiteral("archive"), QStringLiteral("text"), QStringLiteral("code"), QStringLiteral("font"),
-        QStringLiteral("model"), QStringLiteral("any")
-    };
+        QStringLiteral("model"), QStringLiteral("any")};
     return (type.startsWith(QStringLiteral("file/")) && fileKinds.contains(type.mid(5))) ||
-        type == QStringLiteral("folder/reference") || type == QStringLiteral("text/plain") ||
-        type == QStringLiteral("text/rich") || type == QStringLiteral("text/url");
+           type == QStringLiteral("folder/reference") || type == QStringLiteral("text/plain") ||
+           type == QStringLiteral("text/rich") || type == QStringLiteral("text/url");
 }
 
 bool validId(const QString &id, const QString &prefix)
@@ -168,7 +167,8 @@ QJsonObject portablePreferences(const QJsonObject &settings)
     QJsonObject result;
     for (const QString &key : {QStringLiteral("theme"), QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"),
                                QStringLiteral("quotaBytes"), QStringLiteral("retentionDays"), QStringLiteral("thumbnailQuotaBytes"),
-                               QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers")}) {
+                               QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers"),
+                               QStringLiteral("backdrop"), QStringLiteral("hoverPeek")}) {
         if (settings.contains(key)) result.insert(key, settings.value(key));
     }
     return result;
@@ -179,49 +179,65 @@ bool validatePortablePreferences(const QJsonObject &preferences, QString *error)
     static const QSet<QString> allowed{
         QStringLiteral("theme"), QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"),
         QStringLiteral("quotaBytes"), QStringLiteral("retentionDays"), QStringLiteral("thumbnailQuotaBytes"),
-        QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers")
-    };
+        QStringLiteral("linkEnabled"), QStringLiteral("shortcut"), QStringLiteral("peers"),
+        QStringLiteral("backdrop"), QStringLiteral("hoverPeek")};
     for (auto it = preferences.begin(); it != preferences.end(); ++it) {
-        if (!allowed.contains(it.key())) { *error = QStringLiteral("The backup contains an unsupported preference."); return false; }
+        if (!allowed.contains(it.key())) {
+            *error = QStringLiteral("The backup contains an unsupported preference.");
+            return false;
+        }
     }
     if (preferences.contains(QStringLiteral("theme")) &&
         (!preferences.value(QStringLiteral("theme")).isString() ||
          !QStringList{QStringLiteral("system"), QStringLiteral("dark"), QStringLiteral("light")}.contains(preferences.value(QStringLiteral("theme")).toString()))) {
-        *error = QStringLiteral("The backup contains an invalid theme preference."); return false;
+        *error = QStringLiteral("The backup contains an invalid theme preference.");
+        return false;
     }
-    for (const QString &key : {QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"), QStringLiteral("linkEnabled")}) {
-        if (preferences.contains(key) && !preferences.value(key).isBool()) { *error = QStringLiteral("The backup contains an invalid boolean preference."); return false; }
+    for (const QString &key : {QStringLiteral("alwaysOnTop"), QStringLiteral("reducedMotion"), QStringLiteral("linkEnabled"),
+                               QStringLiteral("backdrop"), QStringLiteral("hoverPeek")}) {
+        if (preferences.contains(key) && !preferences.value(key).isBool()) {
+            *error = QStringLiteral("The backup contains an invalid boolean preference.");
+            return false;
+        }
     }
     qint64 ignored = 0;
     if (preferences.contains(QStringLiteral("quotaBytes")) && !numericInteger(preferences.value(QStringLiteral("quotaBytes")), 0, MaxOwnedBytes, &ignored)) {
-        *error = QStringLiteral("The backup contains an invalid storage quota."); return false;
+        *error = QStringLiteral("The backup contains an invalid storage quota.");
+        return false;
     }
     if (preferences.contains(QStringLiteral("retentionDays")) && !numericInteger(preferences.value(QStringLiteral("retentionDays")), 0, 3650, &ignored)) {
-        *error = QStringLiteral("The backup contains an invalid retention period."); return false;
+        *error = QStringLiteral("The backup contains an invalid retention period.");
+        return false;
     }
     if (preferences.contains(QStringLiteral("thumbnailQuotaBytes")) && !numericInteger(preferences.value(QStringLiteral("thumbnailQuotaBytes")), 0, 1024LL * 1024 * 1024, &ignored)) {
-        *error = QStringLiteral("The backup contains an invalid thumbnail quota."); return false;
+        *error = QStringLiteral("The backup contains an invalid thumbnail quota.");
+        return false;
     }
     if (preferences.contains(QStringLiteral("shortcut"))) {
         const auto shortcut = preferences.value(QStringLiteral("shortcut"));
         if (!shortcut.isString() || shortcut.toString().size() > 100 ||
             (!shortcut.toString().isEmpty() && ArcadeLink::normalizeAccelerator(shortcut.toString()).isEmpty())) {
-            *error = QStringLiteral("The backup contains an invalid shortcut preference."); return false;
+            *error = QStringLiteral("The backup contains an invalid shortcut preference.");
+            return false;
         }
     }
     if (preferences.contains(QStringLiteral("peers"))) {
         const auto peers = preferences.value(QStringLiteral("peers"));
-        if (!peers.isObject()) { *error = QStringLiteral("The backup contains invalid connected-app preferences."); return false; }
+        if (!peers.isObject()) {
+            *error = QStringLiteral("The backup contains invalid connected-app preferences.");
+            return false;
+        }
         const QJsonObject peerValues = peers.toObject();
         for (auto it = peerValues.begin(); it != peerValues.end(); ++it) {
             if (!QRegularExpression(QStringLiteral("^arcade\\.[a-z][a-z0-9.-]{0,63}$")).match(it.key()).hasMatch() || !it.value().isBool()) {
-                *error = QStringLiteral("The backup contains invalid connected-app preferences."); return false;
+                *error = QStringLiteral("The backup contains invalid connected-app preferences.");
+                return false;
             }
         }
     }
     return true;
 }
-}
+} // namespace
 
 qint64 Store::portableOwnedBytes()
 {
@@ -245,7 +261,7 @@ bool Store::exportPortable(const QString &path, bool includeOwned, qint64 *inclu
     QJsonArray shelves, items, payloads;
     QSqlQuery shelfQuery(m_db);
     if (!shelfQuery.exec(QStringLiteral("SELECT id,name,temporary,pinned,position,created FROM shelves ORDER BY position,created,id")))
-        return fail(QStringLiteral("Could not read Shelf collections."));
+        return fail(QStringLiteral("Couldn't read Shelf collections."));
     while (shelfQuery.next()) {
         shelves.append(QJsonObject{{QStringLiteral("id"), shelfQuery.value(0).toString()},
                                    {QStringLiteral("name"), shelfQuery.value(1).toString()},
@@ -256,7 +272,7 @@ bool Store::exportPortable(const QString &path, bool includeOwned, qint64 *inclu
     }
     QSqlQuery itemQuery(m_db);
     if (!itemQuery.exec(QStringLiteral("SELECT id,shelf,type,name,path,text,html,size,owned,position,created FROM items ORDER BY shelf,position,created,id")))
-        return fail(QStringLiteral("Could not read Shelf collection items."));
+        return fail(QStringLiteral("Couldn't read Shelf collection items."));
     int omitted = 0;
     qint64 contentBytes = 0;
     QStringList sourcePaths;
@@ -265,7 +281,10 @@ bool Store::exportPortable(const QString &path, bool includeOwned, qint64 *inclu
     while (itemQuery.next()) {
         const bool owned = itemQuery.value(8).toBool();
         const QString sourcePath = itemQuery.value(4).toString();
-        if (owned && !includeOwned) { ++omitted; continue; }
+        if (owned && !includeOwned) {
+            ++omitted;
+            continue;
+        }
         QJsonObject item{{QStringLiteral("shelf"), itemQuery.value(1).toString()},
                          {QStringLiteral("type"), itemQuery.value(2).toString()},
                          {QStringLiteral("name"), itemQuery.value(3).toString()},
@@ -279,14 +298,14 @@ bool Store::exportPortable(const QString &path, bool includeOwned, qint64 *inclu
             item.insert(QStringLiteral("html"), itemQuery.value(6).toString());
             contentBytes += itemQuery.value(7).toLongLong();
         } else {
-            if (!ownedObjectSafe(sourcePath)) return fail(QStringLiteral("Shelf could not safely read owned content for this backup."));
+            if (!ownedObjectSafe(sourcePath)) return fail(QStringLiteral("Couldn't back up an item Shelf keeps. Its file couldn't be read safely."));
             qint64 size = 0;
             QByteArray digest;
             // Staged rich text keeps its HTML in the database; the stored
             // size counts both, the file holds only the text.
             const qint64 fileSize = itemQuery.value(7).toLongLong() - itemQuery.value(6).toString().toUtf8().size();
             if (!hashFile(sourcePath, &size, &digest) || size != QFileInfo(sourcePath).size() || size != fileSize)
-                return fail(QStringLiteral("Shelf could not verify an owned file while preparing the backup."));
+                return fail(QStringLiteral("Couldn't back up an item Shelf keeps. Its file changed while it was read."));
             const qint64 stored = itemQuery.value(7).toLongLong();
             if (stored > MaxOwnedBytes - contentBytes) return fail(QStringLiteral("Owned content exceeds the portable backup limit."));
             contentBytes += stored;
@@ -323,23 +342,31 @@ bool Store::exportPortable(const QString &path, bool includeOwned, qint64 *inclu
 
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly) || !output.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner))
-        return fail(QStringLiteral("Could not create a private portable backup file."));
-    if (!writeAll(output, PortableMagic.constData(), PortableMagic.size())) { output.cancelWriting(); return fail(QStringLiteral("Could not write the portable backup header.")); }
+        return fail(QStringLiteral("Couldn't create a private portable backup file."));
+    if (!writeAll(output, PortableMagic.constData(), PortableMagic.size())) {
+        output.cancelWriting();
+        return fail(QStringLiteral("Couldn't write the portable backup header."));
+    }
     QDataStream header(&output);
     header.setByteOrder(QDataStream::BigEndian);
     header << quint64(json.size());
     if (header.status() != QDataStream::Ok || !writeAll(output, json.constData(), json.size())) {
-        output.cancelWriting(); return fail(QStringLiteral("Could not write portable backup metadata."));
+        output.cancelWriting();
+        return fail(QStringLiteral("Couldn't write portable backup metadata."));
     }
     for (qsizetype i = 0; i < sourcePaths.size(); ++i) {
         QFile source(sourcePaths[i]);
-        if (!ownedObjectSafe(sourcePaths[i]) || !openRegular(source)) { output.cancelWriting(); return fail(QStringLiteral("Owned content changed while writing the backup.")); }
+        if (!ownedObjectSafe(sourcePaths[i]) || !openRegular(source)) {
+            output.cancelWriting();
+            return fail(QStringLiteral("Owned content changed while writing the backup."));
+        }
         QCryptographicHash hash(QCryptographicHash::Sha256);
         if (!transfer(source, &output, sourceSizes[i], &hash) || !source.atEnd() || hash.result().toHex() != sourceHashes[i]) {
-            output.cancelWriting(); return fail(QStringLiteral("Owned content changed while writing the backup."));
+            output.cancelWriting();
+            return fail(QStringLiteral("Owned content changed while writing the backup."));
         }
     }
-    if (!output.commit()) return fail(QStringLiteral("Could not finish the portable backup file."));
+    if (!output.commit()) return fail(QStringLiteral("Couldn't finish the portable backup file."));
     if (includedBytes) *includedBytes = includeOwned ? contentBytes : 0;
     if (omittedItems) *omittedItems = omitted;
     return true;
@@ -477,7 +504,8 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
                 return fail(QStringLiteral("The backup contains an invalid file reference."));
         }
     }
-    for (int references : payloadReferences) if (references != 1) return fail(QStringLiteral("The backup has an unreferenced owned-content record."));
+    for (int references : payloadReferences)
+        if (references != 1) return fail(QStringLiteral("The backup has an unreferenced owned-content record."));
     if (totalOwnedBytes > importedQuota) return fail(QStringLiteral("The backup's owned content exceeds its saved storage quota."));
     qint64 claimedOwnedBytes = 0;
     if (!numericInteger(manifest.value(QStringLiteral("includedOwnedBytes")), 0, MaxOwnedBytes, &claimedOwnedBytes) || claimedOwnedBytes != totalOwnedBytes)
@@ -493,27 +521,30 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
     for (int payloadIndex = 0; payloadIndex < payloads.size(); ++payloadIndex) {
         int itemIndex = -1;
         for (int i = 0; i < items.size(); ++i) {
-            if (items[i].toObject().value(QStringLiteral("payload")).toInt(-1) == payloadIndex) { itemIndex = i; break; }
+            if (items[i].toObject().value(QStringLiteral("payload")).toInt(-1) == payloadIndex) {
+                itemIndex = i;
+                break;
+            }
         }
         if (itemIndex < 0) return fail(QStringLiteral("The backup has an unreferenced owned-content record."));
         const QString directory = m_root + QStringLiteral("/objects/") + newIds[itemIndex];
         if (!privateOwnedDirectory(directory)) {
             for (const auto &created : stagedFiles) removeOwnedPath(created);
-            return fail(QStringLiteral("Could not create private storage for imported content."));
+            return fail(QStringLiteral("Couldn't create private storage for imported content."));
         }
         const QString destination = directory + QLatin1Char('/') + safeLeaf(payloadNames[payloadIndex]);
         QSaveFile staged(destination);
         if (!staged.open(QIODevice::WriteOnly) || !staged.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
             QDir(directory).removeRecursively();
             for (const auto &created : stagedFiles) removeOwnedPath(created);
-            return fail(QStringLiteral("Could not stage imported owned content."));
+            return fail(QStringLiteral("Couldn't stage imported owned content."));
         }
         QCryptographicHash hash(QCryptographicHash::Sha256);
         if (!transfer(archive, &staged, payloadSizes[payloadIndex], &hash) || hash.result().toHex() != payloadHashes[payloadIndex] || !staged.commit()) {
             staged.cancelWriting();
             QDir(directory).removeRecursively();
             for (const auto &created : stagedFiles) removeOwnedPath(created);
-            return fail(QStringLiteral("Owned content failed its size or SHA-256 check."));
+            return fail(QStringLiteral("Couldn't restore an item. Its file doesn't match the backup."));
         }
         stagedPaths[itemIndex] = destination;
         stagedFiles.append(destination);
@@ -527,40 +558,43 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
     QSqlQuery oldItems(m_db);
     if (!oldItems.exec(QStringLiteral("SELECT path FROM items WHERE owned=1 AND path<>''"))) {
         for (const auto &created : stagedFiles) removeOwnedPath(created);
-        return fail(QStringLiteral("Could not prepare Shelf's import backup."));
+        return fail(QStringLiteral("Couldn't prepare Shelf's import backup."));
     }
     while (oldItems.next()) oldOwnedPaths.append(oldItems.value(0).toString());
 
     const QString backups = m_root + QStringLiteral("/backups");
     if (!privateOwnedDirectory(backups)) {
         for (const auto &created : stagedFiles) removeOwnedPath(created);
-        return fail(QStringLiteral("Could not create Shelf's private import backup directory."));
+        return fail(QStringLiteral("Couldn't create Shelf's private import backup directory."));
     }
     const QString backupPath = backups + QStringLiteral("/before-import-") + QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")) +
-        QLatin1Char('-') + QUuid::createUuid().toString(QUuid::Id128) + QStringLiteral(".sqlite3");
+                               QLatin1Char('-') + QUuid::createUuid().toString(QUuid::Id128) + QStringLiteral(".sqlite3");
     QString escapedBackup = backupPath;
     escapedBackup.replace(QLatin1Char('\''), QStringLiteral("''"));
     QSqlQuery backup(m_db);
     if (!backup.exec(QStringLiteral("VACUUM INTO '") + escapedBackup + QLatin1Char('\'')) || !QFileInfo(backupPath).isFile()) {
         for (const auto &created : stagedFiles) removeOwnedPath(created);
-        return fail(QStringLiteral("Could not back up current Shelf settings before import."));
+        return fail(QStringLiteral("Couldn't back up current Shelf settings before import."));
     }
     if (!QFile::setPermissions(backupPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
         QFile::remove(backupPath);
         for (const auto &created : stagedFiles) removeOwnedPath(created);
-        return fail(QStringLiteral("Could not protect Shelf's import backup."));
+        return fail(QStringLiteral("Couldn't protect Shelf's import backup."));
     }
 
     if (!m_db.transaction()) {
         for (const auto &created : stagedFiles) removeOwnedPath(created);
-        return fail(QStringLiteral("Could not start the Shelf import transaction."));
+        return fail(QStringLiteral("Couldn't start the Shelf import transaction."));
     }
     const auto rollback = [&] {
         m_db.rollback();
         for (const auto &created : stagedFiles) removeOwnedPath(created);
     };
     QSqlQuery clear(m_db);
-    if (!clear.exec(QStringLiteral("DELETE FROM shelves"))) { rollback(); return fail(QStringLiteral("Could not replace Shelf collections.")); }
+    if (!clear.exec(QStringLiteral("DELETE FROM shelves"))) {
+        rollback();
+        return fail(QStringLiteral("Couldn't replace Shelf collections."));
+    }
     for (const auto &value : shelves) {
         const auto shelf = value.toObject();
         QSqlQuery insert(m_db);
@@ -571,7 +605,10 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
         insert.addBindValue(shelf.value(QStringLiteral("pinned")).toBool());
         insert.addBindValue(shelf.value(QStringLiteral("position")).toInt());
         insert.addBindValue(shelf.value(QStringLiteral("created")).toInteger());
-        if (!insert.exec()) { rollback(); return fail(QStringLiteral("Could not restore Shelf collection metadata.")); }
+        if (!insert.exec()) {
+            rollback();
+            return fail(QStringLiteral("Couldn't restore Shelf collection metadata."));
+        }
     }
     for (qsizetype i = 0; i < items.size(); ++i) {
         const auto item = items[i].toObject();
@@ -579,11 +616,11 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
         const QString type = item.value(QStringLiteral("type")).toString();
         QString text = item.value(QStringLiteral("text")).toString(QStringLiteral(""));
         QString html = item.value(QStringLiteral("html")).toString(QStringLiteral(""));
-        QString path = owned ? stagedPaths[i] : item.value(QStringLiteral("path")).toString();
-        if (path.isNull()) path = QStringLiteral("");
+        QString itemPath = owned ? stagedPaths[i] : item.value(QStringLiteral("path")).toString();
+        if (itemPath.isNull()) itemPath = QStringLiteral("");
         QString refkey;
-        if (!owned) refkey = QStringLiteral("path:") + referenceKey(path);
-        else if (path.isEmpty()) {
+        if (!owned) refkey = QStringLiteral("path:") + referenceKey(itemPath);
+        else if (itemPath.isEmpty()) {
             const QByteArray source = type.toUtf8() + '\0' + text.toUtf8() + '\0' + html.toUtf8();
             refkey = QStringLiteral("text:") + QString::fromLatin1(QCryptographicHash::hash(source, QCryptographicHash::Sha256).toHex());
         }
@@ -593,7 +630,7 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
         insert.addBindValue(item.value(QStringLiteral("shelf")).toString());
         insert.addBindValue(type);
         insert.addBindValue(item.value(QStringLiteral("name")).toString());
-        insert.addBindValue(path);
+        insert.addBindValue(itemPath);
         insert.addBindValue(text);
         insert.addBindValue(html);
         insert.addBindValue(item.value(QStringLiteral("size")).toInteger());
@@ -601,13 +638,17 @@ bool Store::importPortable(const QString &path, int *importedItems, QString *err
         insert.addBindValue(item.value(QStringLiteral("position")).toInt());
         insert.addBindValue(item.value(QStringLiteral("created")).toInteger());
         insert.addBindValue(refkey.isEmpty() ? QVariant(QMetaType::fromType<QString>()) : QVariant(refkey));
-        if (!insert.exec()) { rollback(); return fail(QStringLiteral("Could not restore Shelf collection items.")); }
+        if (!insert.exec()) {
+            rollback();
+            return fail(QStringLiteral("Couldn't restore Shelf collection items."));
+        }
     }
     if (!setActiveShelf(active) || !saveSettings(importedPreferences) || !m_db.commit()) {
-        rollback(); return fail(QStringLiteral("Could not commit the Shelf backup import."));
+        rollback();
+        return fail(QStringLiteral("Couldn't commit the Shelf backup import."));
     }
     for (const auto &oldPath : std::as_const(oldOwnedPaths)) removeOwnedPath(oldPath);
     if (importedItems) *importedItems = items.size();
     return true;
 }
-}
+} // namespace Shelf

@@ -85,12 +85,13 @@ def ctest_failures(build: Path) -> list[tuple[str, str]]:
 
 
 def vendor_failures(root: Path) -> list[tuple[str, str]]:
-    metadata_path = root / "vendor/arcade-link/provenance.json"
+    metadata_path = root / "vendor/arcade-link/VENDORED.json"
     if not metadata_path.is_file():
         return []
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     results = []
-    for entry in metadata["files"]:
+    entries = [{"destination": f"vendor/arcade-link/{name}", "sha256": digest} for name, digest in metadata["files"].items()]
+    for entry in entries:
         relative = Path(entry["destination"])
         if relative.is_absolute() or ".." in relative.parts:
             continue

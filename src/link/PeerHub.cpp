@@ -21,8 +21,7 @@ qint64 inputBytes(const QJsonArray &inputs)
     for (const auto &value : inputs) {
         const auto content = value.toObject();
         qint64 bytes = content.value("size").toInteger(-1);
-        if (bytes < 0) bytes = content.value("text").toString().toUtf8().size()
-            + content.value("html").toString().toUtf8().size();
+        if (bytes < 0) bytes = content.value("text").toString().toUtf8().size() + content.value("html").toString().toUtf8().size();
         if (total > std::numeric_limits<qint64>::max() - bytes)
             return std::numeric_limits<qint64>::max();
         total += bytes;
@@ -34,9 +33,7 @@ bool requiresConfirmation(const QJsonArray &effects)
 {
     for (const auto &value : effects) {
         const auto effect = value.toString();
-        if (effect == "network" || effect == "uploads-content" || effect == "sends-to-device"
-            || effect == "executes-commands" || effect == "overwrites-files"
-            || effect == "deletes-files" || effect == "window-control") return true;
+        if (effect == "network" || effect == "uploads-content" || effect == "sends-to-device" || effect == "executes-commands" || effect == "overwrites-files" || effect == "deletes-files" || effect == "window-control") return true;
     }
     return false;
 }
@@ -61,9 +58,7 @@ bool compatible(const QJsonObject &manifest, const QJsonObject &action, const QJ
     const auto accepts = action.value("accepts").toArray();
     if (inputs.isEmpty() || accepts.isEmpty()) return false;
     // Historical one-value consumers must never receive mixed Content values.
-    if (inputs.size() > 1 && (!arrayPattern(accepts)
-        || (manifest.value("id").toString() == "arcade.clipboard"
-            && action.value("id").toString() == "clipboard.add"))) return false;
+    if (inputs.size() > 1 && (!arrayPattern(accepts) || (manifest.value("id").toString() == "arcade.clipboard" && action.value("id").toString() == "clipboard.add"))) return false;
     for (const auto &value : inputs)
         if (!value.isObject() || !ArcadeLink::acceptsContent(accepts, value.toObject())) return false;
     return true;
@@ -114,26 +109,22 @@ void PeerHub::publishRegistry()
         if (manifest.value("id").toString() == "arcade.shelf") continue;
         QString runningVersion;
         const auto state = ArcadeLink::appState(m_registry->locations(), *m_registry,
-            manifest.value("id").toString(), "arcade.shelf", &runningVersion);
+                                                manifest.value("id").toString(), "arcade.shelf", &runningVersion);
         manifest.insert("state", state);
         manifest.insert("running", state == "Running");
         if (state == "Running") manifest.insert("runningVersion", runningVersion);
         // Pipelines have individual contracts; the broad run action is insufficient.
         // Fetch the read-only catalog on registry changes, never when opening menus.
-        if (m_workerEnabled && !m_workerDisabled.contains("arcade.box")
-            && manifest.value("id").toString() == "arcade.box" && state == "Running") {
+        if (m_workerEnabled && !m_workerDisabled.contains("arcade.box") && manifest.value("id").toString() == "arcade.box" && state == "Running") {
             bool canList = false;
             for (const auto &value : manifest.value("actions").toArray()) {
                 const auto action = value.toObject();
-                if (action.value("id").toString() == "box.pipelines"
-                    && ArcadeLink::actionUsable(manifest, action)) canList = true;
+                if (action.value("id").toString() == "box.pipelines" && ArcadeLink::actionUsable(manifest, action)) canList = true;
             }
             if (canList) {
                 QJsonObject result;
                 ArcadeLink::Error error;
-                const QJsonObject request{{"action", "box.pipelines"}, {"version", 1},
-                    {"inputs", QJsonArray{}}, {"options", QJsonObject{}},
-                    {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", false}, {"reason", "discovery"}}}};
+                const QJsonObject request{{"action", "box.pipelines"}, {"version", 1}, {"inputs", QJsonArray{}}, {"options", QJsonObject{}}, {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", false}, {"reason", "discovery"}}}};
                 if (ShelfInvoke::run(m_registry->locations(), manifest, request, &result, &error, {}, &m_stopping, 3000, false)) {
                     for (const auto &value : result.value("outputs").toArray()) {
                         const auto output = value.toObject();
@@ -150,8 +141,7 @@ void PeerHub::publishRegistry()
     if (m_stopping.load()) return;
     QMetaObject::invokeMethod(this, [this, snapshot] {
         m_manifests = snapshot;
-        emit registryChanged();
-    }, Qt::QueuedConnection);
+        emit registryChanged(); }, Qt::QueuedConnection);
 }
 
 void PeerHub::refreshWorkerPolicy()
@@ -162,8 +152,7 @@ void PeerHub::refreshWorkerPolicy()
     QMetaObject::invokeMethod(m_registryWorker, [this, enabled, disabled] {
         m_workerEnabled = enabled;
         m_workerDisabled = disabled;
-        if (m_registry) publishRegistry();
-    }, Qt::QueuedConnection);
+        if (m_registry) publishRegistry(); }, Qt::QueuedConnection);
 }
 
 void PeerHub::setEnabled(bool enabled)
@@ -225,13 +214,10 @@ QJsonArray PeerHub::sources() const
         if (!uses(manifest.value("id").toString())) continue;
         for (const auto &entry : manifest.value("actions").toArray()) {
             const auto action = entry.toObject();
-            if (!ArcadeLink::actionUsable(manifest, action)
-                || !action.value("accepts").toArray().isEmpty()
-                || !action.value("interactive").toBool()) continue;
+            if (!ArcadeLink::actionUsable(manifest, action) || !action.value("accepts").toArray().isEmpty() || !action.value("interactive").toBool()) continue;
             bool useful = false;
             for (const auto &type : action.value("produces").toArray())
-                if (type.toString().startsWith("file/") || type.toString().startsWith("text/")
-                    || type.toString() == "folder/reference") useful = true;
+                if (type.toString().startsWith("file/") || type.toString().startsWith("text/") || type.toString() == "folder/reference") useful = true;
             if (useful) out.append(offer(manifest, action, {}));
         }
     }
@@ -241,19 +227,31 @@ QJsonArray PeerHub::sources() const
 void PeerHub::invoke(QString app, QString action, QJsonArray inputs, QJsonObject options)
 {
     auto fail = [this](const ArcadeLink::Error &error) { emit finished({}, error); };
-    if (!uses(app)) { fail(ArcadeLink::Error::make("denied", {}, "disabled")); return; }
-    if (m_busy) { fail(ArcadeLink::Error::make("busy", {})); return; }
+    if (!uses(app)) {
+        fail(ArcadeLink::Error::make("denied", {}, "disabled"));
+        return;
+    }
+    if (m_busy) {
+        fail(ArcadeLink::Error::make("busy", {}));
+        return;
+    }
     QJsonObject manifest;
     for (const auto &value : m_manifests)
         if (value.toObject().value("id").toString() == app) manifest = value.toObject();
-    if (manifest.isEmpty()) { fail(ArcadeLink::Error::make("not_installed", {})); return; }
-    QJsonObject request{{"action", action}, {"inputs", inputs}, {"options", options},
-        {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", true}, {"reason", "user-click"}}}};
+    if (manifest.isEmpty()) {
+        fail(ArcadeLink::Error::make("not_installed", {}));
+        return;
+    }
+    QJsonObject request{{"action", action}, {"inputs", inputs}, {"options", options}, {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", true}, {"reason", "user-click"}}}};
     const auto contract = ShelfInvoke::actionFor(manifest, request);
-    if (contract.isEmpty()) { fail(ArcadeLink::Error::make("unavailable", {})); return; }
+    if (contract.isEmpty()) {
+        fail(ArcadeLink::Error::make("unavailable", {}));
+        return;
+    }
     request.insert("version", contract.value("version").toInt(1));
     if (!inputs.isEmpty() && !compatible(manifest, contract, inputs)) {
-        fail(ArcadeLink::Error::make("unsupported_input", {})); return;
+        fail(ArcadeLink::Error::make("unsupported_input", {}));
+        return;
     }
     if (m_invokeThread) {
         m_invokeThread->wait();
@@ -276,8 +274,7 @@ void PeerHub::invoke(QString app, QString action, QJsonArray inputs, QJsonObject
         QMetaObject::invokeMethod(this, [this, result, error] {
             m_busy = false;
             emit busyChanged();
-            emit finished(result, error);
-        }, Qt::QueuedConnection);
+            emit finished(result, error); }, Qt::QueuedConnection);
     });
     m_invokeThread->start();
 }

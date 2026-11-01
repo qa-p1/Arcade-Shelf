@@ -1,0 +1,2 @@
+// The executable's icon: the kit's launcher icon (packaging/icons, from Link).
+IDI_ICON1 ICON "../icons/arcade-shelf.ico"

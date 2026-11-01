@@ -8,7 +8,7 @@ since: 0.2.0
 
 ## The global shortcut is not ready
 
-Open **Settings → Trigger** and read the status below the shortcut field. A desktop portal may be unavailable, may have declined the shortcut, or may report a collision. Choose another shortcut and approve it when prompted. On Hyprland, if the portal cannot bind it, set a compositor binding to run `arcade-shelf --toggle` as described by the status message.
+Open **Settings → Shortcuts** and read the status below the shortcut field. A desktop portal may be unavailable, may have declined the shortcut, or may report a collision. Choose another shortcut and approve it when prompted. On Hyprland, if the portal cannot bind it, set a compositor binding to run `arcade-shelf --toggle` as described by the status message.
 
 ## Shelf does not appear or stays behind other windows
 
@@ -28,4 +28,4 @@ Native drag-out has not yet been checked on a real desktop for this release. Use
 
 ## Windows or macOS behaves differently
 
-Those builds and tests run in CI, but Shelf has **not been run interactively on a real Windows or macOS desktop**. If the native shortcut, tray or surface behaves differently, use the app's **Settings → Trigger** status and report the platform and desktop details with the issue.
+Those builds and tests run in CI, but Shelf has **not been run interactively on a real Windows or macOS desktop**. If the native shortcut, tray or surface behaves differently, use the app's **Settings → Shortcuts** status and report the platform and desktop details with the issue.

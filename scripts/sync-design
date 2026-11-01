@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Refreshes the vendored Link Qt module, design kit, icons and shared files
+# from the pinned Link tag (shared-provenance.json's "reference"), or from
+# the tag given as the first argument. Needs git and network access.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+python=$(command -v python3 || command -v python)
+exec "$python" - "$@" <<'PY'
+import json, subprocess, sys, tempfile
+pinned = json.load(open("vendor/arcade-link/shared-provenance.json"))["reference"]
+tag = sys.argv[1] if len(sys.argv) > 1 else pinned
+with tempfile.TemporaryDirectory(prefix="arcade-link-") as work:
+    subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", tag,
+                    "https://github.com/qa-p1/Arcade-Link", work + "/link"], check=True)
+    subprocess.run([sys.executable, "scripts/vendor-link.py", "--link", work + "/link", "--revision", tag], check=True)
+subprocess.run([sys.executable, "scripts/check-vendor.py"], check=True)
+PY

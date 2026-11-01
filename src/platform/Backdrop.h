@@ -42,6 +42,7 @@ public:
                            qintptr *result) override;
 signals:
     void changed();
+
 private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void scheduleRefresh();

@@ -32,14 +32,11 @@ bool FullscreenGuard::coversScreen(const QRect &window, const QRect &screen, int
 {
     if (window.width() <= 0 || window.height() <= 0 || screen.width() <= 0 || screen.height() <= 0) return false;
     const qint64 extra = qBound(0, tolerance, 8);
-    return qint64(window.x()) <= qint64(screen.x()) + extra
-        && qint64(window.y()) <= qint64(screen.y()) + extra
-        && qint64(window.x()) + window.width() >= qint64(screen.x()) + screen.width() - extra
-        && qint64(window.y()) + window.height() >= qint64(screen.y()) + screen.height() - extra;
+    return qint64(window.x()) <= qint64(screen.x()) + extra && qint64(window.y()) <= qint64(screen.y()) + extra && qint64(window.x()) + window.width() >= qint64(screen.x()) + screen.width() - extra && qint64(window.y()) + window.height() >= qint64(screen.y()) + screen.height() - extra;
 }
 
 bool FullscreenGuard::hyprlandFullscreen(const QJsonArray &monitors, const QJsonArray &clients,
-                                       const QString &screenName, qint64 ownPid, bool *monitorMatched)
+                                         const QString &screenName, qint64 ownPid, bool *monitorMatched)
 {
     if (monitorMatched) *monitorMatched = false;
     if (screenName.isEmpty() || monitors.size() > 256 || clients.size() > 10000) return false;
@@ -54,18 +51,12 @@ bool FullscreenGuard::hyprlandFullscreen(const QJsonArray &monitors, const QJson
         const auto sameWorkspace = [](const QJsonObject &workspace, const QJsonObject &target, bool isSpecial) {
             const QString address = target["address"].toString();
             if (!address.isEmpty() && workspace["address"].toString() == address) return true;
-            return target["id"].isDouble() && workspace["id"].isDouble()
-                && (!isSpecial || target["id"].toInt() != 0)
-                && target["id"].toInt() == workspace["id"].toInt();
+            return target["id"].isDouble() && workspace["id"].isDouble() && (!isSpecial || target["id"].toInt() != 0) && target["id"].toInt() == workspace["id"].toInt();
         };
         for (const auto &clientValue : clients) {
             const auto client = clientValue.toObject();
             // Hyprland fullscreen mode 1 is maximized; mode 2 is fullscreen.
-            if (!client["fullscreen"].isDouble() || client["fullscreen"].toInt() != 2
-                || !client["monitor"].isDouble() || client["monitor"].toInt(-1) != id
-                || !client["pid"].isDouble() || client["pid"].toInteger() <= 0 || client["pid"].toInteger() == ownPid
-                || (client.contains("mapped") && (!client["mapped"].isBool() || !client["mapped"].toBool()))
-                || (client.contains("hidden") && (!client["hidden"].isBool() || client["hidden"].toBool()))) continue;
+            if (!client["fullscreen"].isDouble() || client["fullscreen"].toInt() != 2 || !client["monitor"].isDouble() || client["monitor"].toInt(-1) != id || !client["pid"].isDouble() || client["pid"].toInteger() <= 0 || client["pid"].toInteger() == ownPid || (client.contains("mapped") && (!client["mapped"].isBool() || !client["mapped"].toBool())) || (client.contains("hidden") && (!client["hidden"].isBool() || client["hidden"].toBool()))) continue;
             // Current Hyprland supplies authoritative visibility and optional
             // numbered workspace IDs. Named workspaces use address strings.
             if (client.contains("visible")) {
@@ -101,22 +92,26 @@ struct FullscreenGuard::Native {
     {
         const auto it = hooks().find(hook);
         if (it == hooks().end()) return;
-        if (kind == EVENT_SYSTEM_FOREGROUND
-            || (kind == EVENT_OBJECT_LOCATIONCHANGE && object == OBJID_WINDOW
-                && child == CHILDID_SELF && window == GetForegroundWindow())) it->second->schedule();
+        if (kind == EVENT_SYSTEM_FOREGROUND || (kind == EVENT_OBJECT_LOCATIONCHANGE && object == OBJID_WINDOW && child == CHILDID_SELF && window == GetForegroundWindow())) it->second->schedule();
     }
     void start()
     {
-        if (watching) { schedule(); return; }
+        if (watching) {
+            schedule();
+            return;
+        }
         foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
-            event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                                         event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
         locationHook = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr,
-            event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                                       event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
         if (!foregroundHook || !locationHook) {
-            stop(); owner->setState(false, QStringLiteral("Windows fullscreen observation unavailable")); return;
+            stop();
+            owner->setState(false, QStringLiteral("Windows fullscreen observation unavailable"));
+            return;
         }
         hooks()[foregroundHook] = hooks()[locationHook] = this;
-        watching = true; schedule();
+        watching = true;
+        schedule();
     }
     void evaluate()
     {
@@ -130,24 +125,25 @@ struct FullscreenGuard::Native {
         }
         HWND foreground = GetForegroundWindow();
         if (foreground) foreground = GetAncestor(foreground, GA_ROOTOWNER);
-        DWORD pid = 0; if (foreground) GetWindowThreadProcessId(foreground, &pid);
+        DWORD pid = 0;
+        if (foreground) GetWindowThreadProcessId(foreground, &pid);
         wchar_t className[128]{};
         if (foreground) GetClassNameW(foreground, className, 128);
         const QString classString = QString::fromWCharArray(className);
-        if (!foreground || pid == GetCurrentProcessId() || !IsWindowVisible(foreground)
-            || IsIconic(foreground) || IsZoomed(foreground)
-            || classString == QStringLiteral("Progman") || classString == QStringLiteral("WorkerW")
-            || classString.startsWith(QStringLiteral("Shell_"))) {
-            owner->setState(false, QStringLiteral("Windows fullscreen observation active")); return;
+        if (!foreground || pid == GetCurrentProcessId() || !IsWindowVisible(foreground) || IsIconic(foreground) || IsZoomed(foreground) || classString == QStringLiteral("Progman") || classString == QStringLiteral("WorkerW") || classString.startsWith(QStringLiteral("Shell_"))) {
+            owner->setState(false, QStringLiteral("Windows fullscreen observation active"));
+            return;
         }
-        MONITORINFO info{}; info.cbSize = sizeof(info);
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
         RECT bounds{};
         if (!shelfMonitor || !GetMonitorInfoW(shelfMonitor, &info)) {
-            owner->setState(false, QStringLiteral("Shelf monitor unavailable")); return;
+            owner->setState(false, QStringLiteral("Shelf monitor unavailable"));
+            return;
         }
-        if (FAILED(DwmGetWindowAttribute(foreground, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds, sizeof(bounds)))
-            && !GetWindowRect(foreground, &bounds)) {
-            owner->setState(false, QStringLiteral("Foreground geometry unavailable")); return;
+        if (FAILED(DwmGetWindowAttribute(foreground, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds, sizeof(bounds))) && !GetWindowRect(foreground, &bounds)) {
+            owner->setState(false, QStringLiteral("Foreground geometry unavailable"));
+            return;
         }
         const QRect window(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
         const QRect screen(info.rcMonitor.left, info.rcMonitor.top,
@@ -156,9 +152,14 @@ struct FullscreenGuard::Native {
     }
     void stop()
     {
-        ++generation; watching = false; queued = false;
+        ++generation;
+        watching = false;
+        queued = false;
         for (HWINEVENTHOOK hook : {foregroundHook, locationHook})
-            if (hook) { hooks().erase(hook); UnhookWinEvent(hook); }
+            if (hook) {
+                hooks().erase(hook);
+                UnhookWinEvent(hook);
+            }
         foregroundHook = locationHook = nullptr;
         shelfMonitor = nullptr;
     }
@@ -178,14 +179,19 @@ struct FullscreenGuard::Native {
     {
         const QString platform = QGuiApplication::platformName();
         if (!platform.contains(QStringLiteral("wayland"), Qt::CaseInsensitive)) {
-            owner->setState(false, QStringLiteral("Fullscreen stacking is controlled by this window manager")); return;
+            owner->setState(false, QStringLiteral("Fullscreen stacking is controlled by this window manager"));
+            return;
         }
         signature = qEnvironmentVariable("HYPRLAND_INSTANCE_SIGNATURE");
         if (signature.size() > 128 || !QRegularExpression(QStringLiteral("^[A-Za-z0-9_.-]+$")).match(signature).hasMatch()) {
-            owner->setState(false, QStringLiteral("This Wayland compositor does not expose other apps' fullscreen state")); return;
+            owner->setState(false, QStringLiteral("This Wayland compositor does not expose other apps' fullscreen state"));
+            return;
         }
         executable = QStandardPaths::findExecutable(QStringLiteral("hyprctl"));
-        if (executable.isEmpty()) { owner->setState(false, QStringLiteral("Hyprland fullscreen observation requires hyprctl")); return; }
+        if (executable.isEmpty()) {
+            owner->setState(false, QStringLiteral("Hyprland fullscreen observation requires hyprctl"));
+            return;
+        }
         if (watching) {
             if (events && events->state() == QLocalSocket::UnconnectedState) events->connectToServer(socketPath);
             if (events && events->state() == QLocalSocket::ConnectedState) schedule();
@@ -199,17 +205,17 @@ struct FullscreenGuard::Native {
         QObject::connect(events, &QLocalSocket::connected, owner, [this] { schedule(); });
         QObject::connect(events, &QLocalSocket::readyRead, owner, [this] {
             eventBuffer.append(events->readAll());
-            if (eventBuffer.size() > 65536) { eventBuffer.clear(); schedule(); return; }
+            if (eventBuffer.size() > 65536) {
+                eventBuffer.clear();
+                schedule();
+                return;
+            }
             bool relevant = false;
             for (qsizetype newline; (newline = eventBuffer.indexOf('\n')) >= 0;) {
                 const QByteArray event = eventBuffer.left(newline);
                 eventBuffer.remove(0, newline + 1);
                 const QByteArray name = event.left(event.indexOf(">>"));
-                relevant |= name == "fullscreen" || name.startsWith("activewindow")
-                    || name.startsWith("workspace") || name.startsWith("focusedmon")
-                    || name.startsWith("monitor") || name.startsWith("movewindow")
-                    || name.startsWith("moveworkspace") || name == "closewindow"
-                    || name == "openwindow" || name == "configreloaded";
+                relevant |= name == "fullscreen" || name.startsWith("activewindow") || name.startsWith("workspace") || name.startsWith("focusedmon") || name.startsWith("monitor") || name.startsWith("movewindow") || name.startsWith("moveworkspace") || name == "closewindow" || name == "openwindow" || name == "configreloaded";
             }
             if (relevant) schedule();
         });
@@ -217,7 +223,8 @@ struct FullscreenGuard::Native {
             owner->setState(false, QStringLiteral("Hyprland fullscreen event stream unavailable; retry when Shelf is shown"));
         });
         QObject::connect(events, &QLocalSocket::disconnected, owner, [this] {
-            eventBuffer.clear(); owner->setState(false, QStringLiteral("Hyprland fullscreen event stream disconnected"));
+            eventBuffer.clear();
+            owner->setState(false, QStringLiteral("Hyprland fullscreen event stream disconnected"));
         });
         events->connectToServer(socketPath);
     }
@@ -228,12 +235,14 @@ struct FullscreenGuard::Native {
         auto *process = new QProcess(owner);
         requests.erase(std::remove_if(requests.begin(), requests.end(), [](const auto &request) { return request.isNull(); }), requests.end());
         requests.emplace_back(process);
-        auto *deadline = new QTimer(process); deadline->setSingleShot(true);
+        auto *deadline = new QTimer(process);
+        deadline->setSingleShot(true);
         auto output = std::make_shared<QByteArray>();
         auto finished = std::make_shared<bool>(false);
         const auto finish = [this, process, deadline, output, finished, requestGeneration, completion](bool ok) {
             if (std::exchange(*finished, true)) return;
-            deadline->stop(); output->append(process->readAllStandardOutput());
+            deadline->stop();
+            output->append(process->readAllStandardOutput());
             QJsonParseError error;
             const auto document = QJsonDocument::fromJson(*output, &error);
             ok &= output->size() <= 2 * 1024 * 1024 && error.error == QJsonParseError::NoError && document.isArray();
@@ -260,46 +269,63 @@ struct FullscreenGuard::Native {
     {
         if (!watching || !owner->m_window || !owner->m_window->screen()) return;
         if (!events || events->state() != QLocalSocket::ConnectedState) {
-            owner->setState(false, QStringLiteral("Hyprland fullscreen event stream unavailable")); return;
+            owner->setState(false, QStringLiteral("Hyprland fullscreen event stream unavailable"));
+            return;
         }
-        if (querying) { queryAgain = true; return; }
+        if (querying) {
+            queryAgain = true;
+            return;
+        }
         querying = true;
         const auto snapshot = std::make_shared<Snapshot>();
         const auto complete = [this, snapshot] {
             if (--snapshot->pending) return;
             querying = false;
-            if (!snapshot->valid || !owner->m_window || !owner->m_window->screen()
-                || !events || events->state() != QLocalSocket::ConnectedState)
+            if (!snapshot->valid || !owner->m_window || !owner->m_window->screen() || !events || events->state() != QLocalSocket::ConnectedState)
                 owner->setState(false, QStringLiteral("Hyprland fullscreen snapshot unavailable"));
             else {
                 bool matched = false;
                 const bool fullscreen = FullscreenGuard::hyprlandFullscreen(snapshot->monitors, snapshot->clients,
-                    owner->m_window->screen()->name(), QCoreApplication::applicationPid(), &matched);
+                                                                            owner->m_window->screen()->name(), QCoreApplication::applicationPid(), &matched);
                 owner->setState(fullscreen, matched ? QStringLiteral("Hyprland fullscreen observation active")
-                                                   : QStringLiteral("Hyprland monitor could not be matched to Shelf's screen"));
+                                                    : QStringLiteral("Couldn't match Hyprland's monitor to Shelf's screen."));
             }
             if (std::exchange(queryAgain, false)) schedule();
         };
         runQuery(QStringLiteral("monitors"), [snapshot, complete](bool ok, QJsonArray value) {
-            snapshot->valid &= ok; snapshot->monitors = std::move(value); complete();
+            snapshot->valid &= ok;
+            snapshot->monitors = std::move(value);
+            complete();
         });
         runQuery(QStringLiteral("clients"), [snapshot, complete](bool ok, QJsonArray value) {
-            snapshot->valid &= ok; snapshot->clients = std::move(value); complete();
+            snapshot->valid &= ok;
+            snapshot->clients = std::move(value);
+            complete();
         });
     }
 
     void stop()
     {
-        ++generation; watching = false; queued = querying = queryAgain = false;
-        if (events) { QObject::disconnect(events, nullptr, owner, nullptr); events->abort(); events->deleteLater(); events = nullptr; }
-        eventBuffer.clear();
-        for (auto process : requests) if (process) {
-            QObject::disconnect(process, nullptr, owner, nullptr);
-            for (auto *deadline : process->findChildren<QTimer *>()) {
-                deadline->stop(); QObject::disconnect(deadline, nullptr, process, nullptr);
-            }
-            process->kill(); process->deleteLater();
+        ++generation;
+        watching = false;
+        queued = querying = queryAgain = false;
+        if (events) {
+            QObject::disconnect(events, nullptr, owner, nullptr);
+            events->abort();
+            events->deleteLater();
+            events = nullptr;
         }
+        eventBuffer.clear();
+        for (auto process : requests)
+            if (process) {
+                QObject::disconnect(process, nullptr, owner, nullptr);
+                for (auto *deadline : process->findChildren<QTimer *>()) {
+                    deadline->stop();
+                    QObject::disconnect(deadline, nullptr, process, nullptr);
+                }
+                process->kill();
+                process->deleteLater();
+            }
         requests.clear();
     }
 #else
@@ -311,7 +337,12 @@ struct FullscreenGuard::Native {
         owner->setState(false, QStringLiteral("macOS Spaces control fullscreen stacking"));
     }
     void evaluate() {}
-    void stop() { ++generation; watching = false; queued = false; }
+    void stop()
+    {
+        ++generation;
+        watching = false;
+        queued = false;
+    }
 #endif
     void schedule()
     {
@@ -336,17 +367,24 @@ FullscreenGuard::~FullscreenGuard()
 
 void FullscreenGuard::attachWindow(QWindow *window)
 {
-    if (m_window == window) { update(); return; }
+    if (m_window == window) {
+        update();
+        return;
+    }
     if (m_window) m_window->removeEventFilter(this);
     for (const auto &connection : m_connections) QObject::disconnect(connection);
-    m_connections.clear(); d->stop(); m_window = window;
+    m_connections.clear();
+    d->stop();
+    m_window = window;
     if (window) {
         window->installEventFilter(this);
         m_connections.push_back(connect(window, &QWindow::screenChanged, this, [this] { update(); }));
         m_connections.push_back(connect(window, &QWindow::xChanged, this, [this] { d->schedule(); }));
         m_connections.push_back(connect(window, &QWindow::yChanged, this, [this] { d->schedule(); }));
         m_connections.push_back(connect(window, &QObject::destroyed, this, [this] {
-            d->stop(); m_window = nullptr; setState(false, QStringLiteral("No desktop surface"));
+            d->stop();
+            m_window = nullptr;
+            setState(false, QStringLiteral("No desktop surface"));
         }));
     }
     update();
@@ -355,33 +393,35 @@ void FullscreenGuard::attachWindow(QWindow *window)
 void FullscreenGuard::setCollapsed(bool collapsed)
 {
     if (m_collapsed == collapsed) return;
-    m_collapsed = collapsed; update();
+    m_collapsed = collapsed;
+    update();
 }
 
 void FullscreenGuard::setRequestedVisible(bool visible)
 {
     if (m_requestedVisible == visible) return;
-    m_requestedVisible = visible; update();
+    m_requestedVisible = visible;
+    update();
 }
 
 void FullscreenGuard::setState(bool suppressed, const QString &status)
 {
     suppressed &= m_collapsed && m_requestedVisible;
     if (m_suppressed == suppressed && m_status == status) return;
-    m_suppressed = suppressed; m_status = status; emit changed();
+    m_suppressed = suppressed;
+    m_status = status;
+    emit changed();
 }
 
 void FullscreenGuard::update()
 {
     const QString platform = QGuiApplication::platformName();
-    const bool isolated = platform == QStringLiteral("offscreen") || platform == QStringLiteral("minimal")
-        || qEnvironmentVariableIntValue("ARCADE_SHELF_TESTING") == 1
-        || qEnvironmentVariableIntValue("ARCADE_SHELF_DISABLE_FULLSCREEN_GUARD") == 1
-        || (!qEnvironmentVariableIsEmpty("ARCADE_HOME")
-            && qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") != 1);
+    const bool isolated = platform == QStringLiteral("offscreen") || platform == QStringLiteral("minimal") || qEnvironmentVariableIntValue("ARCADE_SHELF_TESTING") == 1 || qEnvironmentVariableIntValue("ARCADE_SHELF_DISABLE_FULLSCREEN_GUARD") == 1 || (!qEnvironmentVariableIsEmpty("ARCADE_HOME") && qEnvironmentVariableIntValue("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS") != 1);
     if (!m_window || !m_requestedVisible || !m_collapsed || isolated) {
-        d->stop(); setState(false, isolated ? QStringLiteral("Fullscreen observation disabled for this isolated session")
-                                          : QStringLiteral("Fullscreen observation paused")); return;
+        d->stop();
+        setState(false, isolated ? QStringLiteral("Fullscreen observation disabled for this isolated session")
+                                 : QStringLiteral("Fullscreen observation paused"));
+        return;
     }
     d->start();
 }
@@ -396,7 +436,8 @@ bool FullscreenGuard::eventFilter(QObject *watched, QEvent *event)
             // the same fullscreen app and enter a hide/show loop. Keep the
             // event stream alive until fullscreen exit; detach stops it.
             if (!(m_suppressed && m_requestedVisible && m_collapsed)) {
-                d->stop(); setState(false, QStringLiteral("No desktop surface"));
+                d->stop();
+                setState(false, QStringLiteral("No desktop surface"));
             }
         } else QTimer::singleShot(0, this, [this] { update(); });
     }

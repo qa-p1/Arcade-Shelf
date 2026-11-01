@@ -12,11 +12,11 @@ No. Existing files and folders are held as references, so they stay in place. Sh
 
 ## How long do items stay in Quick Shelf?
 
-Quick Shelf is temporary, and unpinned items in temporary collections expire after 30 days by default. Pin a collection to retain it, or change **Settings → Storage → Retention**. A value of 0 disables expiration.
+Quick Shelf is temporary, and unpinned items in temporary collections expire after 30 days by default. Pin a collection to retain it, or change **Settings → Storage → Temporary item retention**. A value of 0 disables expiration.
 
 ## Where is Shelf data stored?
 
-Collection metadata and preferences are stored in a local SQLite database under Qt's per-user application-data directory. Owned content is kept in Shelf's private storage. The default owned-content quota is 512 MiB.
+Collection metadata and preferences are stored in a local SQLite database in Shelf's folder: `~/.local/share/arcade/shelf` on Linux, `%APPDATA%\Arcade\Shelf` on Windows and `~/Library/Application Support/Arcade/Shelf` on macOS. Shelf 0.4 moves the folder earlier versions used (`qa-p1/ArcadeShelf`) there on first start, and keeps the old one if anything can't be copied. Owned content is kept in Shelf's private storage. The default owned-content quota is about 537 MB (512 MiB); Settings sets it in MB.
 
 ## Does Shelf have clipboard history?
 

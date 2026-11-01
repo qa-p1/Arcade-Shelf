@@ -1,12 +1,12 @@
 {
-  "repository": "https://github.com/qa-p1/Arcade-link",
-  "commit": "33650a87b6999fbd553ac678cc7bde7a308cb852",
-  "reference": "v0.3.0",
+  "repository": "https://github.com/qa-p1/Arcade-Link",
+  "commit": "56798545d263c104ded54877239750f9645c32a3",
+  "reference": "v0.4.15",
   "files": [
     {
       "source": "packaging/windows/README.md",
       "destination": "vendor/arcade-link/shared/packaging/windows/README.md",
-      "sha256": "c0b052a5165ab43390d4cd4f19c05e1a9f9e6ff65e5a64c978087c91331c6c68"
+      "sha256": "11e3deb7969db46ff7b7cc6afc1a0e39b81fa379f96fced2f56624a60512616f"
     },
     {
       "source": "packaging/windows/arcade.iss",
@@ -62,6 +62,71 @@
       "source": "spec/vectors/shortcuts.json",
       "destination": "vendor/arcade-link/shared/spec/vectors/shortcuts.json",
       "sha256": "2691d5b60314b7060bac5c219ada25edbfdc30829ea8a22d7496714afe2d4cc5"
+    },
+    {
+      "source": "design/app-icons/shelf/icon.svg",
+      "destination": "packaging/icons/icon.svg",
+      "sha256": "c7428b971ce6da52c69c4f69f0584fa45715a5af8ef181a5a0f4c76b56ecce0e"
+    },
+    {
+      "source": "design/app-icons/shelf/png/16.png",
+      "destination": "packaging/icons/png/16.png",
+      "sha256": "bb5b673fd389cc6f303c2c6502f638d2142012c8aee87248296a321b6a103753"
+    },
+    {
+      "source": "design/app-icons/shelf/png/24.png",
+      "destination": "packaging/icons/png/24.png",
+      "sha256": "fdcd9b21a138e35d93acce9efaeda26cd0f8ae77208be39b1c5d9190893809a7"
+    },
+    {
+      "source": "design/app-icons/shelf/png/32.png",
+      "destination": "packaging/icons/png/32.png",
+      "sha256": "1fea66141ce28b9a001e57b59df194d57e4abcb9b60532baac1c816971673bc0"
+    },
+    {
+      "source": "design/app-icons/shelf/png/48.png",
+      "destination": "packaging/icons/png/48.png",
+      "sha256": "8f3900d8ebb58600ffbc9e69176aacdeab40af165ad2a4b15be1103131b675cc"
+    },
+    {
+      "source": "design/app-icons/shelf/png/64.png",
+      "destination": "packaging/icons/png/64.png",
+      "sha256": "151bac181632677eecbf9ff88a6c8da7af89e3f1a6ec0d428da2e033a7f0afab"
+    },
+    {
+      "source": "design/app-icons/shelf/png/128.png",
+      "destination": "packaging/icons/png/128.png",
+      "sha256": "4007e32f8234454879a6d674b938b622c7cc8c45f62c8d7b114ba108f711fc17"
+    },
+    {
+      "source": "design/app-icons/shelf/png/256.png",
+      "destination": "packaging/icons/png/256.png",
+      "sha256": "d310ffb6b0cecd44a2ebfbaf22ab922d8be9428aa27c972a8dfea6db0965c115"
+    },
+    {
+      "source": "design/app-icons/shelf/png/512.png",
+      "destination": "packaging/icons/png/512.png",
+      "sha256": "90165cc7e5f0ba599518d0aa487ad254d45f22b76f6ac543dc9932cba8c312f9"
+    },
+    {
+      "source": "design/app-icons/shelf/png/1024.png",
+      "destination": "packaging/icons/png/1024.png",
+      "sha256": "6d9c2b19abc955e463cc150d6686c6e736a2980e58a66b1c5db8f49941421fbc"
+    },
+    {
+      "source": "design/app-icons/shelf/shelf.ico",
+      "destination": "packaging/icons/arcade-shelf.ico",
+      "sha256": "10f74c1fa21e14e6e15ee015f7f627664979058596d816f29f4be8c7e9c461a3"
+    },
+    {
+      "source": "design/app-icons/shelf/macos/icon.icns",
+      "destination": "packaging/icons/arcade-shelf.icns",
+      "sha256": "4d35e3497081397d9785ae2d79a61afcb4d4674084f215ad6673108c032cfdba"
+    },
+    {
+      "source": "design/glyphs/arcade.shelf.svg",
+      "destination": "assets/glyph.svg",
+      "sha256": "42ff3fbca18365d18875061617446aca6876bf5f740160412663d3460f81e0cc"
     }
   ]
 }

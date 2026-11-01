@@ -1,18 +1,38 @@
 cmake_minimum_required(VERSION 3.25)
-project(ArcadeShelf VERSION 0.3.3 LANGUAGES CXX)
+project(ArcadeShelf VERSION 0.4.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 include(CTest)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Network Sql Svg Test Concurrent)
 qt_standard_project_setup(REQUIRES 6.8)
+set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
+# The Arcade design kit (vendored from Link) as a compiled static QML module,
+# so qmlcachegen compiles it ahead of time and qmllint knows its types.
+set(ARCADE_KIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/design/qml/Arcade")
+file(GLOB ARCADE_KIT_FILES CONFIGURE_DEPENDS "${ARCADE_KIT_DIR}/*.qml" "${ARCADE_KIT_DIR}/*.js")
+foreach(file IN LISTS ARCADE_KIT_FILES)
+  get_filename_component(name "${file}" NAME)
+  set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
+  if(name STREQUAL "Theme.qml" OR name STREQUAL "Fonts.qml")
+    set_source_files_properties("${file}" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+  endif()
+endforeach()
+qt_add_library(arcade_kit STATIC)
+qt_add_qml_module(arcade_kit URI Arcade VERSION 1.0 QML_FILES ${ARCADE_KIT_FILES})
+# Fonts.qml loads ../../fonts/InterVariable.ttf next to the module (/qt/qml/Arcade).
+qt_add_resources(arcade_kit "arcade_inter" PREFIX "/qt/fonts" BASE "vendor/arcade-link/design/fonts"
+  FILES vendor/arcade-link/design/fonts/InterVariable.ttf)
+target_link_libraries(arcade_kit PRIVATE Qt6::Quick)
+set(SHELF_QML_FILES ui/Main.qml ui/SettingsWindow.qml ui/DockMenu.qml ui/InstallPrompt.qml)
 add_library(arcade_link STATIC
   vendor/arcade-link/qt/ArcadeLink.cpp vendor/arcade-link/qt/ArcadeLink.h
   vendor/arcade-link/qt/ArcadeAccelerator.cpp vendor/arcade-link/qt/ArcadeAccelerator.h
   vendor/arcade-link/qt/ArcadeShortcuts.cpp vendor/arcade-link/qt/ArcadeShortcuts.h
   vendor/arcade-link/qt/ArcadeTrayHost.cpp vendor/arcade-link/qt/ArcadeTrayHost.h
   vendor/arcade-link/qt/ArcadeInstall.cpp vendor/arcade-link/qt/ArcadeInstall.h
-  vendor/arcade-link/qt/ArcadeInstallPlatform.cpp)
+  vendor/arcade-link/qt/ArcadeInstallPlatform.cpp
+  vendor/arcade-link/qt/ArcadePaths.cpp vendor/arcade-link/qt/ArcadePaths.h vendor/arcade-link/qt/ArcadeAppDirsTable.inc)
 target_include_directories(arcade_link PUBLIC vendor/arcade-link/qt)
 target_link_libraries(arcade_link PUBLIC Qt6::Core Qt6::Network)
 if(MSVC)
@@ -23,7 +43,7 @@ if(WIN32)
 endif()
 add_library(shelf_install STATIC src/platform/AppInstaller.cpp src/platform/AppInstaller.h)
 target_include_directories(shelf_install PUBLIC src)
-target_link_libraries(shelf_install PUBLIC arcade_link Qt6::Widgets Qt6::Concurrent)
+target_link_libraries(shelf_install PUBLIC arcade_link Qt6::Widgets Qt6::Quick Qt6::Concurrent)
 add_library(shelf_core STATIC src/core/Store.cpp src/core/Store.h src/core/PortableSettings.cpp)
 target_include_directories(shelf_core PUBLIC src)
 target_link_libraries(shelf_core PUBLIC arcade_link Qt6::Sql)
@@ -57,17 +77,49 @@ elseif(APPLE)
   target_link_libraries(shelf_desktop PRIVATE "-framework Carbon" "-framework Cocoa" "-framework QuartzCore")
 endif()
 qt_add_executable(arcade-shelf src/main.cpp src/Controller.cpp src/Controller.h src/ThumbnailProvider.cpp src/ThumbnailProvider.h)
-target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
+target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
+# The kit's launcher icon (window icon, install icons) and Shelf's monochrome
+# glyph (tray), both vendored from Link by scripts/vendor-link.py.
+set(SHELF_RESOURCES assets/glyph.svg packaging/icons/icon.svg)
+set_source_files_properties(packaging/icons/icon.svg PROPERTIES QT_RESOURCE_ALIAS assets/icon.svg)
 qt_add_qml_module(arcade-shelf URI ArcadeShelf VERSION 1.0
-  QML_FILES ui/Main.qml ui/ShelfIcon.qml ui/ShelfButton.qml ui/ShelfField.qml ui/ShelfMenu.qml ui/ShelfDialog.qml
-  RESOURCES assets/shelf.svg)
+  QML_FILES ${SHELF_QML_FILES}
+  RESOURCES ${SHELF_RESOURCES})
 set_target_properties(arcade-shelf PROPERTIES WIN32_EXECUTABLE TRUE MACOSX_BUNDLE TRUE
-  MACOSX_BUNDLE_GUI_IDENTIFIER io.github.qa_p1.ArcadeShelf
+  MACOSX_BUNDLE_GUI_IDENTIFIER dev.arcade.Shelf
+  MACOSX_BUNDLE_ICON_FILE arcade-shelf.icns
   MACOSX_BUNDLE_BUNDLE_NAME "Arcade Shelf" MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
-if(MSVC)
-  target_compile_options(shelf_core PRIVATE /W4)
-else()
-  target_compile_options(shelf_core PRIVATE -Wall -Wextra -Wpedantic)
+if(APPLE)
+  set_source_files_properties(packaging/icons/arcade-shelf.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(arcade-shelf PRIVATE packaging/icons/arcade-shelf.icns)
+elseif(WIN32)
+  target_sources(arcade-shelf PRIVATE packaging/windows/arcade-shelf.rc)
+endif()
+# Shelf's own code builds without warnings; CI (scripts/check) turns them
+# into errors with -DSHELF_WARNINGS_AS_ERRORS=ON (STANDARD §10). Vendored
+# Link code keeps its own flags.
+# The QML gate (STANDARD §10): qmllint over Shelf's module at zero warnings.
+# The typed controller (QML_NAMED_ELEMENT ShelfController) makes that possible.
+add_custom_target(qmllint_gate
+  COMMAND $<TARGET_FILE:Qt6::qmllint> "@${CMAKE_BINARY_DIR}/.rcc/qmllint/arcade-shelf.rsp" --max-warnings 0
+  COMMENT "qmllint (Shelf QML, zero warnings)" VERBATIM)
+add_dependencies(qmllint_gate arcade-shelf)
+option(SHELF_WARNINGS_AS_ERRORS "Fail the build on a compiler warning in Shelf's code" OFF)
+foreach(target shelf_install shelf_core shelf_services shelf_desktop arcade-shelf)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4 $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:/WX>)
+  else()
+    # -Wshadow (GCC) is the Linux check for MSVC's C4456-C4459.
+    target_compile_options(${target} PRIVATE -Wall -Wextra $<$<CXX_COMPILER_ID:GNU>:-Wshadow> $<$<BOOL:${SHELF_WARNINGS_AS_ERRORS}>:-Werror>)
+  endif()
+endforeach()
+target_compile_options(shelf_core PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wpedantic>)
+# qmlcachegen's C++ for Shelf's QML is Qt's generated code, not Shelf's: MSVC
+# reports C4702 (unreachable code) in it at /W4. Only those files skip C4702.
+get_target_property(SHELF_QMLCACHE_SOURCES arcade-shelf SOURCES)
+list(FILTER SHELF_QMLCACHE_SOURCES INCLUDE REGEX "/\\.rcc/qmlcache/")
+if(MSVC AND SHELF_QMLCACHE_SOURCES)
+  set_source_files_properties(${SHELF_QMLCACHE_SOURCES} PROPERTIES COMPILE_OPTIONS /wd4702)
 endif()
 if(BUILD_TESTING)
   foreach(test IN ITEMS Store Service PeerHub)
@@ -76,7 +128,7 @@ if(BUILD_TESTING)
     add_test(NAME ${test} COMMAND tst_${test})
   endforeach()
   target_compile_definitions(tst_PeerHub PRIVATE SHELF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
-  foreach(test IN ITEMS Vectors Server Install TrayHost Methods)
+  foreach(test IN ITEMS Vectors Server Install TrayHost Methods Paths)
     add_executable(tst_Link${test} vendor/arcade-link/qt/tests/tst_${test}.cpp)
     target_link_libraries(tst_Link${test} PRIVATE arcade_link Qt6::Test)
     target_compile_definitions(tst_Link${test} PRIVATE ARCADE_LINK_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/spec/vectors" ARCADE_LINK_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/fixtures" ARCADE_LINK_INSTALL_STRINGS="${CMAKE_CURRENT_SOURCE_DIR}/vendor/arcade-link/assets/strings/install.json")
@@ -98,10 +150,10 @@ if(BUILD_TESTING)
   add_test(NAME SurfaceEffects COMMAND tst_SurfaceEffects)
   qt_add_executable(tst_Ui tests/tst_Ui.cpp src/Controller.cpp src/Controller.h src/ThumbnailProvider.cpp src/ThumbnailProvider.h)
   target_include_directories(tst_Ui PRIVATE src)
-  target_link_libraries(tst_Ui PRIVATE shelf_services shelf_desktop Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Test)
+  target_link_libraries(tst_Ui PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Test)
   qt_add_qml_module(tst_Ui URI ShelfUITest VERSION 1.0
-    QML_FILES ui/Main.qml ui/ShelfIcon.qml ui/ShelfButton.qml ui/ShelfField.qml ui/ShelfMenu.qml ui/ShelfDialog.qml
-    RESOURCES assets/shelf.svg)
+    QML_FILES ${SHELF_QML_FILES}
+    RESOURCES ${SHELF_RESOURCES})
   target_compile_definitions(tst_Ui PRIVATE SHELF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
   add_test(NAME Ui COMMAND tst_Ui)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)

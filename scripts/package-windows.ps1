@@ -1,4 +1,4 @@
-param([string]$Build = "build", [string]$QtPrefix = $env:QT_ROOT_DIR, [string]$Version = "0.3.3", [string]$Output = "dist")
+param([string]$Build = "build", [string]$QtPrefix = $env:QT_ROOT_DIR, [string]$Version = "0.4.0", [string]$Output = "dist")
 $ErrorActionPreference = "Stop"
 $Source = Split-Path -Parent $PSScriptRoot
 $Stage = Join-Path (Resolve-Path $Build) "package-windows"
@@ -6,7 +6,7 @@ if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
 cmake --install $Build --config Release --prefix $Stage
 if ($LASTEXITCODE -ne 0) { throw "CMake install failed" }
 if (Test-Path "$Stage/bin") { Get-ChildItem "$Stage/bin" | Move-Item -Destination $Stage; Remove-Item "$Stage/bin" }
-& "$QtPrefix/bin/windeployqt.exe" --release --qmldir "$Source/ui" --no-translations "$Stage/arcade-shelf.exe"
+& "$QtPrefix/bin/windeployqt.exe" --release --qmldir "$Source/ui" --qmldir "$Source/vendor/arcade-link/design/qml/Arcade" --no-translations "$Stage/arcade-shelf.exe"
 if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
 if (Test-Path "$QtPrefix/licenses") { Copy-Item -Recurse "$QtPrefix/licenses" "$Stage/share/arcade-shelf/licenses/Qt" }
 New-Item -Force -ItemType Directory $Output | Out-Null

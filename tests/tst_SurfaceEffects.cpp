@@ -66,10 +66,8 @@ private slots:
     {
         const QJsonArray monitors{
             QJsonObject{{"id", 1}, {"name", "DP-1"}, {"activeWorkspace", QJsonObject{{"id", 2}}}, {"specialWorkspace", QJsonObject{{"id", 0}}}},
-            QJsonObject{{"id", 2}, {"name", "DP-2"}, {"activeWorkspace", QJsonObject{{"id", 3}}}, {"specialWorkspace", QJsonObject{{"id", -99}}}}
-        };
-        QJsonObject client{{"monitor", 1}, {"fullscreen", 2}, {"pid", 100}, {"mapped", true},
-                           {"hidden", false}, {"workspace", QJsonObject{{"id", 2}}}};
+            QJsonObject{{"id", 2}, {"name", "DP-2"}, {"activeWorkspace", QJsonObject{{"id", 3}}}, {"specialWorkspace", QJsonObject{{"id", -99}}}}};
+        QJsonObject client{{"monitor", 1}, {"fullscreen", 2}, {"pid", 100}, {"mapped", true}, {"hidden", false}, {"workspace", QJsonObject{{"id", 2}}}};
         bool matched = false;
         QVERIFY(FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-1", 200, &matched));
         QVERIFY(matched);
@@ -87,7 +85,8 @@ private slots:
         QVERIFY(FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-2", 200));
         client["mapped"] = false;
         QVERIFY(!FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-2", 200));
-        client["mapped"] = true; client["hidden"] = true;
+        client["mapped"] = true;
+        client["hidden"] = true;
         QVERIFY(!FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-2", 200));
     }
 
@@ -106,10 +105,8 @@ private slots:
 
     void currentHyprlandNamedWorkspacesAndVisibilityAreSupported()
     {
-        const QJsonArray monitors{QJsonObject{{"id", 1}, {"name", "DP-1"},
-            {"activeWorkspace", QJsonObject{{"address", "name:work"}, {"type", "named"}, {"name", "work"}}}}};
-        QJsonObject client{{"monitor", 1}, {"fullscreen", 2}, {"pid", 100},
-            {"workspace", QJsonObject{{"address", "name:work"}, {"type", "named"}}}};
+        const QJsonArray monitors{QJsonObject{{"id", 1}, {"name", "DP-1"}, {"activeWorkspace", QJsonObject{{"address", "name:work"}, {"type", "named"}, {"name", "work"}}}}};
+        QJsonObject client{{"monitor", 1}, {"fullscreen", 2}, {"pid", 100}, {"workspace", QJsonObject{{"address", "name:work"}, {"type", "named"}}}};
         QVERIFY(FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-1", 200));
         client["workspace"] = QJsonObject{{"address", "name:other"}};
         QVERIFY(!FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-1", 200));
@@ -117,7 +114,8 @@ private slots:
         QVERIFY(FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-1", 200));
         client["visible"] = false;
         QVERIFY(!FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-1", 200));
-        client["visible"] = true; client.remove("pid");
+        client["visible"] = true;
+        client.remove("pid");
         QVERIFY(!FullscreenGuard::hyprlandFullscreen(monitors, {client}, "DP-1", 200));
     }
 

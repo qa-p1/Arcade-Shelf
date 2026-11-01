@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=Arcade Shelf
+Comment=A floating workspace for desktop content.
+Exec=arcade-shelf
+Icon=dev.arcade.Shelf
+Terminal=false
+Categories=Utility;FileTools;
+Keywords=shelf;collect;drop;drag;files;links;clipboard;workspace;
+StartupNotify=false
+StartupWMClass=dev.arcade.Shelf
+Actions=Settings;Quit;
+
+[Desktop Action Settings]
+Name=Settings
+Exec=arcade-shelf --settings
+
+[Desktop Action Quit]
+Name=Quit Arcade Shelf
+Exec=arcade-shelf --quit

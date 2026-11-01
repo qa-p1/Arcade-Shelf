@@ -58,11 +58,9 @@ Error ShelfInvoke::validate(const QJsonObject &manifest, const QJsonObject &requ
     bool batch = false;
     for (const auto &pattern : accepts)
         if (pattern.toString().section(';', 0, 0).endsWith("[]")) batch = true;
-    if (inputs.size() > 1 && (!batch || (manifest.value("id").toString() == "arcade.clipboard"
-        && request.value("action").toString() == "clipboard.add")))
+    if (inputs.size() > 1 && (!batch || (manifest.value("id").toString() == "arcade.clipboard" && request.value("action").toString() == "clipboard.add")))
         return Error::make("unsupported_input", {}, "this action accepts one Content value");
-    if (inputs.isEmpty() && !accepts.isEmpty() && !accepts.contains("*")
-        && request.value("action").toString() != "find.show" && request.value("action").toString() != "box.open")
+    if (inputs.isEmpty() && !accepts.isEmpty() && !accepts.contains("*") && request.value("action").toString() != "find.show" && request.value("action").toString() != "box.open")
         return Error::make("unsupported_input", {});
     qint64 size = 0;
     qsizetype pathCount = 0;
@@ -89,8 +87,7 @@ Error ShelfInvoke::validate(const QJsonObject &manifest, const QJsonObject &requ
             }
         } else if (content.contains("paths")) {
             for (const auto &path : content.value("paths").toArray()) {
-                if (!path.isString() || !QFileInfo(path.toString()).isAbsolute()
-                    || path.toString().contains(QChar::Null) || ++pathCount > 1000)
+                if (!path.isString() || !QFileInfo(path.toString()).isAbsolute() || path.toString().contains(QChar::Null) || ++pathCount > 1000)
                     return Error::make("unsupported_input", {});
                 const QFileInfo info(path.toString());
                 if (!info.isFile()) return Error::make("unsupported_input", {});
@@ -98,8 +95,7 @@ Error ShelfInvoke::validate(const QJsonObject &manifest, const QJsonObject &requ
             }
         } else {
             // Inline data's real size wins over caller-provided metadata.
-            if (!addBytes(content.value("text").toString().toUtf8().size()
-                        + content.value("html").toString().toUtf8().size()))
+            if (!addBytes(content.value("text").toString().toUtf8().size() + content.value("html").toString().toUtf8().size()))
                 return Error::make("too_large", {}, {}, MaxLineBytes);
         }
     }
@@ -151,8 +147,7 @@ bool connectPeer(QLocalSocket &socket, const Locations &locations, const QString
     if (!Endpoint::read(locations, app, &endpoint)) return false;
     socket.connectToServer(endpoint.address);
     if (!socket.waitForConnected(HelloTimeoutMs)) return false;
-    socket.write(requestLine(1, "hello", {{"token", endpoint.token}, {"protocol", QJsonArray{1}},
-                                         {"client", QJsonObject{{"id", QStringLiteral("arcade.shelf")}, {"version", QStringLiteral(SHELF_VERSION)}}}}));
+    socket.write(requestLine(1, "hello", {{"token", endpoint.token}, {"protocol", QJsonArray{1}}, {"client", QJsonObject{{"id", QStringLiteral("arcade.shelf")}, {"version", QStringLiteral(SHELF_VERSION)}}}}));
     socket.waitForBytesWritten(HelloTimeoutMs);
     QByteArray buffer;
     QJsonObject response;
@@ -206,7 +201,10 @@ bool resident(QLocalSocket &socket, const QJsonObject &request, QJsonObject *res
                 *error = Error::make("internal", {}, "invalid job ticket");
                 return false;
             }
-            if (job.isEmpty()) { *result = value; return true; }
+            if (job.isEmpty()) {
+                *result = value;
+                return true;
+            }
         } else {
             const auto params = message.value("params").toObject();
             if (job.isEmpty() || params.value("job").toString() != job) continue;
@@ -214,9 +212,12 @@ bool resident(QLocalSocket &socket, const QJsonObject &request, QJsonObject *res
             if (method == "job.progress" && progress)
                 progress(params.value("fraction").toDouble(-1), params.value("message").toString());
             if (method == "job.done") {
-                if (params.value("status").toString() == "success") { *result = params; return true; }
+                if (params.value("status").toString() == "success") {
+                    *result = params;
+                    return true;
+                }
                 *error = params.contains("error") ? Error::fromJson(params.value("error").toObject())
-                    : Error::make(params.value("status").toString() == "cancelled" ? "cancelled" : "internal", {});
+                                                  : Error::make(params.value("status").toString() == "cancelled" ? "cancelled" : "internal", {});
                 return false;
             }
         }
@@ -232,7 +233,10 @@ bool oneShot(const QJsonObject &manifest, const QJsonObject &request, QJsonObjec
     ArcadeLink::detachFromImage(process); // another app: it mustn't keep Shelf's image mounted
     process.setStandardErrorFile(QProcess::nullDevice());
     process.start(manifest.value("executable").toString(), args);
-    if (!process.waitForStarted(LaunchTimeoutMs)) { *error = Error::make("launch_failed", {}); return false; }
+    if (!process.waitForStarted(LaunchTimeoutMs)) {
+        *error = Error::make("launch_failed", {});
+        return false;
+    }
     process.write(requestLine(1, "invoke", request));
     process.closeWriteChannel();
     QElapsedTimer clock;
@@ -241,7 +245,8 @@ bool oneShot(const QJsonObject &manifest, const QJsonObject &request, QJsonObjec
     for (;;) {
         if ((cancel && cancel->load()) || clock.elapsed() >= timeoutMs) {
             *error = Error::make(cancel && cancel->load() ? "cancelled" : "timeout", {});
-            process.kill(); process.waitForFinished(1000);
+            process.kill();
+            process.waitForFinished(1000);
             return false;
         }
         process.waitForReadyRead(100);
@@ -252,10 +257,19 @@ bool oneShot(const QJsonObject &manifest, const QJsonObject &request, QJsonObjec
             buffer.remove(0, nl + 1);
             QJsonObject message;
             const auto kind = classify(line, &message);
-            if (kind == Kind::Invalid) { *error = Error::make("internal", {}, "invalid response"); return false; }
+            if (kind == Kind::Invalid) {
+                *error = Error::make("internal", {}, "invalid response");
+                return false;
+            }
             if (kind == Kind::Response && message.value("id").toInt() == 1) {
-                if (message.contains("error")) { *error = Error::fromJson(message.value("error").toObject()); return false; }
-                if (!message.value("result").isObject()) { *error = Error::make("internal", {}, "invoke result is not an object"); return false; }
+                if (message.contains("error")) {
+                    *error = Error::fromJson(message.value("error").toObject());
+                    return false;
+                }
+                if (!message.value("result").isObject()) {
+                    *error = Error::make("internal", {}, "invoke result is not an object");
+                    return false;
+                }
                 *result = message.value("result").toObject();
                 process.waitForFinished(1000);
                 return true;
@@ -265,11 +279,17 @@ bool oneShot(const QJsonObject &manifest, const QJsonObject &request, QJsonObjec
                 progress(params.value("fraction").toDouble(-1), params.value("message").toString());
             }
         }
-        if (buffer.size() > MaxLineBytes) { *error = Error::make("internal", {}, "response exceeds the protocol limit"); return false; }
-        if (process.state() == QProcess::NotRunning) { *error = Error::make("internal", {}, "one-shot process ended without a result"); return false; }
+        if (buffer.size() > MaxLineBytes) {
+            *error = Error::make("internal", {}, "response exceeds the protocol limit");
+            return false;
+        }
+        if (process.state() == QProcess::NotRunning) {
+            *error = Error::make("internal", {}, "one-shot process ended without a result");
+            return false;
+        }
     }
 }
-}
+} // namespace
 
 bool ShelfInvoke::run(const Locations &locations, const QJsonObject &manifest, const QJsonObject &request,
                       QJsonObject *result, Error *error, const std::function<void(double, const QString &)> &progress,
@@ -277,15 +297,24 @@ bool ShelfInvoke::run(const Locations &locations, const QJsonObject &manifest, c
 {
     *error = validate(manifest, request);
     if (error->isError()) return false;
-    if (cancel && cancel->load()) { *error = Error::make("cancelled", {}); return false; }
+    if (cancel && cancel->load()) {
+        *error = Error::make("cancelled", {});
+        return false;
+    }
     const auto line = requestLine(2, "invoke", request);
-    if (line.size() > MaxLineBytes) { *error = Error::make("too_large", {}, {}, MaxLineBytes); return false; }
+    if (line.size() > MaxLineBytes) {
+        *error = Error::make("too_large", {}, {}, MaxLineBytes);
+        return false;
+    }
     const auto app = manifest.value("id").toString();
     QLocalSocket socket;
     if (connectPeer(socket, locations, app, error))
         return resident(socket, request, result, error, progress, cancel, timeoutMs);
     if (error->code == "denied" || error->code == "version_mismatch") return false;
-    if (!allowLaunch) { *error = Error::make("not_running", {}); return false; }
+    if (!allowLaunch) {
+        *error = Error::make("not_running", {});
+        return false;
+    }
     *error = {};
     const auto launch = manifest.value("launch").toObject();
     if (!actionFor(manifest, request).value("interactive").toBool() && launch.value("invoke").isArray())
@@ -298,12 +327,16 @@ bool ShelfInvoke::run(const Locations &locations, const QJsonObject &manifest, c
     starter.setArguments(args);
     ArcadeLink::detachFromImage(starter); // another app: it mustn't keep Shelf's image mounted
     if (!starter.startDetached()) {
-        *error = Error::make("launch_failed", {}); return false;
+        *error = Error::make("launch_failed", {});
+        return false;
     }
     QElapsedTimer clock;
     clock.start();
     while (clock.elapsed() < LaunchTimeoutMs) {
-        if (cancel && cancel->load()) { *error = Error::make("cancelled", {}); return false; }
+        if (cancel && cancel->load()) {
+            *error = Error::make("cancelled", {});
+            return false;
+        }
         QLocalSocket next;
         *error = {};
         if (connectPeer(next, locations, app, error))

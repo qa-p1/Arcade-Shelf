@@ -1,6 +1,6 @@
 # Creates an annotated version tag on a commit that is already on main, after
-# checking it matches the app version. Then run "Build, test and package" on the tag (Actions →
-# Run workflow → the tag) to build, test and publish the release.
+# checking it matches the app version. The order: Release (beta, draft) on main
+# as the rehearsal, then this workflow, then Release (stable) on the new tag.
 name: Tag a release
 on:
   workflow_dispatch:

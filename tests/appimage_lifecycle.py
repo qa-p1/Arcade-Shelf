@@ -54,7 +54,7 @@ class AppImageLifecycleTests(unittest.TestCase):
             receipt_path = (install_home / "installs" if arcade_home else data_home / "arcade/installs") / "arcade.shelf.json"
             installed = install_home / "Applications/Arcade/Arcade-Shelf.AppImage"
             cli = install_home / ".local/bin/arcade-shelf"
-            desktop = data_home / "applications/arcade.shelf.desktop"
+            desktop = data_home / "applications/dev.arcade.Shelf.desktop"
             env["PATH"] = str(cli.parent) + os.pathsep + env.get("PATH", "")
 
             # The runtime normally sets APPIMAGE to the package and APPDIR to
@@ -105,6 +105,14 @@ class AppImageLifecycleTests(unittest.TestCase):
                 self.assertIn(f'Exec="{installed}"\n', text)
                 self.assertNotIn(str(root / "AppDir"), text)
                 self.assertNotIn(str(download), text)
+                # Shelf's standard metadata (STANDARD §10), once each, after install and after --repair.
+                for line in ("Comment=A floating workspace for desktop content.", "Categories=Utility;FileTools;",
+                             "StartupWMClass=dev.arcade.Shelf", "Icon=dev.arcade.Shelf", "Name=Settings",
+                             "Name=Quit Arcade Shelf"):
+                    self.assertEqual(text.splitlines().count(line), 1, f"{line} in\n{text}")
+                keywords = [l for l in text.splitlines() if l.startswith("Keywords=")]
+                self.assertEqual(len(keywords), 1, text)
+                self.assertTrue(4 <= len(keywords[0][len("Keywords="):].strip(";").split(";")) <= 8, keywords)
 
             # Preserve data beside the payload and within the integration
             # directories, as well as Shelf's profile and original user files.
@@ -137,10 +145,10 @@ class AppImageLifecycleTests(unittest.TestCase):
                 self.assertTrue(path.is_relative_to(root), path)
                 self.assertTrue(path.is_file(), path)
             for pixels in (16, 24, 32, 48, 64, 128, 256, 512):
-                icon = data_home / f"icons/hicolor/{pixels}x{pixels}/apps/arcade.shelf.png"
+                icon = data_home / f"icons/hicolor/{pixels}x{pixels}/apps/dev.arcade.Shelf.png"
                 self.assertIn(icon, icons)
                 self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-            self.assertIn(data_home / "icons/hicolor/scalable/apps/arcade.shelf.svg", icons)
+            self.assertIn(data_home / "icons/hicolor/scalable/apps/dev.arcade.Shelf.svg", icons)
             self.assertEqual(run(cli, "--version").strip().split()[-1], version)
             assert_desktop()
             assert_status()
@@ -178,7 +186,8 @@ class AppImageLifecycleTests(unittest.TestCase):
             relaunched_receipt, end = decoder.raw_decode(output.lstrip())
             relaunched_status = json.loads(output.lstrip()[end:])
             self.assertEqual(relaunched_receipt, read_receipt())
-            self.assertEqual(relaunched_status, {"running": False})
+            self.assertFalse(relaunched_status["running"])
+            self.assertEqual(relaunched_status["version"], version)
             self.assertEqual(relaunched_receipt["previous"], updated["previous"])
 
             removed = json.loads(run(installed, "--uninstall", "--silent"))

@@ -14,17 +14,11 @@ using namespace Shelf;
 namespace {
 QJsonObject action(QString id, QJsonArray accepts = {}, QJsonArray produces = {}, bool interactive = false)
 {
-    return {{"id", id}, {"version", 1}, {"title", id}, {"accepts", accepts},
-        {"produces", produces}, {"effects", QJsonArray{}}, {"interactive", interactive},
-        {"privacy", "local"}, {"available", true}};
+    return {{"id", id}, {"version", 1}, {"title", id}, {"accepts", accepts}, {"produces", produces}, {"effects", QJsonArray{}}, {"interactive", interactive}, {"privacy", "local"}, {"available", true}};
 }
 QJsonObject manifest(QString id, QJsonArray actions)
 {
-    return {{"schema", 1}, {"id", id}, {"name", id}, {"version", "0.1.0"},
-        {"link", QJsonObject{{"protocol", QJsonArray{1}}}},
-        {"executable", QCoreApplication::applicationFilePath()},
-        {"launch", QJsonObject{{"background", QJsonArray{"--background"}}}},
-        {"settings", QJsonObject{{"linkEnabled", true}}}, {"actions", actions}};
+    return {{"schema", 1}, {"id", id}, {"name", id}, {"version", "0.1.0"}, {"link", QJsonObject{{"protocol", QJsonArray{1}}}}, {"executable", QCoreApplication::applicationFilePath()}, {"launch", QJsonObject{{"background", QJsonArray{"--background"}}}}, {"settings", QJsonObject{{"linkEnabled", true}}}, {"actions", actions}};
 }
 bool containsAction(const QJsonArray &offers, QString id)
 {
@@ -32,7 +26,7 @@ bool containsAction(const QJsonArray &offers, QString id)
         if (value.toObject().value("action").toString() == id) return true;
     return false;
 }
-}
+} // namespace
 
 class PeerHubTest : public QObject {
     Q_OBJECT
@@ -105,7 +99,11 @@ private slots:
         find.insert("executable", QCoreApplication::applicationFilePath());
         QVERIFY(ArcadeLink::writeManifest(locations, find));
         const QString file = temp.filePath("brief.pdf");
-        { QFile f(file); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("pdf"); }
+        {
+            QFile f(file);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("pdf");
+        }
         {
             PeerHub hub;
             hub.start();
@@ -243,11 +241,10 @@ private slots:
         server.describe = [list, run] { return QJsonArray{list, run}; };
         server.invoke = [](const QJsonObject &request, const ArcadeLink::Responder &reply) {
             if (request.value("action").toString() != "box.pipelines") {
-                reply.fail(ArcadeLink::Error::make("unsupported_input", {})); return;
+                reply.fail(ArcadeLink::Error::make("unsupported_input", {}));
+                return;
             }
-            const QJsonObject pipeline{{"id", "share"}, {"name", "Share image"}, {"version", 1},
-                {"accepts", QJsonArray{"file/image"}}, {"produces", QJsonArray{"file/image"}},
-                {"effects", QJsonArray{"sends-to-device"}}, {"interactive", false}};
+            const QJsonObject pipeline{{"id", "share"}, {"name", "Share image"}, {"version", 1}, {"accepts", QJsonArray{"file/image"}}, {"produces", QJsonArray{"file/image"}}, {"effects", QJsonArray{"sends-to-device"}}, {"interactive", false}};
             reply.done({{"outputs", QJsonArray{QJsonObject{{"type", "structured/pipelines"}, {"data", QJsonArray{pipeline}}}}}});
         };
         QVERIFY(server.start());
@@ -285,8 +282,7 @@ private slots:
         QJsonObject result;
         ArcadeLink::Error error;
         std::atomic_bool done{false}, cancelled{false};
-        const QJsonObject request{{"action", "mock.pick"}, {"version", 1}, {"inputs", QJsonArray{}},
-            {"options", QJsonObject{}}, {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", true}}}};
+        const QJsonObject request{{"action", "mock.pick"}, {"version", 1}, {"inputs", QJsonArray{}}, {"options", QJsonObject{}}, {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", true}}}};
         auto *worker = QThread::create([&] {
             ShelfInvoke::run(locations, peer, request, &result, &error, {}, &cancelled, 200);
             done.store(true);
@@ -342,7 +338,7 @@ private slots:
                     const auto message = QJsonDocument::fromJson(socket->readLine()).object();
                     if (message.value("method").toString() == "hello")
                         socket->write(ArcadeLink::responseLine(1, QJsonObject{{"protocol", 1},
-                            {"server", QJsonObject{{"id", "arcade.mock"}, {"version", "0.1.0"}}}}));
+                                                                              {"server", QJsonObject{{"id", "arcade.mock"}, {"version", "0.1.0"}}}}));
                     else
                         // A request echoed as a reply must never count as success.
                         socket->write(ArcadeLink::requestLine(2, "invoke", {}));
@@ -374,7 +370,8 @@ int main(int argc, char **argv)
         server.describe = [] { return QJsonArray{action("mock.add", {"text/plain"})}; };
         server.invoke = [](const QJsonObject &request, const ArcadeLink::Responder &reply) {
             if (request.value("context").toObject().value("source").toString() != "arcade.shelf") {
-                reply.fail(ArcadeLink::Error::make("unsupported_input", {})); return;
+                reply.fail(ArcadeLink::Error::make("unsupported_input", {}));
+                return;
             }
             reply.done({{"message", "Served resident request"}});
         };

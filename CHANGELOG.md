@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — 2026-11-01
+
+- New fuchsia accent; Inter and the shared Arcade kit (Arcade Link 0.4.15) on the capsule, docked tab, panel, menus, dialogs and the install prompt, in light and dark.
+- Settings is its own window with the standard pages: General, Shortcuts, Storage, Backup and restore, Connected apps and About. It opens and closes without touching the panel. New options: backdrop blur and opening a docked Shelf on hover.
+- Peers that aren't installed show **Install** in Connected apps. Delete asks **Keep** or **Delete collection**, and peer actions list their effects one per line.
+- Shelf's folder moves to `~/.local/share/arcade/shelf` (`%APPDATA%\Arcade\Shelf`, `~/Library/Application Support/Arcade/Shelf`). The copy is verified, then the old folder is removed; if anything can't be copied, the old folder is kept and used. The launcher, login entry and window class are now `dev.arcade.Shelf`. The launcher carries the tagline, keywords and **Settings**; existing launchers and login entries are moved, and one switched off stays off.
+- New app icons from the kit and a monochrome tray icon. The tray menu reads **Open Arcade Shelf**, **Collect from clipboard**, **Settings**, **Quit Arcade Shelf**.
+- `--hide` closes the panel; `--status` prints one line with the version and Link state.
+- Errors read "Couldn't …" with the reason. Sizes are shown in kB/MB/GB, and the storage quota is set in MB. "Copied" shows briefly, and a filter with no results says Nothing matches "…".
+- Starting Shelf right after quitting it no longer fails with "Couldn't contact the resident Shelf instance".
+- The install prompt is no longer cut off at its title.
+- Development: `scripts/check`, `dev`, `package` and `sync-design`; clang-format; qmllint at zero warnings; compiler warnings as errors in CI; `ci.yml`, `tag.yml` and `release.yml`; developer docs in `docs/dev/`.
+
 ## 0.3.3 — 2026-10-19
 
 - A helper an app starts from its own image (such as a settings window) keeps

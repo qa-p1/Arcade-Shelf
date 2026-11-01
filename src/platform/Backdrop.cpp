@@ -33,40 +33,46 @@ public:
                QString *status) override
     {
         if (QGuiApplication::platformName() != QStringLiteral("windows")) {
-            clear(); *status = QStringLiteral("Native material unavailable on this display backend"); return false;
+            clear();
+            *status = QStringLiteral("Native material unavailable on this display backend");
+            return false;
         }
         const HWND handle = reinterpret_cast<HWND>(window->winId());
         if (m_handle != handle) clear();
         BOOL composition = FALSE;
-        HIGHCONTRASTW contrast{}; contrast.cbSize = sizeof(contrast);
+        HIGHCONTRASTW contrast{};
+        contrast.cbSize = sizeof(contrast);
         DWORD transparency = 1, size = sizeof(transparency);
         const bool transparencyOff = RegGetValueW(HKEY_CURRENT_USER,
-            L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-            L"EnableTransparency", RRF_RT_REG_DWORD, nullptr, &transparency, &size) == ERROR_SUCCESS
-            && transparency == 0;
-        if (!handle || !IsWindow(handle) || FAILED(DwmIsCompositionEnabled(&composition)) || !composition
-            || transparencyOff || (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0)
-                                  && (contrast.dwFlags & HCF_HIGHCONTRASTON))) {
-            clear(); *status = QStringLiteral("System material disabled by Windows display or accessibility settings"); return false;
+                                                  L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                                                  L"EnableTransparency", RRF_RT_REG_DWORD, nullptr, &transparency, &size) == ERROR_SUCCESS &&
+                                     transparency == 0;
+        if (!handle || !IsWindow(handle) || FAILED(DwmIsCompositionEnabled(&composition)) || !composition || transparencyOff || (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) && (contrast.dwFlags & HCF_HIGHCONTRASTON))) {
+            clear();
+            *status = QStringLiteral("System material disabled by Windows display or accessibility settings");
+            return false;
         }
         // Qt 6 sets WS_EX_LAYERED on frameless alpha windows. Stripping that
         // style would break Qt's capsule transparency. The official system
         // backdrop is window-wide, not an arbitrary rounded client subregion.
-        if ((GetWindowLongPtrW(handle, GWL_EXSTYLE) & WS_EX_LAYERED)
-            || region != QRectF(QPointF(), window->size())) {
-            clear(); *status = QStringLiteral("Transparent capsule uses a solid tint; Windows system material requires a compatible full-window surface"); return false;
+        if ((GetWindowLongPtrW(handle, GWL_EXSTYLE) & WS_EX_LAYERED) || region != QRectF(QPointF(), window->size())) {
+            clear();
+            *status = QStringLiteral("Transparent capsule uses a solid tint; Windows system material requires a compatible full-window surface");
+            return false;
         }
         if (!m_handle) {
             m_handle = handle;
             m_havePrevious = SUCCEEDED(DwmGetWindowAttribute(handle, SystemBackdropAttribute,
-                &m_previous, sizeof(m_previous)));
+                                                             &m_previous, sizeof(m_previous)));
             m_haveDark = SUCCEEDED(DwmGetWindowAttribute(handle, ImmersiveDarkAttribute,
-                &m_previousDark, sizeof(m_previousDark)));
+                                                         &m_previousDark, sizeof(m_previousDark)));
         }
         const HRESULT applied = DwmSetWindowAttribute(handle, SystemBackdropAttribute,
-            &TransientWindowBackdrop, sizeof(TransientWindowBackdrop));
+                                                      &TransientWindowBackdrop, sizeof(TransientWindowBackdrop));
         if (FAILED(applied)) {
-            clear(); *status = QStringLiteral("Windows 11 system material unavailable; using a solid tint"); return false;
+            clear();
+            *status = QStringLiteral("Windows 11 system material unavailable; using a solid tint");
+            return false;
         }
         m_applied = true;
         const BOOL useDark = dark;
@@ -84,8 +90,10 @@ public:
             if (m_darkApplied && m_haveDark)
                 DwmSetWindowAttribute(m_handle, ImmersiveDarkAttribute, &m_previousDark, sizeof(m_previousDark));
         }
-        m_handle = nullptr; m_applied = m_darkApplied = m_havePrevious = m_haveDark = false;
+        m_handle = nullptr;
+        m_applied = m_darkApplied = m_havePrevious = m_haveDark = false;
     }
+
 private:
     HWND m_handle = nullptr;
     DWORD m_previous = 1;
@@ -136,7 +144,10 @@ Backdrop::~Backdrop()
 
 void Backdrop::attachWindow(QWindow *window)
 {
-    if (m_window == window) { scheduleRefresh(); return; }
+    if (m_window == window) {
+        scheduleRefresh();
+        return;
+    }
     for (const auto &connection : m_connections) QObject::disconnect(connection);
     m_connections.clear();
     if (m_window) m_window->removeEventFilter(this);
@@ -146,7 +157,9 @@ void Backdrop::attachWindow(QWindow *window)
     if (window) {
         window->installEventFilter(this);
         m_connections.push_back(connect(window, &QWindow::destroyed, this, [this] {
-            m_native->clear(); m_window = nullptr; m_surfaceReady = false;
+            m_native->clear();
+            m_window = nullptr;
+            m_surfaceReady = false;
             setState(false, QStringLiteral("No desktop surface"));
         }));
         m_connections.push_back(connect(window, &QWindow::visibleChanged, this, [this] { scheduleRefresh(); }));
@@ -160,28 +173,31 @@ void Backdrop::setEnabled(bool enabled)
     if (m_enabled == enabled) return;
     const bool previousActive = m_active;
     const QString previousStatus = m_status;
-    m_enabled = enabled; refresh();
+    m_enabled = enabled;
+    refresh();
     if (previousActive == m_active && previousStatus == m_status) emit changed();
 }
 
 void Backdrop::setDark(bool dark)
 {
     if (m_dark == dark) return;
-    m_dark = dark; scheduleRefresh();
+    m_dark = dark;
+    scheduleRefresh();
 }
 
 void Backdrop::setRegion(const QRectF &region, qreal radius)
 {
     if (m_region == region && m_radius == radius) return;
-    m_region = region; m_radius = radius; scheduleRefresh();
+    m_region = region;
+    m_radius = radius;
+    scheduleRefresh();
 }
 
 QRectF Backdrop::boundedRegion(const QRectF &region, const QSize &windowSize)
 {
     const QRectF bounds(QPointF(), windowSize);
     if (region.isNull()) return bounds;
-    if (!qIsFinite(region.x()) || !qIsFinite(region.y()) || !qIsFinite(region.width())
-        || !qIsFinite(region.height()) || region.width() <= 0 || region.height() <= 0) return {};
+    if (!qIsFinite(region.x()) || !qIsFinite(region.y()) || !qIsFinite(region.width()) || !qIsFinite(region.height()) || region.width() <= 0 || region.height() <= 0) return {};
     return region.intersected(bounds);
 }
 
@@ -194,7 +210,9 @@ qreal Backdrop::boundedRadius(qreal radius, const QRectF &region)
 void Backdrop::setState(bool active, const QString &status)
 {
     if (m_active == active && m_status == status) return;
-    m_active = active; m_status = status; emit changed();
+    m_active = active;
+    m_status = status;
+    emit changed();
 }
 
 void Backdrop::scheduleRefresh()
@@ -212,7 +230,11 @@ void Backdrop::refresh()
         return;
     }
     const QRectF region = boundedRegion(m_region, m_window->size());
-    if (region.isEmpty()) { m_native->clear(); setState(false, QStringLiteral("No visible material region")); return; }
+    if (region.isEmpty()) {
+        m_native->clear();
+        setState(false, QStringLiteral("No visible material region"));
+        return;
+    }
     QString status;
     const bool applied = m_native->apply(m_window, region, boundedRadius(m_radius, region), m_dark, &status);
     setState(applied, status);
@@ -224,13 +246,17 @@ bool Backdrop::eventFilter(QObject *watched, QEvent *event)
         if (event->type() == QEvent::PlatformSurface) {
             auto *surface = static_cast<QPlatformSurfaceEvent *>(event);
             if (surface->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
-                m_surfaceReady = false; m_native->clear();
+                m_surfaceReady = false;
+                m_native->clear();
                 setState(false, QStringLiteral("No desktop surface"));
-            } else { m_surfaceReady = true; scheduleRefresh(); }
+            } else {
+                m_surfaceReady = true;
+                scheduleRefresh();
+            }
         } else if (event->type() == QEvent::Show) {
-            m_surfaceReady = bool(m_window->handle()); scheduleRefresh();
-        } else if (event->type() == QEvent::Resize || event->type() == QEvent::ThemeChange
-                   || event->type() == QEvent::WinIdChange) scheduleRefresh();
+            m_surfaceReady = bool(m_window->handle());
+            scheduleRefresh();
+        } else if (event->type() == QEvent::Resize || event->type() == QEvent::ThemeChange || event->type() == QEvent::WinIdChange) scheduleRefresh();
     }
     return QObject::eventFilter(watched, event);
 }
@@ -239,8 +265,7 @@ bool Backdrop::nativeEventFilter(const QByteArray &, void *message, qintptr *)
 {
 #ifdef Q_OS_WIN
     const auto *event = static_cast<MSG *>(message);
-    if (event && (event->message == WM_SETTINGCHANGE || event->message == WM_THEMECHANGED
-                  || event->message == WM_DWMCOMPOSITIONCHANGED)) scheduleRefresh();
+    if (event && (event->message == WM_SETTINGCHANGE || event->message == WM_THEMECHANGED || event->message == WM_DWMCOMPOSITIONCHANGED)) scheduleRefresh();
 #else
     Q_UNUSED(message);
 #endif

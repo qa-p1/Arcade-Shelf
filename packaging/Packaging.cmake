@@ -5,20 +5,20 @@ install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/THIRD_PARTY
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/licenses/" DESTINATION "${CMAKE_INSTALL_DATADIR}/arcade-shelf/licenses" OPTIONAL)
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/arcade-link/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/arcade-shelf/licenses/arcade-link"
-        FILES_MATCHING PATTERN "LICENSE*" PATTERN "provenance.json" PATTERN "shared-provenance.json")
+        FILES_MATCHING PATTERN "LICENSE*" PATTERN "OFL.txt" PATTERN "VENDORED.json" PATTERN "shared-provenance.json")
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/docs/user/" DESTINATION "${CMAKE_INSTALL_DATADIR}/arcade-shelf/docs/user")
 if(UNIX AND NOT APPLE)
-    install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/arcade.shelf.desktop"
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/dev.arcade.Shelf.desktop"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
-    install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/io.github.qa_p1.ArcadeShelf.metainfo.xml"
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/dev.arcade.Shelf.metainfo.xml"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
-    install(FILES "${PROJECT_SOURCE_DIR}/packaging/arcade-shelf.svg"
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/icons/icon.svg"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
-            RENAME io.github.qa_p1.ArcadeShelf.svg)
+            RENAME dev.arcade.Shelf.svg)
 endif()
 set(CPACK_PACKAGE_NAME "Arcade-Shelf")
 set(CPACK_PACKAGE_VENDOR "Arcade contributors")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A floating staging workspace for desktop content")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A floating workspace for desktop content.")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/qa-p1/Arcade-Shelf")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")

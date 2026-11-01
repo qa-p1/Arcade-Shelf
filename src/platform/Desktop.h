@@ -49,7 +49,7 @@ public:
     void arrange(QWindow *window, const Placement &placement);
     Q_INVOKABLE void setAlwaysOnTop(QWindow *window, bool enabled);
     Q_INVOKABLE void restoreGeometry(QWindow *window, const QRect &geometry,
-                                    const QString &screenName = {});
+                                     const QString &screenName = {});
     Q_INVOKABLE void captureGeometry(QWindow *window);
     Q_INVOKABLE void reveal(const QString &path);
     Q_INVOKABLE bool open(const QString &pathOrUrl);
@@ -67,6 +67,8 @@ public:
                         std::function<void(QJsonObject, ArcadeLink::Error)> reply);
     Q_INVOKABLE bool setStartAtLogin(bool enabled, const QString &executable);
     Q_INVOKABLE bool startAtLogin() const;
+    // Moves Shelf's own login entry from its pre-0.4 name to dev.arcade.Shelf.
+    bool migrateLoginEntry(const QString &executable);
 
     // These pure helpers are shared by tests and the native adapter.
     static QMimeData *mimeDataForContents(const QJsonArray &contents);

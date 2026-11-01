@@ -42,7 +42,7 @@ private slots:
         std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents(inputs));
         QVERIFY(mime->hasFormat(QStringLiteral("text/uri-list")));
         QCOMPARE(mime->urls(), QList<QUrl>({QUrl::fromLocalFile(first), QUrl::fromLocalFile(second),
-                                         QUrl::fromLocalFile(directory.path())}));
+                                            QUrl::fromLocalFile(directory.path())}));
         QVERIFY(mime->data(QStringLiteral("text/uri-list")).contains("%23"));
         QCOMPARE(mime->text(), QStringList({first, second, directory.path()}).join(QLatin1Char('\n')));
         QFile original(first);
@@ -52,10 +52,9 @@ private slots:
 
     void richTextAndUrlsUseNativeFormats()
     {
-        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "text/rich"}, {"text", "Hello"}, {"html", "<b>Hello</b>"}},
-            QJsonObject{{"type", "text/url"}, {"text", "https://example.com/a?q=one"}},
-            QJsonObject{{"type", "text/plain"}, {"text", "last"}}}));
+        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({QJsonObject{{"type", "text/rich"}, {"text", "Hello"}, {"html", "<b>Hello</b>"}},
+                                                                      QJsonObject{{"type", "text/url"}, {"text", "https://example.com/a?q=one"}},
+                                                                      QJsonObject{{"type", "text/plain"}, {"text", "last"}}}));
         QCOMPARE(mime->text(), QStringLiteral("Hello\nhttps://example.com/a?q=one\nlast"));
         QCOMPARE(mime->html(), QStringLiteral("<b>Hello</b>"));
         QCOMPARE(mime->urls(), QList<QUrl>({QUrl(QStringLiteral("https://example.com/a?q=one"))}));
@@ -65,13 +64,11 @@ private slots:
     {
         QTemporaryDir directory;
         const QJsonObject marker{{"profile", "profile-hash"}, {"ids", QJsonArray{"it_a", "it_b"}}};
-        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "folder/reference"}, {"path", directory.path()}},
-            QJsonObject{{"type", "structured/shelf-reorder"}, {"data", marker}}}));
+        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({QJsonObject{{"type", "folder/reference"}, {"path", directory.path()}},
+                                                                      QJsonObject{{"type", "structured/shelf-reorder"}, {"data", marker}}}));
         QCOMPARE(mime->urls(), QList<QUrl>({QUrl::fromLocalFile(directory.path())}));
         QCOMPARE(QJsonDocument::fromJson(mime->data(QStringLiteral("application/x-arcade-shelf-items"))).object(), marker);
-        std::unique_ptr<QMimeData> invalid(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "structured/shelf-reorder"}, {"data", QJsonObject{{"profile", "hash"}, {"ids", QJsonArray{123}}}}}}));
+        std::unique_ptr<QMimeData> invalid(Desktop::mimeDataForContents({QJsonObject{{"type", "structured/shelf-reorder"}, {"data", QJsonObject{{"profile", "hash"}, {"ids", QJsonArray{123}}}}}}));
         QVERIFY(invalid->formats().isEmpty());
     }
 
@@ -84,8 +81,9 @@ private slots:
         file.close();
         const QString symlink = directory.filePath(QStringLiteral("reference.txt"));
         QVERIFY(QFile::link(file.fileName(), symlink));
-        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "file/text"}, {"path", symlink}}}));
+        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({QJsonObject { {"type", "file/text"},
+                                                                                    { "path",
+                                                                                      symlink } }}));
         QCOMPARE(mime->urls(), QList<QUrl>({QUrl::fromLocalFile(symlink)}));
 #else
         QSKIP("QFile::link creates shortcuts, not POSIX symlinks, on Windows");
@@ -96,11 +94,10 @@ private slots:
     {
         QTemporaryDir directory;
         const QString embeddedNul = directory.path() + QChar::Null + QStringLiteral("suffix");
-        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "file/any"}, {"path", "relative.txt"}},
-            QJsonObject{{"type", "file/any"}, {"path", directory.filePath("missing.txt")}},
-            QJsonObject{{"type", "file/any"}, {"path", embeddedNul}},
-            QJsonObject{{"type", "structured/arcade-action"}, {"text", "execute-me"}}}));
+        std::unique_ptr<QMimeData> mime(Desktop::mimeDataForContents({QJsonObject{{"type", "file/any"}, {"path", "relative.txt"}},
+                                                                      QJsonObject{{"type", "file/any"}, {"path", directory.filePath("missing.txt")}},
+                                                                      QJsonObject{{"type", "file/any"}, {"path", embeddedNul}},
+                                                                      QJsonObject{{"type", "structured/arcade-action"}, {"text", "execute-me"}}}));
         QVERIFY(mime->formats().isEmpty());
     }
 
@@ -111,14 +108,12 @@ private slots:
         QVERIFY(file.open(QIODevice::WriteOnly));
         QCOMPARE(file.write("A small staged note"), qint64(19));
         file.close();
-        std::unique_ptr<QMimeData> text(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "text/plain"}, {"path", file.fileName()}}}));
+        std::unique_ptr<QMimeData> text(Desktop::mimeDataForContents({QJsonObject{{"type", "text/plain"}, {"path", file.fileName()}}}));
         QCOMPARE(text->text(), QStringLiteral("A small staged note"));
         QVERIFY(file.open(QIODevice::WriteOnly));
         QCOMPARE(file.write(QByteArray(300 * 1024, 'x')), qint64(300 * 1024));
         file.close();
-        std::unique_ptr<QMimeData> large(Desktop::mimeDataForContents({
-            QJsonObject{{"type", "text/plain"}, {"path", file.fileName()}}}));
+        std::unique_ptr<QMimeData> large(Desktop::mimeDataForContents({QJsonObject{{"type", "text/plain"}, {"path", file.fileName()}}}));
         QCOMPARE(large->urls(), QList<QUrl>({QUrl::fromLocalFile(file.fileName())}));
         QCOMPARE(QFileInfo(file).size(), qint64(300 * 1024));
     }
@@ -202,8 +197,7 @@ private slots:
     {
         // The offscreen backend rejects native movement. A failed start and
         // Wayland-like synthetic release must not leave a pending snap.
-        if (QGuiApplication::platformName() != QStringLiteral("offscreen")
-            && QGuiApplication::platformName() != QStringLiteral("minimal"))
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen") && QGuiApplication::platformName() != QStringLiteral("minimal"))
             QSKIP("This regression requires an offscreen backend that rejects native movement");
         Desktop desktop;
         QWindow window;
@@ -225,8 +219,8 @@ private slots:
     void shortcutValidationProtectsStandardClipboardShortcuts()
     {
         for (const QString &shortcut : {QStringLiteral("Ctrl+C"), QStringLiteral("Ctrl+V"),
-             QStringLiteral("Ctrl+X"), QStringLiteral("Meta+C"), QStringLiteral("Shift+Insert"),
-             QStringLiteral("Ctrl+Insert")}) {
+                                        QStringLiteral("Ctrl+X"), QStringLiteral("Meta+C"), QStringLiteral("Shift+Insert"),
+                                        QStringLiteral("Ctrl+Insert")}) {
             QVERIFY2(!Desktop::validateShortcut(shortcut).isEmpty(), qPrintable(shortcut));
         }
         QVERIFY(Desktop::validateShortcut(QStringLiteral("Ctrl+Alt+S")).isEmpty());
@@ -246,15 +240,17 @@ private slots:
         QJsonObject result;
         ArcadeLink::Error error;
         desktop.rebindShortcut("control+alt+t", ArcadeLink::executablePath(),
-            [&](QJsonObject answer, ArcadeLink::Error failure) { result = answer; error = failure; answered = true; });
+                               [&](QJsonObject answer, ArcadeLink::Error failure) { result = answer; error = failure; answered = true; });
         QTRY_VERIFY(answered);
         QVERIFY2(!error.isError(), qPrintable(error.message));
-        QVERIFY(!result["applied"].toBool()); QCOMPARE(result["via"].toString(), QString("manual"));
+        QVERIFY(!result["applied"].toBool());
+        QCOMPARE(result["via"].toString(), QString("manual"));
         QVERIFY(!result["hint"].toString().isEmpty());
         answered = false;
         desktop.rebindShortcut("Ctrl+C", ArcadeLink::executablePath(),
-            [&](QJsonObject, ArcadeLink::Error failure) { error = failure; answered = true; });
-        QVERIFY(answered); QCOMPARE(error.code, QString("denied"));
+                               [&](QJsonObject, ArcadeLink::Error failure) { error = failure; answered = true; });
+        QVERIFY(answered);
+        QCOMPARE(error.code, QString("denied"));
     }
 
     void isolatedInstanceCannotInstallShortcutOrLoginEntry()
@@ -270,7 +266,8 @@ private slots:
 
     void loginEntryTracksReceiptAndPreservesExtensions()
     {
-        QTemporaryDir directory; QVERIFY(directory.isValid());
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
         QList<QPair<QByteArray, QByteArray>> environment;
         for (const auto *key : {"ARCADE_HOME", "APPDATA", "ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS"})
             environment.append({key, qgetenv(key)});
@@ -292,37 +289,42 @@ private slots:
 #elif defined(Q_OS_MACOS)
         const QString path = QDir(env.home).filePath("Applications/Arcade Shelf.app");
         const QString executable = QDir(path).filePath("Contents/MacOS/arcade-shelf");
-        const QString target = QDir(env.home).filePath("Library/LaunchAgents/arcade.shelf.plist");
+        const QString target = QDir(env.home).filePath("Library/LaunchAgents/dev.arcade.Shelf.plist");
         const QString method = "macos-bundle";
 #else
         const QString path = QDir(env.applications).filePath("Arcade-Shelf.AppImage");
         const QString executable = path;
-        const QString target = QDir(env.config).filePath("autostart/arcade.shelf.desktop");
+        const QString target = QDir(env.config).filePath("autostart/dev.arcade.Shelf.desktop");
         const QString method = "appimage";
 #endif
         QVERIFY(QDir().mkpath(QFileInfo(executable).absolutePath()));
-        QFile binary(executable); QVERIFY(binary.open(QIODevice::WriteOnly)); binary.write("fixture"); binary.close();
+        QFile binary(executable);
+        QVERIFY(binary.open(QIODevice::WriteOnly));
+        binary.write("fixture");
+        binary.close();
         QVERIFY(QFile::setPermissions(executable, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
-        const QJsonObject receipt{{"schema", 1}, {"id", "arcade.shelf"}, {"version", "0.2.0"}, {"channel", "stable"},
-            {"method", method}, {"managedBy", "tools"}, {"path", path}, {"toolsExtension", QJsonObject{{"keep", true}}},
-            {"integration", QJsonObject{{"icons", QJsonArray{}}, {"autostart", QJsonValue::Null}, {"futureIntegration", "keep"}}},
-            {"installedAt", ArcadeLink::nowRfc3339()}, {"updatedAt", ArcadeLink::nowRfc3339()}};
-        QString error; QVERIFY2(env.receipts().write(receipt, &error), qPrintable(error));
+        const QJsonObject receipt{{"schema", 1}, {"id", "arcade.shelf"}, {"version", "0.2.0"}, {"channel", "stable"}, {"method", method}, {"managedBy", "tools"}, {"path", path}, {"toolsExtension", QJsonObject{{"keep", true}}}, {"integration", QJsonObject{{"icons", QJsonArray{}}, {"autostart", QJsonValue::Null}, {"futureIntegration", "keep"}}}, {"installedAt", ArcadeLink::nowRfc3339()}, {"updatedAt", ArcadeLink::nowRfc3339()}};
+        QString error;
+        QVERIFY2(env.receipts().write(receipt, &error), qPrintable(error));
         Desktop desktop;
         QVERIFY(!desktop.startAtLogin());
 #ifdef Q_OS_LINUX
         // This is the marker written by the shared Link installer, without
         // Shelf's historical comment.
         QVERIFY(QDir().mkpath(QFileInfo(target).absolutePath()));
-        QFile shared(target); QVERIFY(shared.open(QIODevice::WriteOnly));
-        shared.write("[Desktop Entry]\nType=Application\nX-Arcade-Id=arcade.shelf\nExec=fixture --background\n"); shared.close();
+        QFile shared(target);
+        QVERIFY(shared.open(QIODevice::WriteOnly));
+        shared.write("[Desktop Entry]\nType=Application\nX-Arcade-Id=arcade.shelf\nExec=fixture --background\n");
+        shared.close();
         QVERIFY(desktop.startAtLogin());
 #endif
 #ifdef Q_OS_WIN
         const QString legacy = QFileInfo(target).absolutePath() + "/Arcade Shelf.vbs";
         QVERIFY(QDir().mkpath(QFileInfo(legacy).absolutePath()));
-        QFile script(legacy); QVERIFY(script.open(QIODevice::WriteOnly));
-        script.write("' Arcade Shelf managed login entry\r\n"); script.close();
+        QFile script(legacy);
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("' Arcade Shelf managed login entry\r\n");
+        script.close();
         auto legacyReceipt = receipt;
         auto legacyIntegration = legacyReceipt.value("integration").toObject();
         legacyIntegration.insert("autostart", legacy);
@@ -333,7 +335,8 @@ private slots:
         for (const bool enabled : {true, true, false, false, true, false, true}) {
             QVERIFY2(desktop.setStartAtLogin(enabled, executable), qPrintable(desktop.lastError()));
             QCOMPARE(desktop.startAtLogin(), enabled);
-            QJsonObject changed; QVERIFY2(env.receipts().read("arcade.shelf", &changed, &error), qPrintable(error));
+            QJsonObject changed;
+            QVERIFY2(env.receipts().read("arcade.shelf", &changed, &error), qPrintable(error));
             QCOMPARE(changed.value("toolsExtension"), receipt.value("toolsExtension"));
             QCOMPARE(changed.value("managedBy"), QJsonValue("tools"));
             const auto integration = changed.value("integration").toObject();
@@ -347,7 +350,10 @@ private slots:
         QVERIFY(desktop.setStartAtLogin(false, executable));
         QJsonObject beforeForeign;
         QVERIFY2(env.receipts().read("arcade.shelf", &beforeForeign, &error), qPrintable(error));
-        QFile foreign(target); QVERIFY(foreign.open(QIODevice::WriteOnly)); foreign.write("unrelated login entry"); foreign.close();
+        QFile foreign(target);
+        QVERIFY(foreign.open(QIODevice::WriteOnly));
+        foreign.write("unrelated login entry");
+        foreign.close();
         QVERIFY(!desktop.startAtLogin());
         QVERIFY(!desktop.setStartAtLogin(true, executable));
         QVERIFY(desktop.lastError().contains("unrelated"));
@@ -356,12 +362,14 @@ private slots:
         QJsonObject afterForeign;
         QVERIFY2(env.receipts().read("arcade.shelf", &afterForeign, &error), qPrintable(error));
         QCOMPARE(afterForeign, beforeForeign);
-        QVERIFY(foreign.open(QIODevice::ReadOnly)); QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
+        QVERIFY(foreign.open(QIODevice::ReadOnly));
+        QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
         foreign.close();
 #ifdef Q_OS_UNIX
         QFile linked(directory.filePath("linked-login-entry"));
         QVERIFY(linked.open(QIODevice::WriteOnly));
-        linked.write("Arcade Shelf managed login entry\n"); linked.close();
+        linked.write("Arcade Shelf managed login entry\n");
+        linked.close();
         QVERIFY(QFile::remove(target));
         QVERIFY(QFile::link(linked.fileName(), target));
         QVERIFY(!desktop.startAtLogin());
@@ -369,6 +377,87 @@ private slots:
         QVERIFY(!desktop.setStartAtLogin(false, executable));
         QVERIFY(linked.open(QIODevice::ReadOnly));
         QCOMPARE(linked.readAll(), QByteArray("Arcade Shelf managed login entry\n"));
+#endif
+    }
+
+    // Before 0.4 the login entry was autostart/arcade.shelf.desktop (STANDARD §10).
+    void loginEntryMovesFromItsOldName()
+    {
+#ifndef Q_OS_LINUX
+        QSKIP("The pre-0.4 login entry name is checked on Linux");
+#else
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QList<QPair<QByteArray, QByteArray>> environment;
+        for (const auto *key : {"ARCADE_HOME", "ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS"})
+            environment.append({key, qgetenv(key)});
+        const auto restore = qScopeGuard([&] {
+            for (const auto &item : environment) {
+                if (item.second.isNull()) qunsetenv(item.first.constData());
+                else qputenv(item.first.constData(), item.second);
+            }
+        });
+        qputenv("ARCADE_HOME", directory.path().toUtf8());
+        qputenv("ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS", "1");
+        const auto env = ArcadeLink::ArcadeInstall::Environment::under(directory.path());
+        const QString executable = QDir(env.applications).filePath("Arcade-Shelf.AppImage");
+        QVERIFY(QDir().mkpath(QFileInfo(executable).absolutePath()));
+        QFile binary(executable);
+        QVERIFY(binary.open(QIODevice::WriteOnly));
+        binary.write("fixture");
+        binary.close();
+        QVERIFY(QFile::setPermissions(executable, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QString legacy = QDir(env.config).filePath("autostart/arcade.shelf.desktop");
+        const QString target = QDir(env.config).filePath("autostart/dev.arcade.Shelf.desktop");
+        QJsonObject receipt{{"schema", 1}, {"id", "arcade.shelf"}, {"version", "0.3.3"}, {"channel", "stable"}, {"method", "appimage"}, {"managedBy", "self"}, {"path", executable}, {"integration", QJsonObject { {"icons", QJsonArray {}},
+                                                                                                                                                                                                                   { "autostart",
+                                                                                                                                                                                                                     legacy } }},
+                            {"installedAt", ArcadeLink::nowRfc3339()},
+                            { "updatedAt",
+                              ArcadeLink::nowRfc3339() }};
+        QString error;
+        QVERIFY2(env.receipts().write(receipt, &error), qPrintable(error));
+        const auto write = [](const QString &path, const QByteArray &bytes) {
+            QDir().mkpath(QFileInfo(path).absolutePath());
+            QFile file(path);
+            return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size();
+        };
+        const QByteArray old = "# Arcade Shelf managed login entry\n[Desktop Entry]\nType=Application\nName=Arcade Shelf\n"
+                               "Exec=fixture --background\nX-Arcade-Id=arcade.shelf\n";
+        QVERIFY(write(legacy, old));
+        Desktop desktop;
+        QVERIFY(desktop.startAtLogin()); // still read through the old name
+        QVERIFY2(desktop.migrateLoginEntry(executable), qPrintable(desktop.lastError()));
+        QVERIFY(!QFileInfo::exists(legacy));
+        QVERIFY(QFileInfo::exists(target));
+        QVERIFY(desktop.startAtLogin());
+        QJsonObject moved;
+        QVERIFY2(env.receipts().read("arcade.shelf", &moved, &error), qPrintable(error));
+        QCOMPARE(moved.value("integration").toObject().value("autostart"), QJsonValue(target));
+        QVERIFY(desktop.migrateLoginEntry(executable)); // again: nothing to do
+        QVERIFY(QFileInfo::exists(target));
+
+        // Both present (an in-place reinstall wrote the new one): the old one goes.
+        QVERIFY(write(legacy, old));
+        QVERIFY(desktop.migrateLoginEntry(executable));
+        QVERIFY(!QFileInfo::exists(legacy));
+        QVERIFY(QFileInfo::exists(target));
+
+        // Switched off in the desktop's startup settings: it stays off.
+        QVERIFY(desktop.setStartAtLogin(false, executable));
+        QVERIFY(write(legacy, old + "X-GNOME-Autostart-enabled=false\n"));
+        QVERIFY(desktop.migrateLoginEntry(executable));
+        QVERIFY(!QFileInfo::exists(legacy));
+        QVERIFY(!QFileInfo::exists(target));
+        QVERIFY(!desktop.startAtLogin());
+
+        // Someone else's file under the old name is never touched.
+        QVERIFY(write(legacy, "unrelated login entry"));
+        QVERIFY(desktop.migrateLoginEntry(executable));
+        QFile foreign(legacy);
+        QVERIFY(foreign.open(QIODevice::ReadOnly));
+        QCOMPARE(foreign.readAll(), QByteArray("unrelated login entry"));
+        QVERIFY(!QFileInfo::exists(target));
 #endif
     }
 };

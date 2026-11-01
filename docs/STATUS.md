@@ -1,4 +1,30 @@
-# Status — 2026-10-12
+# Status — 2026-11-01
+
+## 2026-11-01: 0.4.0 (SHELF.md overhaul)
+
+- Kit: Arcade Link v0.4.15's QML kit as a compiled static module (`arcade_kit`), Inter, fuchsia.
+  qmllint runs at 0 warnings with the typed controller (`ShelfController`); the `qmllint_gate`
+  target fails on any warning (checked with a planted one). Idle memory stayed below 0.3.3's
+  (62.8 against 64.3 MB PSS): menus and dialogs are built on first use, Inter loads once.
+- Surfaces per SHELF.md §2; Settings is a separate 760×560 window. The install prompt was seen in
+  a real `--install` run on Xvfb, light and dark (the first-run prompt only appears for an AppImage
+  on Linux). Its window was pinned at its first height and showed only the title; fixed, and
+  tst_Ui covers it.
+- STANDARD §10 identity: `dev.arcade.Shelf` for the desktop file, Wayland app_id, X11 class
+  (checked with xprop), bundle id, portal id and Hyprland target. Folder move checked with the
+  real 0.3.3 build still running: it quit, both items moved, `qa-p1/ArcadeShelf` is gone. The
+  login entry move is unit-tested (Shelf's own entry, both present, switched off, someone else's).
+- Real-use checks: Link's `tools/e2e.py --only shelf` 3/3 with this build. Find's end-to-end
+  (real drags onto Shelf on Wayland and X11, add, background launch, find.show) 71/71 against
+  this build, after Find's checks learned the new app id (Find PR #15).
+- Found while checking Find against the released Shelf: a launch right after Quit could find the
+  instance lock still held and exit. Shelf now waits for it.
+- Open, for the owner: remote branches are never deleted from these sessions. Already merged
+  into `main` and safe to delete: `arcade/ci-speed`, `arcade/docs-polish`,
+  `arcade/readme-standard`, `arcade/tools-hub`, `claude/epic-ramanujan-afo4yy`,
+  `docs/consumer-onboarding`, `feature/shelf-v0.1`. Not merged: `fix/hyprland-desktop` (two
+  unique historical commits), left alone. Tools 0.4.2 still computes the pre-0.4 login entry names for Shelf, Lens and
+  Find; its Start-at-login switch should learn `dev.arcade.<App>`.
 
 ## Release status (2026-10-18)
 
@@ -98,9 +124,9 @@ GNOME/KDE/Sway, Windows and macOS.
 | Real executable process suite | 11/11 passed, including 1,000-reference transaction, restarts, partial batches, authentication, cancellation and owned handoffs | Isolated offscreen profile |
 | Headless Wayland executable process suite | 11/11 passed under Weston | Does not test pointer drag transfers to Nautilus |
 | Frozen Rust Link CLI → real Shelf | 14/14 isolated checks passed | Offscreen |
-| Real Arcade Find ↔ real Shelf | Find's e2e 49/49 (headless Sway and Xvfb): Find's "Add to Shelf" stores references, launches a stopped Shelf, and Shelf's `find.show` opens Find on the file; Link's runner `find` group 3/3; `tst_PeerHub` contract test with Find's real manifest; `tst_Ui` clicks Actions → "Search in Find" and "Find matching files" against Find's manifest | Isolated profiles; no drag and drop between them yet; see [ECOSYSTEM_VERIFICATION.md](ECOSYSTEM_VERIFICATION.md#real-find-against-real-shelf) |
+| Real Arcade Find ↔ real Shelf | Find's e2e 49/49 (headless Sway and Xvfb): Find's "Add to Shelf" stores references, launches a stopped Shelf, and Shelf's `find.show` opens Find on the file; Link's runner `find` group 3/3; `tst_PeerHub` contract test with Find's real manifest; `tst_Ui` clicks Actions → "Search in Find" and "Find matching files" against Find's manifest | Isolated profiles; no drag and drop between them yet; see [ECOSYSTEM_VERIFICATION.md](dev/history/ecosystem-verification.md#real-find-against-real-shelf) |
 | Reference Rust Link tests | 42 passed, 1 intentionally ignored engine-download test | No downloaded engine |
-| Shared onboarding tests (Shelf and Find) | Link Rust 36 + Qt 2/2; runner shelf 3/3 and find 3/3; Tools 15/15 focused, lifecycle 4/4 and 3/3; Wheel CTest 9/9 | Merged; details in [ONBOARDING.md](ONBOARDING.md) |
+| Shared onboarding tests (Shelf and Find) | Link Rust 36 + Qt 2/2; runner shelf 3/3 and find 3/3; Tools 15/15 focused, lifecycle 4/4 and 3/3; Wheel CTest 9/9 | Merged; details in [ONBOARDING.md](dev/history/ecosystem-onboarding.md) |
 | Linux runtime package | Rebuilt from the recorded milestone; 11 packaged process checks and real stopped-app Link launch passed with development Qt paths removed | Cloud host runtime bundle; native compositor and distribution compatibility remain separate |
 
 The GUI run exposed and fixed search focus being reset while typing. The
@@ -114,7 +140,7 @@ Qt 6.8.3 exposed that startup cleanup deleted every live Shelf-owned handoff
 export (a descriptor-opened marker reported no modification time) and that
 collapsing to a docked tab could stay clamped to the panel's height; both are
 fixed, with regression coverage. No fabricated
-desktop results or screenshots are used. Commands are in [TESTING.md](TESTING.md).
+desktop results or screenshots are used. Commands are in [TESTING.md](dev/testing.md).
 
 ## Measured performance
 
@@ -149,11 +175,11 @@ native compositor/monitor performance still need profiling.
 
 The cloud environment has no real Hyprland/Nautilus session, Windows/macOS host,
 or physical monitor/DPI setup. Headless Wayland startup and X11 pointer tests
-cover narrower behaviors. Reproducible desktop steps are in [TESTING.md](TESTING.md).
+cover narrower behaviors. Reproducible desktop steps are in [TESTING.md](dev/testing.md).
 
 The shared repositories know Shelf and Find since Arcade Link `v0.2.0`
 (2026-10-10): Link, Tools and Wheel are merged and the other apps moved to the
-new tag; see [ONBOARDING.md](ONBOARDING.md).
+new tag; see [ONBOARDING.md](dev/history/ecosystem-onboarding.md).
 
 ## Remaining implementation/refinement work
 
@@ -166,8 +192,8 @@ new tag; see [ONBOARDING.md](ONBOARDING.md).
 
 ## Documents
 
-[README](../README.md) · [Architecture](ARCHITECTURE.md) ·
-[Link contracts](ARCADE_LINK.md) · [Testing](TESTING.md) ·
-[Packaging](PACKAGING.md) · [Ecosystem evidence](ECOSYSTEM_VERIFICATION.md) ·
-[Ecosystem onboarding](ONBOARDING.md) · [Changelog](../CHANGELOG.md) ·
+[README](../README.md) · [Architecture](dev/architecture.md) ·
+[Link contracts](dev/link.md) · [Testing](dev/testing.md) ·
+[Packaging](dev/packaging.md) · [Ecosystem evidence](dev/history/ecosystem-verification.md) ·
+[Ecosystem onboarding](dev/history/ecosystem-onboarding.md) · [Changelog](../CHANGELOG.md) ·
 [Dependency notices](../THIRD_PARTY_NOTICES.md)

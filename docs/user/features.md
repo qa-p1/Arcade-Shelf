@@ -38,11 +38,11 @@ Shelf exposes an explicit picker and actions for adding content or opening a col
 
 ## Keep track of storage
 
-Settings show the owned-content quota and temporary-item retention. The default owned-content quota is 512 MiB. Referenced files do not use that content quota; owned images and temporary results do. Shelf stores its collection metadata and preferences locally in SQLite.
+Settings show the owned-content quota and temporary-item retention. The default owned-content quota is about 537 MB (512 MiB); Settings sets it in MB. Referenced files do not use that content quota; owned images and temporary results do. Shelf stores its collection metadata and preferences locally in SQLite.
 
 ## Back up and restore Shelf
 
-In **Settings → About → Backup and restore**, choose **Export backup** to save
+In **Settings → Backup and restore**, choose **Export backup** to save
 collections and portable preferences. Shelf shows how much owned content it
 stores and asks whether to include it. A metadata-only backup leaves owned
 items out; referenced original files are never copied. Tools backups use this
