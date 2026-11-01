@@ -19,8 +19,11 @@
   this build, after Find's checks learned the new app id (Find PR #15).
 - Found while checking Find against the released Shelf: a launch right after Quit could find the
   instance lock still held and exit. Shelf now waits for it.
-- Open, for the owner: the remote branch `fix/hyprland-desktop` (two unique historical commits)
-  is left alone. Tools 0.4.2 still computes the pre-0.4 login entry names for Shelf, Lens and
+- Open, for the owner: remote branches are never deleted from these sessions. Already merged
+  into `main` and safe to delete: `arcade/ci-speed`, `arcade/docs-polish`,
+  `arcade/readme-standard`, `arcade/tools-hub`, `claude/epic-ramanujan-afo4yy`,
+  `docs/consumer-onboarding`, `feature/shelf-v0.1`. Not merged: `fix/hyprland-desktop` (two
+  unique historical commits), left alone. Tools 0.4.2 still computes the pre-0.4 login entry names for Shelf, Lens and
   Find; its Start-at-login switch should learn `dev.arcade.<App>`.
 
 ## Release status (2026-10-18)
