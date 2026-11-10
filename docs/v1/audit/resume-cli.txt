@@ -1,0 +1,33 @@
+--help (0.100s) exit=0
+Usage: /tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/tmp/.mount_ArcadeaiJpnh/usr/bin/arcade-shelf [options]
+A floating workspace for desktop content.
+
+Options:
+  -h, --help             Displays help on commandline options.
+  --help-all             Displays help, including generic Qt options.
+  -v, --version          Displays version information.
+  --background           Start without showing a window (as at login).
+  --settings             Open Settings.
+  --show                 Open the panel.
+  --hide                 Close the panel to its capsule.
+  --toggle               Open or close the panel.
+  --quit                 Quit the running Arcade Shelf.
+  --status               Print one line of JSON: running, version, Link state.
+  --wait-for-exit <pid>  Wait for an old resident before restarting.
+  --restart              Restart the running Arcade Shelf instance.
+  --install              Install this package.
+  --uninstall            Uninstall this app.
+  --repair               Repair this installation's integration.
+  --integration-status   Print installation integration status as JSON.
+  --silent               Suppress installer UI.
+  --no-launch            Do not launch the app after installation.
+  --channel <channel>    Select the installation channel.
+  --remove-data          Remove app data while uninstalling.
+  --add <path>           Stage a local file or folder.
+
+STDERR:
+
+--version (0.095s) exit=0
+Arcade Shelf 0.4.0
+
+STDERR:
