@@ -169,7 +169,6 @@ Window {
             if (focusing) {
                 window.requestActivate(); interaction.forceActiveFocus();
             }
-            if (window.shelf.focusPanel || !window.shelf.expanded) peekDismissTimer.stop();
             window.cursorIndex = Math.min(window.cursorIndex, window.shelf.items.length - 1);
             if (window.shelf.analysisResult && Object.keys(window.shelf.analysisResult).length > 0) { const d = analysisDialogLoader.get() as Dialog; if (!d.visible) d.open(); }
         }
@@ -178,12 +177,12 @@ Window {
             Qt.callLater(function() { window.editCollection("", "", "new"); });
         }
         function onNativeDragHoverChanged() {
+            // A peeked panel never collapses by itself (SH-8): only Escape, the
+            // shortcut, the tab or an explicit action close it.
             if (window.shelf.nativeDragHover) {
-                peekDismissTimer.stop();
                 if (window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart();
             } else {
                 edgeHoverTimer.stop();
-                if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !dropArea.containsDrag) peekDismissTimer.restart();
             }
         }
     }
@@ -194,11 +193,6 @@ Window {
         // A drag always peeks; plain hover only when "Open docked Shelf on hover" is on.
         onTriggered: if (window.dockEdge.length && !window.shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)
                          && (window.dragHover || (window.shelf.hoverPeek && Date.now() >= window.peekHeldUntil))) window.shelf.peek()
-    }
-    Timer {
-        id: peekDismissTimer
-        interval: 320
-        onTriggered: if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !window.dragHover) window.shelf.collapse()
     }
 
     Item {
@@ -267,13 +261,6 @@ Window {
             border.color: window.dragHover || window.pulsing ? Theme.accent : Theme.line
             clip: true
             Behavior on border.color { ColorAnimation { duration: Theme.durationBase } }
-            HoverHandler {
-                id: surfaceHover
-                onHoveredChanged: {
-                    if (!hovered && window.shelf.expanded && !window.shelf.focusPanel && !window.dragHover) peekDismissTimer.restart();
-                    else peekDismissTimer.stop();
-                }
-            }
 
             // The drag-hover pulse: accent-soft over the whole surface.
             Rectangle {
@@ -638,8 +625,11 @@ Window {
                         objectName: "hintBar"
                         visible: !window.shelf.picking
                         y: 1; width: parent.width
-                        hints: [{ keys: ["↵"], label: "Open" }, { keys: ["Space"], label: "Preview in Look" },
-                                { keys: ["Del"], label: "Remove" }, { keys: ["Esc"], label: "Close" }]
+                        // A feedback message takes the bar for itself while it shows,
+                        // instead of being drawn over the key hints (SH-3).
+                        hints: window.shelf.message.length ? []
+                            : [{ keys: ["↵"], label: "Open" }, { keys: ["Space"], label: "Preview in Look" },
+                               { keys: ["Del"], label: "Remove" }, { keys: ["Esc"], label: "Close" }]
                         trailing: window.shelf.message.length ? window.shelf.message
                             : window.selectedCount ? Format.formatCount(window.selectedCount) + " selected" : ""
                     }
@@ -674,12 +664,10 @@ Window {
                 enabled: !window.shelf.picking
                 onEntered: function(drag) {
                     drag.accepted = drag.hasUrls || drag.hasText || drag.hasHtml;
-                    peekDismissTimer.stop();
                     if (drag.accepted && window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart();
                 }
                 onExited: {
                     edgeHoverTimer.stop();
-                    if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !window.shelf.nativeDragHover) peekDismissTimer.restart();
                 }
                 onDropped: function(drop) {
                     edgeHoverTimer.stop();
@@ -776,12 +764,24 @@ Window {
                     iconName: "pin"
                     onTriggered: window.shelf.pinShelf(window.shelf.activeShelf, !pinned)
                 }
-                MenuItem { text: "Move up"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1) }
-                MenuItem { text: "Move down"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1) }
+                // Only actions that would do something are enabled (SH-6).
+                MenuItem {
+                    objectName: "moveCollectionUp"
+                    text: "Move up"
+                    enabled: window.shelf.shelves.findIndex(s => s.id === window.shelf.activeShelf) > 0
+                    onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1)
+                }
+                MenuItem {
+                    objectName: "moveCollectionDown"
+                    text: "Move down"
+                    enabled: { const i = window.shelf.shelves.findIndex(s => s.id === window.shelf.activeShelf); return i >= 0 && i < window.shelf.shelves.length - 1; }
+                    onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1)
+                }
                 MenuSeparator {}
                 MenuItem {
                     text: "Delete collection…"; iconName: "trash"; danger: true
-                    enabled: window.shelf.shelves.length > 1
+                    // Quick Shelf is where new items go; it can't be deleted.
+                    enabled: window.shelf.shelves.length > 1 && window.shelf.activeShelf !== "quick"
                     onTriggered: { window.collectionToEdit = window.shelf.activeShelf; (deleteCollectionLoader.get() as Dialog).open(); }
                 }
             }

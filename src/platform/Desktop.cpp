@@ -476,7 +476,9 @@ static void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QS
 
 struct Desktop::Native {
     QString error;
-    QString shortcutStatus = QStringLiteral("No global shortcut");
+    // Until a shortcut is configured nothing is registered; "No global shortcut"
+    // is only for an empty one (SH-4: it showed under a recorded Ctrl Alt S).
+    QString shortcutStatus = QStringLiteral("Not registered yet");
     QString accelerator;
     QString executable;
     quint64 generation = 0;

@@ -497,18 +497,26 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
                 skip(c, QStringLiteral("missing"));
                 continue;
             }
+            // A link is kept as the link (its path is the identity), but sized
+            // and typed by what it points to; a dangling one is refused (SH-2).
+            const QFileInfo target(path);
+            if (info.symlink && !target.exists()) {
+                skip(c, QStringLiteral("broken_link"));
+                continue;
+            }
+            const QString kindPath = info.symlink ? target.canonicalFilePath() : path;
             // Qt's native URI conversion classifies a directory alias as a
             // folder. Verify that claim using metadata only, while retaining
             // the alias path itself for identity, persistence, and transfer.
             const bool directoryTarget = info.directory || (info.symlink && QFileInfo(path).isDir());
-            if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && type != QStringLiteral("file/any") && type.mid(5) != ArcadeLink::fileKindForPath(path))) {
+            if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && type != QStringLiteral("file/any") && type.mid(5) != ArcadeLink::fileKindForPath(kindPath))) {
                 skip(c, QStringLiteral("type_mismatch"));
                 continue;
             }
-            if (file && type == QStringLiteral("file/any")) type = QStringLiteral("file/") + ArcadeLink::fileKindForPath(path);
+            if (file && type == QStringLiteral("file/any")) type = QStringLiteral("file/") + ArcadeLink::fileKindForPath(kindPath);
             name = QFileInfo(path).fileName();
             if (name.isEmpty()) name = path;
-            size = info.size;
+            size = info.symlink && target.isFile() ? target.size() : info.size;
             owned = isHandoff(c, path);
             // Some peers tag durable outputs with owner as provenance. The owner
             // field alone never permits copying: only actual handoff paths do.

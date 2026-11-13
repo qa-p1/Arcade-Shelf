@@ -252,7 +252,16 @@ int main(int argc, char **argv)
             const QString action = parser.isSet("settings") ? "internal.settings" : parser.isSet("toggle") ? "internal.toggle"
                                                                                                            : "internal.add";
             QJsonArray inputs;
-            if (parser.isSet("add")) inputs << ArcadeLink::fileContent(QFileInfo(parser.value("add")).absoluteFilePath());
+            if (parser.isSet("add")) {
+                // Say what is wrong with the path itself, not "can't open this kind of content" (SH-1, SH-2).
+                const QFileInfo added(parser.value("add"));
+                if (!added.exists()) {
+                    qCritical("%s", qPrintable(added.isSymLink() ? QStringLiteral("%1 points to something that no longer exists.").arg(added.filePath())
+                                                                 : QStringLiteral("No such file: %1").arg(added.filePath())));
+                    return 1;
+                }
+                inputs << ArcadeLink::fileContent(added.absoluteFilePath());
+            }
             client->call("invoke", {{"action", action}, {"inputs", inputs}}, &error, 5000);
         } else client->call("app.activate", {}, &error, 1000);
         if (error.isError()) {

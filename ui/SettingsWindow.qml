@@ -107,7 +107,7 @@ Window {
                     objectName: "backdropToggle"
                     title: "Backdrop blur"
                     subtitle: root.shelf.backdropEnabled && !root.shelf.backdropActive
-                        ? "Your desktop doesn't offer one here, so Shelf stays opaque."
+                        ? "On, but your desktop doesn't offer a blur here, so Shelf stays opaque."
                         : "Blur the desktop behind the capsule and panel."
                     checked: root.shelf.backdropEnabled
                     onToggled: checked => root.shelf.backdropEnabled = checked
@@ -126,7 +126,7 @@ Window {
                 SwitchRow {
                     objectName: "hoverPeekToggle"
                     title: "Open docked Shelf on hover"
-                    subtitle: "Hovering the tab shows the panel without taking keyboard focus. Click it to type."
+                    subtitle: "Hovering the tab shows the panel. Click it to type (where focus follows the mouse, it may take keyboard focus at once)."
                     checked: root.shelf.hoverPeek
                     onToggled: checked => root.shelf.hoverPeek = checked
                 }
@@ -189,7 +189,8 @@ Window {
                     NumberField {
                         objectName: "quotaField"
                         from: 1; to: 4000; stepSize: 50; unit: "MB"
-                        value: Math.max(1, Math.floor(Number(root.shelf.preferences.quotaBytes || 536870912) / 1000000))
+                        // MB here is MiB, as in every size Shelf shows (SH-4: 512 MiB read "536 MB").
+                        value: Math.max(1, Math.round(Number(root.shelf.preferences.quotaBytes || 536870912) / 1048576))
                         onValueModified: value => root.shelf.setQuota(value)
                     }
                 }

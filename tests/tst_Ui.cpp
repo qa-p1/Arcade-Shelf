@@ -361,7 +361,7 @@ private slots:
         QCOMPARE(settings["theme"].toString(), QString("light"));
         QVERIFY(settings["reducedMotion"].toBool());
         QCOMPARE(settings["retentionDays"].toInt(), 41);
-        QCOMPARE(settings["quotaBytes"].toInteger(), qint64(139) * 1000 * 1000);
+        QCOMPARE(settings["quotaBytes"].toInteger(), qint64(139) * 1024 * 1024); // SH-4: MiB
         QVERIFY(settings["peers"].toObject()["arcade.look"].toBool());
         QCOMPARE(recovered.items("quick").size(), 12);
     }
@@ -432,8 +432,11 @@ private slots:
         settle();
         QTest::mouseMove(m_window, QPoint(m_window->width() / 2, m_window->height() / 2));
         QTRY_VERIFY_WITH_TIMEOUT(m_controller->expanded(), 1200);
+        // SH-8: a hover-opened panel stays open after the pointer leaves.
         QTest::mouseMove(m_window, QPoint(-20, -20));
-        QTRY_VERIFY_WITH_TIMEOUT(!m_controller->expanded(), 1200);
+        QTest::qWait(800);
+        QVERIFY(m_controller->expanded());
+        m_controller->collapse();
         QCOMPARE(m_controller->dockEdge(), QString("left"));
     }
     void nativeDragHoverPeeksWithoutTakingFocus()
@@ -455,7 +458,10 @@ private slots:
         // Not (-20,-20): the previous case ends there, and Qt drops a mouse
         // move to the position it already has, so no hover exit would arrive.
         QTest::mouseMove(m_window, QPoint(-24, -24));
-        QTRY_VERIFY_WITH_TIMEOUT(!m_controller->expanded(), 1200);
+        // SH-8: a drag that peeked the panel and left does not collapse it.
+        QTest::qWait(800);
+        QVERIFY(m_controller->expanded());
+        m_controller->collapse();
         QCOMPARE(m_controller->dockEdge(), QString("left"));
     }
     void rawImageDragHoverPeeksAndImportsWithoutTakingFocus()

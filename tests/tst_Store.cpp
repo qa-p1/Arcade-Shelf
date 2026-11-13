@@ -137,6 +137,31 @@ private slots:
         else qputenv("ARCADE_HOME", m_oldHome);
     }
 
+#ifdef Q_OS_UNIX
+    // SH-2: a link is sized and typed by its target; a dangling one is refused.
+    void symlinksResolveAndBrokenOnesAreRefused()
+    {
+        QTemporaryDir d;
+        Store store(d.path() + "/store");
+        QString error;
+        QVERIFY2(store.open(&error), qPrintable(error));
+        const auto target = writeFile(d.path() + "/report.pdf");
+        const auto link = d.path() + "/latest";
+        QVERIFY(QFile::link(target, link));
+        const auto broken = d.path() + "/gone.pdf";
+        QVERIFY(QFile::link(d.path() + "/nothing-here.pdf", broken));
+        auto r = store.add(QJsonArray{file(link, "file/any"), file(broken, "file/any")});
+        QVERIFY2(!r.error.isError(), qPrintable(r.error.message));
+        QCOMPARE(r.addedIds.size(), 1);
+        const auto item = store.items("quick").first().toObject();
+        QCOMPARE(item["path"].toString(), link);
+        QCOMPARE(item["type"].toString(), QString("file/pdf"));
+        QCOMPARE(item["size"].toInteger(), QFileInfo(target).size());
+        QVERIFY(item["size"].toInteger() > 0);
+        QCOMPARE(r.result["data"].toObject()["skipped"].toArray().first().toObject()["reason"].toString(), QString("broken_link"));
+    }
+#endif
+
     void fileArrayMixedFoldersAndPartialSuccess()
     {
         QTemporaryDir d;
@@ -1137,13 +1162,20 @@ private slots:
         QVERIFY(store.open());
         const auto dangling = d.path() + "/dangling.txt";
         QVERIFY(::symlink("never-existed", QFile::encodeName(dangling).constData()) == 0);
-        const auto r = store.add({file(dangling, "file/text")});
+        // SH-2: a dangling link is refused, with its own reason.
+        const auto refused = store.add({file(dangling, "file/text")});
+        QCOMPARE(refused.error.code, QString("unsupported_input"));
+        QCOMPARE(refused.result["data"].toObject()["skipped"].toArray().first().toObject()["reason"].toString(), QString("broken_link"));
+        // A good link is kept as the link, and removing the item leaves the link alone.
+        const auto linked = d.path() + "/linked.txt";
+        QVERIFY(::symlink(QFile::encodeName(writeFile(d.path() + "/real.txt")).constData(), QFile::encodeName(linked).constData()) == 0);
+        const auto r = store.add({file(linked, "file/text")});
         QVERIFY(!r.error.isError());
         const auto i = store.items("quick").first().toObject();
-        QCOMPARE(i["path"].toString(), dangling);
+        QCOMPARE(i["path"].toString(), linked);
         QVERIFY(i["available"].toBool());
         QVERIFY(store.remove(r.addedIds));
-        QVERIFY(QFileInfo(dangling).isSymLink());
+        QVERIFY(QFileInfo(linked).isSymLink());
         struct stat st {};
         QVERIFY(::lstat(QFile::encodeName(store.root()).constData(), &st) == 0);
         QCOMPARE(st.st_mode & 0777, static_cast<mode_t>(0700));
