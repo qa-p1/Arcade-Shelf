@@ -761,12 +761,24 @@ Window {
                     iconName: "pin"
                     onTriggered: window.shelf.pinShelf(window.shelf.activeShelf, !pinned)
                 }
-                MenuItem { text: "Move up"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1) }
-                MenuItem { text: "Move down"; onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1) }
+                // Only actions that would do something are enabled (SH-6).
+                MenuItem {
+                    objectName: "moveCollectionUp"
+                    text: "Move up"
+                    enabled: window.shelf.shelves.findIndex(s => s.id === window.shelf.activeShelf) > 0
+                    onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, -1)
+                }
+                MenuItem {
+                    objectName: "moveCollectionDown"
+                    text: "Move down"
+                    enabled: { const i = window.shelf.shelves.findIndex(s => s.id === window.shelf.activeShelf); return i >= 0 && i < window.shelf.shelves.length - 1; }
+                    onTriggered: window.shelf.moveShelf(window.shelf.activeShelf, 1)
+                }
                 MenuSeparator {}
                 MenuItem {
                     text: "Delete collection…"; iconName: "trash"; danger: true
-                    enabled: window.shelf.shelves.length > 1
+                    // Quick Shelf is where new items go; it can't be deleted.
+                    enabled: window.shelf.shelves.length > 1 && window.shelf.activeShelf !== "quick"
                     onTriggered: { window.collectionToEdit = window.shelf.activeShelf; (deleteCollectionLoader.get() as Dialog).open(); }
                 }
             }
