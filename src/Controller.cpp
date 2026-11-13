@@ -493,6 +493,7 @@ void Controller::show()
     const bool opening = !m_expanded;
     m_visible = true;
     m_expanded = true;
+    m_service->setPanelOpen(true);
     m_focusPanel = true;
     updateFullscreenPolicy();
     emit changed();
@@ -511,6 +512,7 @@ void Controller::peek()
     if (m_expanded || m_dock.isEmpty() || m_picking) return;
     m_visible = true;
     m_expanded = true;
+    m_service->setPanelOpen(true);
     m_focusPanel = false;
     updateFullscreenPolicy();
     emit changed();
@@ -526,6 +528,7 @@ void Controller::collapse()
     }
     const bool closing = m_expanded;
     m_expanded = false;
+    m_service->setPanelOpen(false);
     m_focusPanel = false;
     updateFullscreenPolicy();
     emit changed();

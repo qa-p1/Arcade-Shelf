@@ -286,6 +286,23 @@ class ShelfProcessTests(unittest.TestCase):
         self.assertEqual(self.shelf.process.returncode, 0)
         self.assertFalse(self.shelf.endpoint.exists())
 
+    def test_status_mode_follows_the_panel(self):
+        # SH-7 / RD-SHELF-4: "mode" says whether the panel is open (and a restart keeps it).
+        self.shelf.start()
+        with LinkClient(self.shelf.endpoint) as c:
+            self.assertEqual(c.call("app.status")["status"]["mode"], "background")
+            c.call("app.activate")
+            deadline = time.monotonic() + 3
+            while c.call("app.status")["status"]["mode"] != "foreground" and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(c.call("app.status")["status"]["mode"], "foreground")
+            r = subprocess.run([str(BINARY), "--hide"], env=self.shelf.env, capture_output=True, timeout=5)
+            self.assertEqual(r.returncode, 0, r.stderr.decode(errors="replace"))
+            deadline = time.monotonic() + 3
+            while c.call("app.status")["status"]["mode"] != "background" and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(c.call("app.status")["status"]["mode"], "background")
+
     def test_hub_methods_and_backup_restore(self):
         self.shelf.start()
         original = self.shelf.user_file("portable.txt")

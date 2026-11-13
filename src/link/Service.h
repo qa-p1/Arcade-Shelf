@@ -4,6 +4,7 @@
 #include "ArcadeLink.h"
 #include <QObject>
 #include <QTimer>
+#include <atomic>
 #include <optional>
 
 namespace Shelf {
@@ -24,6 +25,8 @@ class Service : public QObject {
 public:
     explicit Service(QString root, QObject *parent = nullptr, bool background = true);
     ~Service() override;
+    // The panel's state, for --status and restart (SH-7): set from the UI thread.
+    void setPanelOpen(bool open) { m_panelOpen.store(open); }
     void start();
     void stop();
     void refresh();
@@ -85,6 +88,6 @@ private:
     QString m_undoShelf;
     QTimer m_removalTimer;
     bool m_multiple = false;
-    bool m_background = true;
+    std::atomic<bool> m_panelOpen{false};
 };
 } // namespace Shelf

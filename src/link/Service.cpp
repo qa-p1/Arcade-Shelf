@@ -65,7 +65,7 @@ QString migrateDataRoot()
     for (const auto &[path, reason] : report.kept) reasons << path + QStringLiteral(": ") + reason;
     return QStringLiteral("Couldn't move Shelf's items to the new folder. The originals were kept. ") + reasons.join(QStringLiteral("; "));
 }
-Service::Service(QString root, QObject *parent, bool background) : QObject(parent), m_root(std::move(root)), m_background(background)
+Service::Service(QString root, QObject *parent, bool background) : QObject(parent), m_root(std::move(root)), m_panelOpen(!background)
 {
     m_pickTimer.setParent(this);
     m_pickTimer.setInterval(100);
@@ -172,7 +172,7 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
     server.activate = [this] { emit showRequested({}, false); return true; };
     server.quit = [this] { emit quitRequested(); return true; };
     server.status = [this] {
-        return QJsonObject{{"mode", m_background ? "background" : "foreground"},
+        return QJsonObject{{"mode", m_panelOpen.load() ? "foreground" : "background"},
                            {"shelf", m_store->activeShelf()},
                            {"items", m_store->items(m_store->activeShelf()).size()},
                            {"busy", busy()}};
@@ -184,7 +184,8 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
     };
     server.restartReady = [this](const QString &mode) {
         if (busy() && mode != "force") return ArcadeLink::Error::make("busy", "Wait for the active Shelf action before restarting.");
-        const QStringList args{m_background ? "--background" : "--show", "--wait-for-exit", QString::number(QCoreApplication::applicationPid())};
+        // The successor comes back the way this one is now: panel open or not (SH-7).
+        const QStringList args{m_panelOpen.load() ? "--show" : "--background", "--wait-for-exit", QString::number(QCoreApplication::applicationPid())};
         // The replacement runs from a new mount; it mustn't keep this one alive.
         QProcess replacement;
         replacement.setProgram(ArcadeLink::executablePath());
