@@ -473,10 +473,11 @@ class ShelfProcessTests(unittest.TestCase):
         owned_link = handoff / "alias.txt"
         owned_link.symlink_to(target)
         with LinkClient(self.shelf.endpoint) as c:
+            # SH-2: the dangling link is refused; the good ones stay references.
             self.assert_add(c.invoke("shelf.add", [{"type": "file/any[]", "paths": [str(target), str(link), str(dangling)]},
-                                                   {"type": "folder/reference", "path": str(folder_alias)}]), 4)
+                                                   {"type": "folder/reference", "path": str(folder_alias)}]), 3, ["broken_link"])
             self.assert_error("unsupported_input", lambda: c.invoke("shelf.add", [{"type": "file/text", "path": str(owned_link), "owner": "arcade.lens"}]))
-        self.assertEqual([r["path"] for r in self.shelf.rows()], [str(target), str(link), str(dangling), str(folder_alias)])
+        self.assertEqual([r["path"] for r in self.shelf.rows()], [str(target), str(link), str(folder_alias)])
         self.assertTrue(folder_alias.is_symlink())
         self.assertTrue(link.is_symlink())
         self.assertTrue(dangling.is_symlink())
