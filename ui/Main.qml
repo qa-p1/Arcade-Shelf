@@ -169,7 +169,6 @@ Window {
             if (focusing) {
                 window.requestActivate(); interaction.forceActiveFocus();
             }
-            if (window.shelf.focusPanel || !window.shelf.expanded) peekDismissTimer.stop();
             window.cursorIndex = Math.min(window.cursorIndex, window.shelf.items.length - 1);
             if (window.shelf.analysisResult && Object.keys(window.shelf.analysisResult).length > 0) { const d = analysisDialogLoader.get() as Dialog; if (!d.visible) d.open(); }
         }
@@ -178,12 +177,12 @@ Window {
             Qt.callLater(function() { window.editCollection("", "", "new"); });
         }
         function onNativeDragHoverChanged() {
+            // A peeked panel never collapses by itself (SH-8): only Escape, the
+            // shortcut, the tab or an explicit action close it.
             if (window.shelf.nativeDragHover) {
-                peekDismissTimer.stop();
                 if (window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart();
             } else {
                 edgeHoverTimer.stop();
-                if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !dropArea.containsDrag) peekDismissTimer.restart();
             }
         }
     }
@@ -194,11 +193,6 @@ Window {
         // A drag always peeks; plain hover only when "Open docked Shelf on hover" is on.
         onTriggered: if (window.dockEdge.length && !window.shelf.expanded && (capsuleMouse.containsMouse || window.dragHover)
                          && (window.dragHover || (window.shelf.hoverPeek && Date.now() >= window.peekHeldUntil))) window.shelf.peek()
-    }
-    Timer {
-        id: peekDismissTimer
-        interval: 320
-        onTriggered: if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !window.dragHover) window.shelf.collapse()
     }
 
     Item {
@@ -267,13 +261,6 @@ Window {
             border.color: window.dragHover || window.pulsing ? Theme.accent : Theme.line
             clip: true
             Behavior on border.color { ColorAnimation { duration: Theme.durationBase } }
-            HoverHandler {
-                id: surfaceHover
-                onHoveredChanged: {
-                    if (!hovered && window.shelf.expanded && !window.shelf.focusPanel && !window.dragHover) peekDismissTimer.restart();
-                    else peekDismissTimer.stop();
-                }
-            }
 
             // The drag-hover pulse: accent-soft over the whole surface.
             Rectangle {
@@ -674,12 +661,10 @@ Window {
                 enabled: !window.shelf.picking
                 onEntered: function(drag) {
                     drag.accepted = drag.hasUrls || drag.hasText || drag.hasHtml;
-                    peekDismissTimer.stop();
                     if (drag.accepted && window.dockEdge.length && !window.shelf.expanded) edgeHoverTimer.restart();
                 }
                 onExited: {
                     edgeHoverTimer.stop();
-                    if (window.shelf.expanded && !window.shelf.focusPanel && !surfaceHover.hovered && !window.shelf.nativeDragHover) peekDismissTimer.restart();
                 }
                 onDropped: function(drop) {
                     edgeHoverTimer.stop();
