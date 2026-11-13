@@ -1035,7 +1035,7 @@ void Controller::setRetention(int days)
 // Size settings use decimal MB (STANDARD §8.1); the setting itself is bytes.
 void Controller::setQuota(int mb)
 {
-    if (mb >= 1 && mb <= 4000) saveSetting("quotaBytes", qint64(mb) * 1000 * 1000);
+    if (mb >= 1 && mb <= 4000) saveSetting("quotaBytes", qint64(mb) * 1024 * 1024);
 }
 void Controller::setStartAtLogin(bool value)
 {
