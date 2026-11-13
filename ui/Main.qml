@@ -625,8 +625,11 @@ Window {
                         objectName: "hintBar"
                         visible: !window.shelf.picking
                         y: 1; width: parent.width
-                        hints: [{ keys: ["↵"], label: "Open" }, { keys: ["Space"], label: "Preview in Look" },
-                                { keys: ["Del"], label: "Remove" }, { keys: ["Esc"], label: "Close" }]
+                        // A feedback message takes the bar for itself while it shows,
+                        // instead of being drawn over the key hints (SH-3).
+                        hints: window.shelf.message.length ? []
+                            : [{ keys: ["↵"], label: "Open" }, { keys: ["Space"], label: "Preview in Look" },
+                               { keys: ["Del"], label: "Remove" }, { keys: ["Esc"], label: "Close" }]
                         trailing: window.shelf.message.length ? window.shelf.message
                             : window.selectedCount ? Format.formatCount(window.selectedCount) + " selected" : ""
                     }

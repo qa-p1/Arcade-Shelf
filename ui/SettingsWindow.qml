@@ -126,7 +126,7 @@ Window {
                 SwitchRow {
                     objectName: "hoverPeekToggle"
                     title: "Open docked Shelf on hover"
-                    subtitle: "Hovering the tab shows the panel without taking keyboard focus. Click it to type."
+                    subtitle: "Hovering the tab shows the panel. Click it to type (where focus follows the mouse, it may take keyboard focus at once)."
                     checked: root.shelf.hoverPeek
                     onToggled: checked => root.shelf.hoverPeek = checked
                 }
