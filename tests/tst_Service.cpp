@@ -128,6 +128,52 @@ private slots:
         qunsetenv("ARCADE_HOME");
         qunsetenv("ARCADE_DEV_BUILD");
     }
+    void removalCanBeUndoneOnlyInItsOwnCollection()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        qputenv("ARCADE_HOME", (root.path() + "/link").toUtf8());
+        qputenv("ARCADE_DEV_BUILD", "1");
+        Service service(root.path() + "/shelf");
+        service.start();
+        QSignalSpy snapshots(&service, &Service::snapshot);
+        const auto last = [&] { return snapshots.last(); };
+        const auto ids = [&] {
+            QStringList out;
+            for (const auto &v : last().at(1).toJsonArray()) out << v.toObject()["id"].toString();
+            return out;
+        };
+        const auto text = [](const QString &t) { return QJsonObject{{"type", "text/plain"}, {"text", t}}; };
+        service.add({text("one"), text("two")}, {});
+        QTRY_VERIFY(!snapshots.isEmpty());
+        QStringList before = ids();
+        QCOMPARE(before.size(), 2);
+        // Removing hides the items and offers undo.
+        service.remove({before.first()});
+        QCOMPARE(ids().size(), 1);
+        QVERIFY(last().at(4).toBool());
+        // Another collection has nothing to undo, and Undo there does nothing.
+        service.createShelf("Work", false);
+        QVERIFY(!last().at(4).toBool());
+        service.undo();
+        QCOMPARE(ids().size(), 0);
+        service.switchShelf("quick");
+        QCOMPARE(ids().size(), 1);
+        QVERIFY(last().at(4).toBool());
+        // Undo brings the item back at its place.
+        service.undo();
+        QCOMPARE(ids(), before);
+        QVERIFY(!last().at(4).toBool());
+        // A second removal commits the first for good.
+        service.remove({before.first()});
+        service.remove({before.last()});
+        QCOMPARE(ids().size(), 0);
+        service.undo();
+        QCOMPARE(ids(), QStringList{before.last()});
+        Store view(root.path() + "/shelf");
+        QVERIFY(view.open());
+        QCOMPARE(view.items("quick").size(), 1);
+    }
     void restoreMayTurnOffLinkAfterReply()
     {
         QTemporaryDir root;

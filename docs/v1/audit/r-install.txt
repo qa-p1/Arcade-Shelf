@@ -1,0 +1,30 @@
+{
+    "channel": "stable",
+    "id": "arcade.shelf",
+    "installedAt": "2026-11-06T13:53:01Z",
+    "integration": {
+        "autostart": "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/cfg/autostart/dev.arcade.Shelf.desktop",
+        "cli": "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/home/.local/bin/arcade-shelf",
+        "desktopEntry": "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/applications/dev.arcade.Shelf.desktop",
+        "icons": [
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/scalable/apps/dev.arcade.Shelf.svg",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/16x16/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/24x24/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/32x32/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/48x48/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/64x64/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/128x128/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/256x256/apps/dev.arcade.Shelf.png",
+            "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/data/icons/hicolor/512x512/apps/dev.arcade.Shelf.png"
+        ],
+        "uninstaller": null
+    },
+    "managedBy": "self",
+    "method": "appimage",
+    "path": "/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/home/Applications/Arcade/Arcade-Shelf.AppImage",
+    "schema": 1,
+    "updatedAt": "2026-11-06T13:53:01Z",
+    "version": "0.4.0"
+}
+gtk-update-icon-cache: Cache file created successfully.
+To use Arcade Shelf from the terminal, add your Arcade command folder to PATH: fish_add_path '/tmp/claude-1000/-home-harneet-Work-Coding/c7347b9d-c34f-4fc8-b57d-de9a2d5591f6/scratchpad/audit-cswt/resume/home/.local/bin'

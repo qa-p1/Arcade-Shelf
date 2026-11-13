@@ -1,0 +1,18 @@
+# Arcade Shelf v1 decisions
+
+Decisions the plan left open, made by the v1 code-writing pass. Each cites the part of the catalog `dev/v1/README.md`
+or `ARCADE_APP.md` it follows. Newest last.
+
+## D1 — Spec and audit copied at catalog `dev/v1`
+
+`docs/v1/SPEC.md` is `specs/SHELF.md`; `docs/v1/audit/` holds `AUDIT/shelf.md`, its text evidence (`r-*.json*`,
+`r-install.txt`, `r-source-revision.txt`, `resume-cli.txt`) and the Shelf section of `AUDIT/real-desktop.md`
+(`real-desktop-shelf.md`). Line numbers in the spec are for Shelf 0.4.0 (`3f3d1fd`).
+
+## D2 — Local builds use Qt 6.4, CI uses Qt 6.8.3
+
+The sandbox has Qt 6.4.2 only and no way to fetch 6.8. Local verification builds a scratch copy of the tree with
+four mechanical shims (the `QProcess` fd-closing API, `QQmlApplicationEngine::loadFromModule`, `QTimeZone::utc()`,
+the Qt 6.5 resource prefix). The repository itself still requires Qt 6.8; nothing for 6.4 is committed. Tests that
+need Qt 6.8 behaviour (some `Thumbnail`, `LinkInstall` and `ProcessSmoke` cases) are recorded as "not run locally"
+in PROGRESS.

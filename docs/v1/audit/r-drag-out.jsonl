@@ -1,0 +1,3 @@
+{"target": "text/uri-list", "bytes": "file:///tmp/cswt-c7347b9d/home/test%20file%20%CE%94.txt\r\n"}
+{"target": "UTF8_STRING", "bytes": "Audit drag multiline\n\u0394 \ud83d\ude00"}
+{"target": "text/uri-list", "bytes": "https://example.invalid/audit?q=%CE%94\r\n"}
