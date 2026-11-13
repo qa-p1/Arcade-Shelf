@@ -23,6 +23,7 @@ class Service : public QObject {
     Q_OBJECT
 public:
     explicit Service(QString root, QObject *parent = nullptr, bool background = true);
+    ~Service() override;
     void start();
     void stop();
     void refresh();
@@ -69,6 +70,10 @@ private:
     bool busy() const;
     bool target(QString id);
     void finishAdd(const AddResult &result, bool reveal);
+    // One-deep undo, scoped to the collection it happened in. A removal is only hidden until its undo window ends.
+    void commitRemoval();
+    void clearUndo();
+    void removeNow(QStringList ids);
     QString m_root;
     std::unique_ptr<Store> m_store;
     std::unique_ptr<ArcadeLink::Server> m_server, m_control;
@@ -76,7 +81,9 @@ private:
     std::optional<ArcadeLink::Responder> m_shortcutResponder;
     QString m_requestedShortcut, m_trayState = QStringLiteral("own"), m_installMethod;
     QTimer m_pickTimer;
-    QStringList m_pickTypes, m_undo, m_retained, m_deferredRemoval;
+    QStringList m_pickTypes, m_undo, m_retained, m_deferredRemoval, m_pendingRemoval;
+    QString m_undoShelf;
+    QTimer m_removalTimer;
     bool m_multiple = false;
     bool m_background = true;
 };

@@ -77,7 +77,15 @@ Service::Service(QString root, QObject *parent, bool background) : QObject(paren
             emit pickEnded();
         }
     });
+    m_removalTimer.setParent(this);
+    m_removalTimer.setSingleShot(true);
+    m_removalTimer.setInterval(30000);
+    connect(&m_removalTimer, &QTimer::timeout, this, [this] {
+        clearUndo();
+        refresh();
+    });
 }
+Service::~Service() { commitRemoval(); }
 void Service::start()
 {
     m_store = std::make_unique<Store>(m_root);
@@ -104,6 +112,7 @@ void Service::start()
         } else if (action == "internal.status") {
             r.done({{"link", QJsonObject{{"enabled", m_store->settings()["linkEnabled"].toBool(true)}, {"listening", m_server != nullptr}}}});
         } else if (action == "internal.add") {
+            commitRemoval();
             const auto result = m_store->add(req["inputs"].toArray());
             if (result.error.isError()) r.fail(result.error);
             else {
@@ -251,11 +260,12 @@ void Service::configureLifecycle(ArcadeLink::Server &server)
         }
         QString error;
         int imported = 0;
+        commitRemoval();
         if (!m_store->importPortable(path, &imported, &error)) {
             r.fail(ArcadeLink::Error::make("denied", error));
             return;
         }
-        m_undo.clear();
+        clearUndo();
         refresh();
         r.done({{"imported", true}, {"restartRequired", false}, {"items", imported}});
         // Link's Responder queues the reply; stopping the public server aborts
@@ -324,6 +334,7 @@ void Service::invoke(const QJsonObject &req, const ArcadeLink::Responder &r)
             r.fail(ArcadeLink::Error::make("unsupported_input", "Invalid add options"));
             return;
         }
+        commitRemoval();
         const AddResult result = m_store->add(inputs, options);
         if (result.error.isError()) r.fail(result.error);
         else {
@@ -365,22 +376,52 @@ void Service::invoke(const QJsonObject &req, const ArcadeLink::Responder &r)
 }
 void Service::refresh()
 {
-    if (m_store) emit snapshot(m_store->shelves(), m_store->items(m_store->activeShelf()), m_store->activeShelf(),
-                               m_store->settings(), !m_undo.isEmpty(), m_store->portableOwnedBytes());
+    if (!m_store) return;
+    const QString active = m_store->activeShelf();
+    QJsonArray items = m_store->items(active);
+    if (!m_pendingRemoval.isEmpty()) {
+        QJsonArray visible;
+        for (const auto &item : items)
+            if (!m_pendingRemoval.contains(item.toObject().value(QStringLiteral("id")).toString())) visible.append(item);
+        items = visible;
+    }
+    emit snapshot(m_store->shelves(), items, active, m_store->settings(), !m_undo.isEmpty() && m_undoShelf == active, m_store->portableOwnedBytes());
+}
+// An undone removal never touched the store; a finished one is applied here, before anything else changes the
+// store (an add would otherwise find the hidden items still there), and its undo ends with it.
+void Service::commitRemoval()
+{
+    m_removalTimer.stop();
+    if (m_pendingRemoval.isEmpty()) return;
+    const auto ids = std::exchange(m_pendingRemoval, {});
+    m_undo.clear();
+    m_undoShelf.clear();
+    if (m_store) removeNow(ids);
+}
+void Service::clearUndo()
+{
+    commitRemoval();
+    m_undo.clear();
+    m_undoShelf.clear();
 }
 void Service::finishAdd(const AddResult &result, bool reveal)
 {
-    if (!result.addedIds.isEmpty()) m_undo = result.addedIds;
+    if (!result.addedIds.isEmpty()) {
+        clearUndo();
+        m_undo = result.addedIds;
+        m_undoShelf = result.result.value(QStringLiteral("data")).toObject().value(QStringLiteral("shelf")).toObject().value(QStringLiteral("id")).toString();
+    }
     refresh();
     emit feedback(result.result["message"].toString(), reveal);
 }
 void Service::add(QJsonArray inputs, QJsonObject options)
 {
+    commitRemoval();
     auto result = m_store->add(inputs, options);
     if (result.error.isError()) emit feedback(result.error.userMessage("Arcade Shelf"), false);
     else finishAdd(result, options["reveal"].toBool(true));
 }
-void Service::remove(QStringList ids)
+void Service::removeNow(QStringList ids)
 {
     QStringList safe;
     for (const auto &id : ids) {
@@ -388,18 +429,39 @@ void Service::remove(QStringList ids)
         else safe << id;
     }
     if (!m_store->remove(safe)) emit feedback("Couldn't remove the selected items.", false);
-    m_undo.clear();
+}
+void Service::remove(QStringList ids)
+{
+    clearUndo();
+    if (ids.isEmpty()) return;
+    m_pendingRemoval = ids;
+    m_undo = ids;
+    m_undoShelf = m_store->activeShelf();
+    m_removalTimer.start();
     refresh();
+    emit feedback(ids.size() == 1 ? QStringLiteral("Removed 1 item. Undo to bring it back.") : QStringLiteral("Removed %1 items. Undo to bring them back.").arg(ids.size()), false);
 }
 void Service::undo()
 {
-    auto ids = m_undo;
-    m_undo.clear();
-    remove(ids);
+    if (m_undo.isEmpty() || m_undoShelf != m_store->activeShelf()) return;
+    if (!m_pendingRemoval.isEmpty()) {
+        m_removalTimer.stop();
+        m_pendingRemoval.clear();
+        m_undo.clear();
+        m_undoShelf.clear();
+        refresh();
+        emit feedback("Removal undone.", false);
+        return;
+    }
+    auto ids = std::exchange(m_undo, {});
+    m_undoShelf.clear();
+    removeNow(ids);
+    refresh();
     emit feedback("Last addition undone.", false);
 }
 void Service::reorder(QString shelf, QStringList ids)
 {
+    commitRemoval();
     if (!m_store->reorder(shelf, ids)) emit feedback("Couldn't reorder items.", false);
     refresh();
 }
@@ -427,7 +489,7 @@ void Service::deleteShelf(QString id)
         return;
     }
     if (!m_store->deleteShelf(id)) emit feedback("Couldn't delete Quick Shelf. It's the collection new items go to.", false);
-    m_undo.clear();
+    clearUndo();
     refresh();
 }
 void Service::pinShelf(QString id, bool pin)
@@ -473,11 +535,12 @@ void Service::importPortableSettings(QString path)
     }
     int importedItems = 0;
     QString error;
+    commitRemoval();
     if (!m_store || !m_store->importPortable(path, &importedItems, &error)) {
         emit feedback(error.isEmpty() ? QStringLiteral("Couldn't import the Shelf backup.") : error, false);
         return;
     }
-    m_undo.clear();
+    clearUndo();
     publish();
     refresh();
     emit feedback(QStringLiteral("Shelf backup restored (%1 item(s)).").arg(importedItems), false);
