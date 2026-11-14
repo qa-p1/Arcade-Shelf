@@ -86,9 +86,8 @@ python3 scripts/arcade-release.py --id arcade.shelf --version 0.4.0 --channel st
 The generator is unmodified Arcade Link `v0.3.0` code and writes
 `arcade-release.json` plus `SHA256SUMS.txt`. SHA-256 establishes integrity, not
 publisher authentication. The checked-in CI builds/tests/packages all three
-OS families and uploads development artifacts on branch pushes. A `v<version>`
-tag enables the separate stable publish job after all build jobs pass; merging
-to `main` alone does not publish a release. A workflow definition is not a
+OS families and uploads development artifacts on branch pushes. Merging to
+`main` alone does not publish a release. A workflow definition is not a
 successful CI run.
 Tools currently accepts Linux tarballs only for Clipboard; the isolated Tools
 onboarding patch adds Shelf bundle installation with bounded safe extraction.
@@ -171,8 +170,13 @@ with `QT_QUICK_BACKEND=software`. Failed jobs emit bounded diagnostic
 annotations from their actual CTest logs. Successful native package and
 smoke-test results must be checked before publishing distributable releases.
 
-A `v<version>` tag (or a manual run of the workflow on that tag) builds and
-tests all three platforms, then publishes the packages with one stable
-`arcade-release.json` and `SHA256SUMS.txt` as a GitHub release, which Arcade
-Tools installs from ([onboarding](history/ecosystem-onboarding.md)). Real install, update and
+Stable is never built: it is a verified release candidate promoted byte for
+byte. "Tag a release" (`tag.yml`) makes `v<version>-rc.<n>` on a commit of
+`main` and starts "Release" (`release.yml`), which builds and tests all three
+platforms and publishes the installers through Link's `app-publish` as a hidden
+prerelease on the `test` channel. Every exit gate runs against those files;
+"Promote" (`promote.yml`) then republishes the same bytes as `v<version>` with
+a signed `manifest.json`, which Arcade Tools installs from
+([onboarding](history/ecosystem-onboarding.md)). "Nightly" (`nightly.yml`)
+republishes main CI's installers daily as a signed prerelease. Real install, update and
 removal through Tools on each platform still need a desktop run.
