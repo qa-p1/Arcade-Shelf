@@ -16,3 +16,16 @@ four mechanical shims (the `QProcess` fd-closing API, `QQmlApplicationEngine::lo
 the Qt 6.5 resource prefix). The repository itself still requires Qt 6.8; nothing for 6.4 is committed. Tests that
 need Qt 6.8 behaviour (some `Thumbnail`, `LinkInstall` and `ProcessSmoke` cases) are recorded as "not run locally"
 in PROGRESS.
+
+## Untangle (step 2): what changes together
+
+`src/platform/Desktop.cpp` (1,852 lines) is one class with four reasons to change, sharing one private `Native`
+struct defined in the .cpp:
+- window placement: move, snap, dock, arrange, and the Hyprland reconciliation that follows the compositor;
+- opening and revealing files, and the MIME data for dragging items out;
+- the global shortcut: validation, the portal session, and the Hyprland binding;
+- start at login: the per-OS entry paths, ownership checks against the install receipt, and the legacy-id migration.
+
+Each is reached from `Controller` through a few methods only. The fix: move `Native` into a private header, then
+split the class's implementation by concern (`DesktopPlacement.cpp`, `DesktopFiles.cpp`, `DesktopShortcut.cpp`,
+`DesktopLogin.cpp`) behind the same `Desktop` interface, so a change to one concern reads one file. Not done yet.
