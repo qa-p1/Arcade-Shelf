@@ -107,6 +107,7 @@ private:
     void setError(const QString &message);
     void setShortcutStatus(const QString &message);
     void clearShortcut();
+    void watchShortcutPortal();
     void clearMove();
     void completeMove(quint64 generation);
     void sampleMove(quint64 generation);

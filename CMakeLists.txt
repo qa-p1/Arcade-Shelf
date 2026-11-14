@@ -51,7 +51,8 @@ add_library(shelf_services STATIC src/link/Service.cpp src/link/Service.h src/li
 target_link_libraries(shelf_services PUBLIC shelf_core shelf_install)
 # The one place the version is written; C++, QML and CI read it from here.
 target_compile_definitions(shelf_services PUBLIC SHELF_VERSION="${PROJECT_VERSION}")
-add_library(shelf_desktop STATIC src/platform/Desktop.cpp src/platform/Desktop.h
+add_library(shelf_desktop STATIC src/platform/Desktop.cpp src/platform/Desktop.h src/platform/DesktopPrivate.h
+  src/platform/DesktopPlacement.cpp src/platform/DesktopFiles.cpp src/platform/DesktopShortcut.cpp src/platform/DesktopLogin.cpp
   src/platform/Backdrop.cpp src/platform/Backdrop.h src/platform/Backdrop_p.h
   src/platform/FullscreenGuard.cpp src/platform/FullscreenGuard.h)
 target_include_directories(shelf_desktop PUBLIC src)

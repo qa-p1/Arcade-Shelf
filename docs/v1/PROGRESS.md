@@ -3,6 +3,17 @@
 Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Tested locally" names the command;
 "not run" says why.
 
+## 2026-11-14 (cloud session)
+
+- Step 2, untangle: `src/platform/Desktop.cpp` (1,852 lines, four concerns) is split by concern behind the unchanged
+  public `Desktop` interface (DECISIONS "Untangle"): `DesktopPlacement.cpp`, `DesktopFiles.cpp`,
+  `DesktopShortcut.cpp`, `DesktopLogin.cpp`, with `Native` in the private `DesktopPrivate.h`. Moved mechanically
+  from line ranges; a line-multiset check against the old file shows only the intended edits (a default argument
+  moved to its declaration, a forward declaration dropped, the moc include renamed, one new private method that
+  wires the shortcut portal from the constructor). Tested locally with Qt 6.8.3 (aqt): `scripts/check.py` (build
+  with warnings as errors, clang-format 18, qmllint, docs, every ctest suite, 17/17, `tst_Ui` under `xvfb-run`
+  included), and the five files compile without DBus/X11 too. Windows and macOS compile only in CI.
+
 ## 2026-11-13 (local session) - every spec finding fixed
 
 - PR #12 (merged): `45c6868` SH-5 removal undo in its own collection; a pending removal is committed before any

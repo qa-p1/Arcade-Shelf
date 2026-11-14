@@ -28,4 +28,7 @@ struct defined in the .cpp:
 
 Each is reached from `Controller` through a few methods only. The fix: move `Native` into a private header, then
 split the class's implementation by concern (`DesktopPlacement.cpp`, `DesktopFiles.cpp`, `DesktopShortcut.cpp`,
-`DesktopLogin.cpp`) behind the same `Desktop` interface, so a change to one concern reads one file. Not done yet.
+`DesktopLogin.cpp`) behind the same `Desktop` interface, so a change to one concern reads one file. Done on
+2026-11-14: `Native` and the two shared helpers (`runProgram`, `isolatedDesktop`) are in `DesktopPrivate.h`;
+everything else that only one concern used moved with it, and `Desktop.cpp` keeps construction, errors and the
+native event filter (it serves both the move gesture and the Windows hotkey).
