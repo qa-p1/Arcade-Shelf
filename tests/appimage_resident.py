@@ -99,7 +99,9 @@ def main() -> int:
             assert pattern.fullmatch(str(executable)), \
                 f"The resident runs from {executable}, not from {copies}/shelf-{version}-<16 hex digits>/"
             environment = dict(entry.split(b"=", 1) for entry in Path(f"/proc/{resident}/environ").read_bytes().split(b"\0") if b"=" in entry)
-            assert environment.get(b"ARCADE_UNPACKED") == b"1", "The copy was not told it is the unpacked copy"
+            folder = os.fsencode(str(copies / executable.relative_to(copies).parts[0]))
+            assert environment.get(b"ARCADE_UNPACKED") == folder, \
+                f"The copy's ARCADE_UNPACKED is {environment.get(b'ARCADE_UNPACKED')!r}, not its own folder {folder!r}"
             assert environment.get(b"APPIMAGE") == str(image).encode(), "The copy lost $APPIMAGE (installs and restarts use it)"
             assert not processes_running(image), f"The AppImage's own runtime still runs: {processes_running(image)}"
             # The real GL path: the window is up and stays up.
