@@ -27,7 +27,6 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantMap analysisResult READ analysisResult NOTIFY changed)
     // The platform backdrop behind the surface (Backdrop stays out of QML).
     Q_PROPERTY(bool backdropActive READ backdropActive NOTIFY changed)
-    Q_PROPERTY(QString backdropStatus READ backdropStatus NOTIFY changed)
     Q_PROPERTY(QString activeShelf READ activeShelf NOTIFY changed)
     Q_PROPERTY(QString activeName READ activeName NOTIFY changed)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY changed)
@@ -76,7 +75,6 @@ public:
     QVariantMap preferences() const;
     Backdrop *backdrop() { return &m_backdrop; }
     bool backdropActive() const { return m_backdrop.active(); }
-    QString backdropStatus() const { return m_backdrop.status(); }
     Q_INVOKABLE void setBackdropRegion(const QRectF &region, qreal radius) { m_backdrop.setRegion(region, radius); }
     Q_INVOKABLE void setBackdropDark(bool dark) { m_backdrop.setDark(dark); }
     QVariantMap analysisResult() const { return m_analysis.toVariantMap(); }
