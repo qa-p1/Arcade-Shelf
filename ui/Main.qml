@@ -487,7 +487,6 @@ Window {
                         Accessible.selected: chosen
                         Accessible.onPressAction: window.shelf.select(modelData.id, false, false)
                         Rectangle {
-                            id: card
                             x: Theme.space4; y: Theme.space4
                             width: parent.width - Theme.space8; height: parent.height - Theme.space8
                             radius: Theme.radiusMd
@@ -705,7 +704,6 @@ Window {
         id: capsuleMenuLoader
         sourceComponent: Component {
             Menu {
-                id: capsuleMenu
                 MenuItem { text: "Open " + window.shelf.activeName; onTriggered: window.shelf.show() }
                 MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; onTriggered: window.shelf.paste() }
                 MenuItem { text: "Undo"; iconName: "undo"; shortcut: "Ctrl+Z"; enabled: window.shelf.undoAvailable; onTriggered: window.shelf.undo() }
@@ -721,7 +719,6 @@ Window {
         id: surfaceMenuLoader
         sourceComponent: Component {
             Menu {
-                id: surfaceMenu
                 MenuItem { text: "Collect from clipboard"; iconName: "clipboard"; shortcut: "Ctrl+V"; onTriggered: window.shelf.paste() }
                 MenuItem { text: "Select all"; shortcut: "Ctrl+A"; enabled: window.shelf.items.length > 0; onTriggered: window.shelf.selectAll() }
                 MenuSeparator {}
@@ -792,7 +789,6 @@ Window {
         id: itemMenuLoader
         sourceComponent: Component {
             Menu {
-                id: itemMenu
                 MenuItem { text: "Open"; shortcut: "Enter"; onTriggered: window.shelf.openItem(window.contextItem) }
                 MenuItem { text: "Show in folder"; iconName: "showInFolder"; onTriggered: window.shelf.revealItem(window.contextItem) }
                 MenuItem { text: "Preview in Look"; iconName: "eye"; shortcut: "Space"; visible: !!window.lookPreview; height: visible ? implicitHeight : 0; onTriggered: window.runOffer(window.lookPreview) }
