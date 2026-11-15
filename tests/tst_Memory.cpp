@@ -1,6 +1,9 @@
+#include "HideRelease.h"
 #include "Startup.h"
+#include <QSignalSpy>
 #include <QTest>
 
+using Shelf::HideRelease;
 using Shelf::startsResident;
 
 class MemoryTest final : public QObject {
@@ -52,6 +55,58 @@ private slots:
         QFETCH(QStringList, arguments);
         QFETCH(bool, resident);
         QCOMPARE(startsResident(arguments), resident);
+    }
+
+    void aFinalHideReleasesOnceAndNeverRepeats()
+    {
+        HideRelease release(30);
+        QSignalSpy released(&release, &HideRelease::released);
+        release.setOpen(true);
+        QVERIFY(!release.pending());
+        release.setOpen(false);
+        QVERIFY(release.pending());
+        QVERIFY(released.wait(2000));
+        QVERIFY(!release.pending());
+        // No periodic timer while hidden: nothing follows the one release.
+        QTest::qWait(150);
+        QCOMPARE(released.size(), 1);
+    }
+    void aReopenBeforeTheDelayCancelsTheRelease()
+    {
+        HideRelease release(60);
+        QSignalSpy released(&release, &HideRelease::released);
+        release.setOpen(true);
+        release.setOpen(false);
+        QVERIFY(release.pending());
+        QTest::qWait(10);
+        release.setOpen(true);
+        QVERIFY(!release.pending());
+        QTest::qWait(200);
+        QCOMPARE(released.size(), 0);
+        // The next hide starts a fresh delay.
+        release.setOpen(false);
+        QVERIFY(released.wait(2000));
+        QCOMPARE(released.size(), 1);
+    }
+    void startingHiddenOrRepeatingAStateReleasesNothing()
+    {
+        HideRelease release(30);
+        QSignalSpy released(&release, &HideRelease::released);
+        release.setOpen(false);
+        QVERIFY(!release.pending());
+        release.setOpen(true);
+        release.setOpen(true);
+        release.setOpen(false);
+        QTest::qWait(10);
+        // A second "hidden" must not push the pending release back.
+        release.setOpen(false);
+        QVERIFY(released.wait(2000));
+        QTest::qWait(100);
+        QCOMPARE(released.size(), 1);
+    }
+    void theDefaultDelayIsTwoSeconds()
+    {
+        QCOMPARE(Shelf::ReleaseDelayMs, 2000);
     }
 };
 
