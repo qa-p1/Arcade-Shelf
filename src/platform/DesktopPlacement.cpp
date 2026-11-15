@@ -35,8 +35,8 @@ QScreen *screenFor(QWindow *window, const QString &name = {}, const QRect &geome
 // Hyprland's clients query supplies the actual compositor address. Select only
 // this process's main window; never use activewindow or caller-supplied IDs.
 void ownHyprlandWindow(QObject *context, const QString &hyprctl, const QStringList &prefix,
-                              QWindow *window, std::function<void(const QJsonObject &)> callback,
-                              std::function<void(const QString &)> failed)
+                       QWindow *window, std::function<void(const QJsonObject &)> callback,
+                       std::function<void(const QString &)> failed)
 {
     const QPointer<QWindow> guard(window);
     runProgram(context, hyprctl, prefix + QStringList{QStringLiteral("-j"), QStringLiteral("clients")},
