@@ -3,6 +3,19 @@
 Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Tested locally" names the command;
 "not run" says why.
 
+## 2026-11-15 - step 4 (cloud session, branch `claude/sharp-cori-29w5eg`)
+
+- Dead code removed, one commit each (DECISIONS D5, with how each was proved unused): `Store::add` split into stages
+  (D4, `e2b6fa8`, not a removal); `isIntegrationCommand` (`3412589`); `Desktop::Native` `bound*` fields (`f3ea316`);
+  `Controller::backdropStatus` (`d0e76b0`); `Controller::backdrop()` (`0b62e5e`); `scripts/release-notes.py`
+  (nothing calls it since the release workflow moved to Link's publish); four unused QML ids in `Main.qml`.
+  Kept after checking: `arcade-release.py` and its test (CI and `check.py` use them), the `licenses/` directory
+  (installed wholesale), every other script, asset, QML file, Qt component and link library.
+- Tested locally: `xvfb-run -a python3 scripts/check.py --build /home/user/shelf-step4-build` with Qt 6.8.3 (build
+  with warnings as errors, clang-format 18, qmllint, vendor/shortcut/doc-link checks, `test_arcade_release.py`,
+  17/17 ctest including `tst_Ui`): All checks passed, 100% tests passed, 0 tests failed out of 17. Windows and macOS
+  code compiles only in CI.
+
 ## 2026-11-14 (cloud session)
 
 - Link v0.3.0 → v1.0.8 (DECISIONS D3): `scripts/vendor-link.py --revision v1.0.8`; `check-vendor.py` passes (111 Qt

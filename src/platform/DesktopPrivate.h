@@ -59,9 +59,6 @@ struct Desktop::Native {
     QString hyprSignature = isolated ? QString() : qEnvironmentVariable("HYPRLAND_INSTANCE_SIGNATURE");
     QString bindingToken = QStringLiteral("arcadeShelf_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
     bool hyprBound = false;
-    QString boundKey;
-    QString boundModifiers;
-    QString boundTarget;
     QLocalSocket *hyprEvents = nullptr;
     QByteArray hyprEventBuffer;
     QPointer<QWindow> movingWindow;
