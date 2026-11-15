@@ -20,6 +20,8 @@
 
 #ifdef Q_OS_UNIX
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -960,9 +962,32 @@ void Server::notifyChanged()
         if (it.value().contains(QStringLiteral("app.changed")) || it.value().contains(QStringLiteral("*"))) it.key()->write(n);
 }
 
+// Sockets are 0600 in a 0700 folder; this is the second check. Windows
+// pipes created with UserAccessOption admit only the owner already.
+static bool peerIsSameUser(QLocalSocket *socket)
+{
+#if defined(Q_OS_LINUX)
+    struct ucred cred {};
+    socklen_t len = sizeof cred;
+    return getsockopt(int(socket->socketDescriptor()), SOL_SOCKET, SO_PEERCRED, &cred, &len) == 0 && cred.uid == geteuid();
+#elif defined(Q_OS_UNIX)
+    uid_t uid = 0;
+    gid_t gid = 0;
+    return getpeereid(int(socket->socketDescriptor()), &uid, &gid) == 0 && uid == geteuid();
+#else
+    Q_UNUSED(socket);
+    return true;
+#endif
+}
+
 void Server::onConnection()
 {
     while (QLocalSocket *socket = m_server.nextPendingConnection()) {
+        if (!peerIsSameUser(socket)) {
+            socket->abort();
+            socket->deleteLater();
+            continue;
+        }
         m_authed.insert(socket, false);
         connect(socket, &QLocalSocket::readyRead, this, [this, socket] { onReadable(socket); });
         connect(socket, &QLocalSocket::disconnected, this, [this, socket] {
@@ -1008,6 +1033,8 @@ void Server::handle(QLocalSocket *socket, const QJsonObject &m)
         }
         QList<int> theirs;
         for (const auto &v : params.value(QStringLiteral("protocol")).toArray()) theirs << v.toInt();
+        // A hello without `protocol` comes from a legacy peer, which speaks 1.
+        if (!params.contains(QStringLiteral("protocol"))) theirs << 1;
         const int version = negotiate(theirs, supportedProtocols());
         if (version < 0) {
             socket->write(errorLine(id, Error::make(QStringLiteral("version_mismatch"), QStringLiteral("no common protocol version"))));

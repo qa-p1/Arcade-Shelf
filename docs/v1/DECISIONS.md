@@ -17,6 +17,13 @@ the Qt 6.5 resource prefix). The repository itself still requires Qt 6.8; nothin
 need Qt 6.8 behaviour (some `Thumbnail`, `LinkInstall` and `ProcessSmoke` cases) are recorded as "not run locally"
 in PROGRESS.
 
+## D3 — Link is vendored at the tag v1.0.8
+`python3 scripts/vendor-link.py --link ../Arcade-Link --revision v1.0.8` replaced the v0.3.0 copy (commit `5679854`)
+with the tag's (`34f8030`): the Qt module, the QML kit, Inter and the shared Windows, shortcut and release files;
+`scripts/check-vendor.py` confirms all 136. Why: the fleet rule "One launcher per app". The 1.0.7 Qt installer
+retires the entries named in `legacyDesktopIds` (`arcade.shelf`, `io.github.qa_p1.ArcadeShelf`) on update and carries
+Start at login over. 1.0.8 adds the eliding HintBar (SH-3) and `arcade_trim.h` (RT-5, for step 5).
+
 ## Untangle (step 2): what changes together
 
 `src/platform/Desktop.cpp` (1,852 lines) is one class with four reasons to change, sharing one private `Native`

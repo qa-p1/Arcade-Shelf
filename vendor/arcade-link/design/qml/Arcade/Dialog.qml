@@ -4,7 +4,8 @@ import QtQuick.Templates as T
 
 // Kit dialog: 460 px wide (less on a small window), 22 px padding, radius 12,
 // title-sm heading, muted body, actions right-aligned with the primary last.
-// Esc and the backdrop close it unless `destructive` or `busy`.
+// Esc cancels it (rejected) unless `busy`. The backdrop closes it too, except
+// for a destructive dialog, where only Esc or a button may end it.
 T.Dialog {
     id: control
     property string body: ""
@@ -18,7 +19,7 @@ T.Dialog {
     width: Math.min(460, (T.Overlay.overlay ? T.Overlay.overlay.width : 492) - 32)
     padding: 22
     topPadding: 22
-    closePolicy: destructive || busy ? T.Popup.NoAutoClose : T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
+    closePolicy: busy ? T.Popup.NoAutoClose : destructive ? T.Popup.CloseOnEscape : T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
     implicitHeight: Math.min(implicitHeaderHeight + implicitContentHeight + implicitFooterHeight + topPadding + bottomPadding + spacing * 2,
                              T.Overlay.overlay ? T.Overlay.overlay.height - 32 : 760)
     spacing: Theme.space8

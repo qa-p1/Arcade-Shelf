@@ -5,6 +5,10 @@ Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Teste
 
 ## 2026-11-14 (cloud session)
 
+- Link v0.3.0 → v1.0.8 (DECISIONS D3): `scripts/vendor-link.py --revision v1.0.8`; `check-vendor.py` passes (111 Qt
+  and kit files, 25 shared). Tested locally: `scripts/check.py` with Qt 6.8.3 (format, build, 17/17 ctest). The
+  real-fleet XFAIL `arcade_shelf_update_retires_old_desktop_ids` should pass once this is on main. The format check
+  also caught the split's `ownHyprlandWindow` continuation indent (fixed in its own commit).
 - Step 2, untangle: `src/platform/Desktop.cpp` (1,852 lines, four concerns) is split by concern behind the unchanged
   public `Desktop` interface (DECISIONS "Untangle"): `DesktopPlacement.cpp`, `DesktopFiles.cpp`,
   `DesktopShortcut.cpp`, `DesktopLogin.cpp`, with `Native` in the private `DesktopPrivate.h`. Moved mechanically

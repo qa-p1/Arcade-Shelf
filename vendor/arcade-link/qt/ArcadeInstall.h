@@ -84,6 +84,8 @@ public:
                            bool noPrompt = false, bool dismissed = false);
   bool install(const InstallOptions &options, QJsonObject *receipt,
                QString *error = nullptr) const;
+  // movedTo repoints a moved installation; pass the running copy only when the
+  // receipt's file is gone (see arcade_link::install::repair).
   bool repair(const AppInfo &app, const QString &movedTo, QJsonObject *receipt,
               QString *error = nullptr) const;
   // Returns success even when already absent; removed reports whether a receipt

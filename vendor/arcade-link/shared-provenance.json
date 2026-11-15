@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-Link",
-  "commit": "56798545d263c104ded54877239750f9645c32a3",
-  "reference": "v0.4.15",
+  "commit": "34f8030e494c0c662a5f95efd8e868c8536b9989",
+  "reference": "v1.0.8",
   "files": [
     {
       "source": "packaging/windows/README.md",
@@ -26,7 +26,7 @@
     {
       "source": "tools/arcade-release.py",
       "destination": "scripts/arcade-release.py",
-      "sha256": "8f360855419930730c486d0978acaecf7a8179cc063465c9f8324878dcf6c2fd"
+      "sha256": "f7ee3aaaa84c1023adc4e564427e0a03b84167455c34d0dae5580795d36e33f8"
     },
     {
       "source": "tools/test_arcade_release.py",
@@ -41,7 +41,7 @@
     {
       "source": "spec/arcade-release.schema.json",
       "destination": "spec/arcade-release.schema.json",
-      "sha256": "b3f4fffd8929a6a9449947b303b9e07171de8a5820d576f2d47b002944a00624"
+      "sha256": "011f5d91fd4c15fc821633058a880fa464bfe73832ee795c4783a222a29da793"
     },
     {
       "source": "spec/shortcuts.schema.json",

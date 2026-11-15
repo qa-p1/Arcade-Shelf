@@ -357,6 +357,10 @@ void ArcadeTrayHost::publish(const QString &state, bool ready,
     return;
   if (!m_linkEnabled && state == u"hosted")
     return;
+  // Once startup is decided (by the worker or by the startup gate), a late
+  // undecided report from the worker must not put the state back to "none".
+  if (m_ready && !ready)
+    return;
   if (state != m_state) {
     m_state = state;
     emit stateChanged(state);
