@@ -73,7 +73,6 @@ public:
     QVariantList sources() const { return m_peers.sources().toVariantList(); }
     QVariantList peers() const;
     QVariantMap preferences() const;
-    Backdrop *backdrop() { return &m_backdrop; }
     bool backdropActive() const { return m_backdrop.active(); }
     Q_INVOKABLE void setBackdropRegion(const QRectF &region, qreal radius) { m_backdrop.setRegion(region, radius); }
     Q_INVOKABLE void setBackdropDark(bool dark) { m_backdrop.setDark(dark); }
