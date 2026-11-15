@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-Link",
-  "commit": "34f8030e494c0c662a5f95efd8e868c8536b9989",
-  "reference": "v1.0.8",
+  "commit": "2748ebf49eba78b131a1d41a40f92997d9141ffb",
+  "reference": "v1.0.10",
   "files": [
     {
       "source": "packaging/windows/README.md",

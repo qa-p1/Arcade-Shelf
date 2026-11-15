@@ -354,6 +354,40 @@ private slots:
     QVERIFY(!QFileInfo::exists(data));
     QVERIFY(!QFileInfo::exists(same)); // Repair removed the stale old path.
   }
+  void uninstallRemovesTheAppsUnpackedCopiesOnly() {
+#ifndef Q_OS_LINUX
+    QSKIP("unpacked copies exist on Linux only");
+#else
+    QTemporaryDir root;
+    auto e = ArcadeInstall::Environment::under(root.path());
+    ArcadeInstall installer(e);
+    const auto source = root.filePath(QStringLiteral("download.AppImage"));
+    put(source, "v1");
+    auto opts = options(source, QStringLiteral("1"));
+    QJsonObject receipt;
+    QString error;
+    QVERIFY2(installer.install(opts, &receipt, &error), qPrintable(error));
+    const QDir copies(QDir(e.data).filePath(QStringLiteral("arcade/runtime")));
+    auto shortId = opts.app.id;
+    shortId.remove(QStringLiteral("arcade."));
+    const QStringList own{shortId + QStringLiteral("-1.0.0-0123456789abcdef"),
+                          QLatin1Char('.') + shortId +
+                              QStringLiteral("-1.0.1-0123456789abcdef.tmp-42")};
+    const QStringList others{QStringLiteral("box-1.0.0-0123456789abcdef"),
+                             shortId + QStringLiteral("x-1.0.0-0123456789abcdef")};
+    for (const auto &name : own + others)
+      put(copies.filePath(name + QStringLiteral("/usr/bin/AppRun")), "#!/bin/sh\n");
+    bool removed = false;
+    QVERIFY2(installer.uninstall(opts.app.id, {}, &removed, &error),
+             qPrintable(error));
+    QVERIFY(removed);
+    for (const auto &name : own)
+      QVERIFY2(!QFileInfo::exists(copies.filePath(name)), qPrintable(name));
+    for (const auto &name : others)
+      QVERIFY2(QFileInfo::exists(copies.filePath(name + QStringLiteral("/usr/bin/AppRun"))),
+               qPrintable(name));
+#endif
+  }
   void repairReplacesFinalSymlinkWithoutWritingThrough() {
     QTemporaryDir root;
     const auto e = ArcadeInstall::Environment::under(root.path());

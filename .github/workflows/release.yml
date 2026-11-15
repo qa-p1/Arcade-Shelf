@@ -36,7 +36,7 @@ jobs:
     needs: [prepare, ci]
     permissions:
       contents: write
-    uses: qa-p1/Arcade-Link/.github/workflows/app-publish.yml@v1.0.8
+    uses: qa-p1/Arcade-Link/.github/workflows/app-publish.yml@v1.0.10
     with:
       app: arcade.shelf
       version: ${{ needs.prepare.outputs.version }}
@@ -44,4 +44,4 @@ jobs:
       channel: test
       # One AppImage, NSIS installer or dmg per platform artifact.
       artifacts: package-*
-      link-ref: v1.0.8
+      link-ref: v1.0.10

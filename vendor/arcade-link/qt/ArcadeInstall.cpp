@@ -1819,6 +1819,23 @@ bool ArcadeInstall::uninstall(const QString &id, const UninstallOptions &opts,
     for (const auto &path : opts.dataFolders)
       if (!removeTree(path, error))
         return false;
+#ifdef Q_OS_LINUX
+  // The app's unpacked runtime copies (RT-7, arcade_unpacked.h) go with it;
+  // other apps' stay. Best effort: they are caches Tools also collects.
+  {
+    auto shortId = id;
+    while (shortId.startsWith(u"arcade."))
+      shortId.remove(0, 7);
+    QDir runtime(m_environment.data + QStringLiteral("/arcade/runtime"));
+    const auto own = runtime.entryInfoList(
+        {shortId + QStringLiteral("-*"), QLatin1Char('.') + shortId + QStringLiteral("-*")},
+        QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+    for (const auto &copy : own)
+      if (!QDir(copy.absoluteFilePath()).removeRecursively())
+        qWarning("arcade-link: could not remove the unpacked copy %s",
+                 qPrintable(copy.absoluteFilePath()));
+  }
+#endif
   if (!removeFile(m_environment.locations.manifestPath(id), error) ||
       !m_environment.receipts().remove(id, error))
     return false;

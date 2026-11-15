@@ -1,9 +1,10 @@
 # Vendored shared code
 
-`vendor/arcade-link/provenance.json` pins the Qt Link module and fixtures to
-Arcade Link `v0.3.0`. `vendor/arcade-link/shared-provenance.json` pins the
-shared Windows installers, release generator, and shortcut tools to committed
-same released commit `33650a87b6999fbd553ac678cc7bde7a308cb852`.
+`vendor/arcade-link/VENDORED.json` pins the Qt Link module, the QML design kit and
+Inter to Arcade Link `v1.0.10` (commit `2748ebf49eba78b131a1d41a40f92997d9141ffb`).
+`vendor/arcade-link/shared-provenance.json` pins the shared Windows installers,
+release generator and shortcut tools to the same tag and commit. Re-vendor with
+`python3 scripts/vendor-link.py --link /path/to/Arcade-Link --revision v1.0.10`.
 
 Run `python3 scripts/check-vendor.py` to verify all local hashes. To compare the
 shared files with that source checkout, run:
