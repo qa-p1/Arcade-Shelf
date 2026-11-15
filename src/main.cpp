@@ -335,10 +335,14 @@ int main(int argc, char **argv)
         if (preferences.contains("thumbnailQuotaBytes"))
             thumbnails->setCacheLimitBytes(preferences.value("thumbnailQuotaBytes").toLongLong());
     });
-    // The panel stays closed for a moment: give back freed heap and code pages
-    // (W0). A reopen before then cancels it; nothing runs while the panel is open.
+    // The panel stays closed for a moment: give back the decoded thumbnails
+    // (SH1; they decode again on reopen) and freed heap and code pages (W0). A
+    // reopen before then cancels it; nothing runs while the panel is open.
     Shelf::HideRelease hideRelease;
-    QObject::connect(&hideRelease, &Shelf::HideRelease::released, &app, releaseFreedHeap);
+    QObject::connect(&hideRelease, &Shelf::HideRelease::released, thumbnails, [thumbnails] {
+        thumbnails->clearCache();
+        releaseFreedHeap();
+    });
     QObject::connect(&controller, &Shelf::Controller::changed, &hideRelease, [&controller, &hideRelease] {
         hideRelease.setOpen(controller.expanded() && controller.visible());
     });

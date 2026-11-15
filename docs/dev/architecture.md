@@ -23,8 +23,9 @@ The GUI thread renders and handles gestures. One event-loop worker owns Store
 and the two local servers. Another event-loop worker owns the watched registry.
 A temporary invocation thread handles one active peer call; thumbnails use a
 dedicated pool of at most two workers, created on demand and expired after five
-seconds. Its cache honors `thumbnailQuotaBytes` (64 MiB by default; zero disables
-the cache), separately from Qt Quick textures. No discovery, filesystem scan,
+seconds. Its cache honors `thumbnailQuotaBytes` (16 MiB by default, at most 64 MiB
+whatever is stored; zero disables the cache) and is emptied two seconds after
+the panel closes, separately from Qt Quick textures. No discovery, filesystem scan,
 or clipboard polling timer runs while idle. A cancellation timer exists only
 while an interactive picker is outstanding.
 

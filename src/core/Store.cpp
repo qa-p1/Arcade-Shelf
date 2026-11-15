@@ -519,7 +519,7 @@ bool Store::setActiveShelf(QString id)
 
 QJsonObject Store::settings()
 {
-    QJsonObject result{{QStringLiteral("quotaBytes"), DefaultQuota}, {QStringLiteral("retentionDays"), 30}, {QStringLiteral("thumbnailQuotaBytes"), 64 * 1024 * 1024}, {QStringLiteral("linkEnabled"), true}, {QStringLiteral("theme"), QStringLiteral("system")}, {QStringLiteral("alwaysOnTop"), true}, {QStringLiteral("reducedMotion"), false}};
+    QJsonObject result{{QStringLiteral("quotaBytes"), DefaultQuota}, {QStringLiteral("retentionDays"), 30}, {QStringLiteral("thumbnailQuotaBytes"), 16 * 1024 * 1024}, {QStringLiteral("linkEnabled"), true}, {QStringLiteral("theme"), QStringLiteral("system")}, {QStringLiteral("alwaysOnTop"), true}, {QStringLiteral("reducedMotion"), false}};
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("SELECT value FROM meta WHERE key='settings'"));
     if (q.exec() && q.next()) {
