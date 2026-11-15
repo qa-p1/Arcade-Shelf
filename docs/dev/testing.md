@@ -6,6 +6,16 @@ round trips and `IntegrationCli` checks that run with an invalid GUI plugin to
 prove status and silent commands stay headless. `ProcessSmoke` runs 13 checks
 against the real executable, including hub methods and restart handoff.
 
+A resident start from the AppImage hands over to its unpacked copy under
+`<XDG_DATA_HOME>/arcade/runtime/shelf-<version>-<key>/` and the launcher exits 0
+(U1). Packaged checks therefore follow the resident through its Link endpoint
+instead of the launcher's PID: `tests/appimage_resident.py --appimage <file>`
+(CI, under `xvfb-run`) checks where the resident runs from, that it stays up,
+that `--status` and `--quit` reach it and that no runtime process is left.
+`tests/appimage_lifecycle.py` also checks that uninstall removes Shelf's own
+copies and leaves other apps'. Link's own e2e harness sets `ARCADE_UNPACKED=1`,
+which makes the relaunch do nothing.
+
 Windows CI runs `scripts/test-windows-installer.ps1` after packaging. macOS CI
 mounts the DMG and runs `scripts/test-macos-installer.sh`. Both use a private
 `ARCADE_HOME` and Shelf profile, verify receipt/integration cleanup and retain
