@@ -39,3 +39,14 @@ split the class's implementation by concern (`DesktopPlacement.cpp`, `DesktopFil
 2026-11-14: `Native` and the two shared helpers (`runProgram`, `isolatedDesktop`) are in `DesktopPrivate.h`;
 everything else that only one concern used moved with it, and `Desktop.cpp` keeps construction, errors and the
 native event filter (it serves both the move gesture and the Windows hotkey).
+
+## D4 — `Store::add` in stages (untangle)
+`Store::add` was one 360-line function: option checks, spreading `[]` inputs, sizing the response, checking and
+reading each input against its declared type (paths, symlinks, handoff ownership, text and HTML files, URLs, limits),
+the duplicate check, staging handoff copies, the insert, and the summary message, with skip reasons and limit
+bookkeeping threaded through local flags. It now reads in stages, each a function in `Store.cpp`:
+`expandInputs`, `responseFits`, `resolveInput` (one input to an `Input`, or a skip reason with the size limit that
+applied; it touches no database), then `add`'s loop (duplicates, quota, staging, insert) and `addMessage`. The
+statements are unchanged: each `skip(...); continue;` in the checks became a returned reason, and where a limit was
+lowered (`rejectedLimit = qMin(rejectedLimit, X)`) the `Input` carries `X`. `tst_Store` (59 `add` calls) passes
+unchanged.

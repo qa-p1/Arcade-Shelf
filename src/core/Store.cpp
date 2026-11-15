@@ -175,6 +175,182 @@ QJsonObject rowItem(QSqlQuery &q, bool preview = false)
     return result;
 }
 const QString ItemColumns = QStringLiteral("id,shelf,type,name,path,text,html,size,owned,position,created");
+
+// Spreads `file/<kind>[]` and `folder/reference[]` inputs into one input per
+// path. Stops once past MaxInputs; the caller rejects that.
+QJsonArray expandInputs(const QJsonArray &inputs)
+{
+    QJsonArray expanded;
+    for (const auto &value : inputs) {
+        const auto c = value.toObject();
+        if (c.value(QStringLiteral("type")).toString().endsWith(QStringLiteral("[]"))) {
+            if (!c.value(QStringLiteral("paths")).isArray() || c.value(QStringLiteral("paths")).toArray().isEmpty()) {
+                expanded.append(c);
+                continue;
+            }
+            for (const auto &path : c.value(QStringLiteral("paths")).toArray()) {
+                auto one = c;
+                one.insert(QStringLiteral("type"), c.value(QStringLiteral("type")).toString().chopped(2));
+                one.remove(QStringLiteral("paths"));
+                one.insert(QStringLiteral("path"), path);
+                expanded.append(one);
+                if (expanded.size() > MaxInputs) break;
+            }
+        } else expanded.append(value);
+        if (expanded.size() > MaxInputs) break;
+    }
+    return expanded;
+}
+
+// An array of short path values can fit the request line but overflow the
+// response after adding stable IDs and structured skip reasons. Checked before
+// persistence so callers never see a transport failure after commit.
+bool responseFits(const QJsonArray &expanded)
+{
+    qint64 responseBytes = 4096;
+    for (const auto &value : expanded) {
+        const auto c = value.toObject();
+        QJsonObject added{{QStringLiteral("item"), QString(35, QLatin1Char('x'))}};
+        QJsonObject skipped{{QStringLiteral("reason"), QString(32, QLatin1Char('x'))}};
+        if (c.contains(QStringLiteral("path"))) {
+            added.insert(QStringLiteral("path"), c.value(QStringLiteral("path")));
+            skipped.insert(QStringLiteral("path"), c.value(QStringLiteral("path")));
+        } else skipped.insert(QStringLiteral("type"), c.value(QStringLiteral("type")));
+        responseBytes += qMax(QJsonDocument(added).toJson(QJsonDocument::Compact).size(),
+                              QJsonDocument(skipped).toJson(QJsonDocument::Compact).size()) +
+                         1;
+        if (responseBytes > 900 * 1024) return false;
+    }
+    return true;
+}
+
+// One add input, checked and read. When `skip` is set the input is skipped for
+// that reason; `exceeded` marks a size limit, `limit` the one that applied.
+struct Input {
+    QString type, path, text, html, key, name;
+    bool textContent = false;
+    bool owned = false;
+    qint64 size = 0;
+    QByteArray bytes;
+    QString skip;
+    bool exceeded = false;
+    qint64 limit = std::numeric_limits<qint64>::max();
+};
+
+// Checks one input against its declared type and reads what Shelf will keep:
+// a path reference, a handoff file to copy, or inline text. `quota - used` is
+// the owned storage left. Touches no database: duplicates are the caller's.
+Input resolveInput(const QJsonValue &value, qint64 quota, qint64 used)
+{
+    static const QSet<QString> fileKinds{QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("audio"), QStringLiteral("pdf"), QStringLiteral("document"), QStringLiteral("spreadsheet"), QStringLiteral("presentation"), QStringLiteral("archive"), QStringLiteral("text"), QStringLiteral("code"), QStringLiteral("font"), QStringLiteral("model"), QStringLiteral("any")};
+    Input r;
+    const auto skip = [&r](const QString &why, bool exceeded = false, qint64 limit = std::numeric_limits<qint64>::max()) {
+        r.skip = why;
+        r.exceeded = exceeded;
+        r.limit = limit;
+        return r;
+    };
+    const auto c = value.toObject();
+    r.type = c.value(QStringLiteral("type")).toString();
+    const bool file = r.type.startsWith(QStringLiteral("file/")) && fileKinds.contains(r.type.mid(5));
+    const bool folder = r.type == QStringLiteral("folder/reference");
+    r.textContent = r.type == QStringLiteral("text/plain") || r.type == QStringLiteral("text/rich") || r.type == QStringLiteral("text/url");
+    if (!value.isObject() || (!file && !folder && !r.textContent)) return skip(QStringLiteral("unsupported_type"));
+    if (file || folder || c.contains(QStringLiteral("path"))) {
+        if (!c.value(QStringLiteral("path")).isString()) return skip(QStringLiteral("invalid_path"));
+        r.path = c.value(QStringLiteral("path")).toString();
+        if (!safeString(r.path) || !QDir::isAbsolutePath(r.path) || r.path.toUtf8().size() > 32768) return skip(QStringLiteral("invalid_path"));
+        const auto info = inspect(r.path);
+        if (!info.exists) return skip(QStringLiteral("missing"));
+        // A link is kept as the link (its path is the identity), but sized
+        // and typed by what it points to; a dangling one is refused (SH-2).
+        const QFileInfo target(r.path);
+        if (info.symlink && !target.exists()) return skip(QStringLiteral("broken_link"));
+        const QString kindPath = info.symlink ? target.canonicalFilePath() : r.path;
+        // Qt's native URI conversion classifies a directory alias as a
+        // folder. Verify that claim using metadata only, while retaining
+        // the alias path itself for identity, persistence, and transfer.
+        const bool directoryTarget = info.directory || (info.symlink && QFileInfo(r.path).isDir());
+        if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && r.type != QStringLiteral("file/any") && r.type.mid(5) != ArcadeLink::fileKindForPath(kindPath)))
+            return skip(QStringLiteral("type_mismatch"));
+        if (file && r.type == QStringLiteral("file/any")) r.type = QStringLiteral("file/") + ArcadeLink::fileKindForPath(kindPath);
+        r.name = QFileInfo(r.path).fileName();
+        if (r.name.isEmpty()) r.name = r.path;
+        r.size = info.symlink && target.isFile() ? target.size() : info.size;
+        r.owned = isHandoff(c, r.path);
+        // Some peers tag durable outputs with owner as provenance. The owner
+        // field alone never permits copying: only actual handoff paths do.
+        if ((c.contains(QStringLiteral("owner")) && beneath(ArcadeLink::Locations::discover().handoff, r.path) && !r.owned) ||
+            (r.textContent && (!r.owned || !info.regular)) || (r.owned && !info.regular))
+            return skip(QStringLiteral("invalid_handoff"));
+        if (!r.owned) r.key = QStringLiteral("path:") + referenceKey(r.path);
+        if (r.textContent) {
+            if (r.size > MaxText || r.size > quota - used)
+                return skip(QStringLiteral("quota"), true, r.size > MaxText ? MaxText : std::numeric_limits<qint64>::max());
+            QFile source(r.path);
+            if (!openRegular(source)) return skip(QStringLiteral("unreadable"));
+            r.bytes = source.read(MaxText + 1);
+            if (source.error() != QFileDevice::NoError || r.bytes.size() != r.size) return skip(QStringLiteral("copy_failed"));
+            if (r.bytes.size() > MaxText || !source.atEnd()) return skip(QStringLiteral("quota"), true, MaxText);
+            QStringDecoder decoder(QStringDecoder::Utf8);
+            r.text = decoder(r.bytes);
+            if (decoder.hasError() || !safeString(r.text)) return skip(QStringLiteral("invalid_text"));
+            if (r.type == QStringLiteral("text/rich") && c.contains(QStringLiteral("htmlPath"))) {
+                // Large rich text sends its HTML as a second handoff file.
+                const QString htmlPath = c.value(QStringLiteral("htmlPath")).toString();
+                const auto htmlInfo = inspect(htmlPath);
+                if (!safeString(htmlPath) || !QDir::isAbsolutePath(htmlPath) || !htmlInfo.exists || !htmlInfo.regular || !isHandoff(c, htmlPath))
+                    return skip(QStringLiteral("invalid_handoff"));
+                if (htmlInfo.size > MaxText - r.bytes.size() || r.bytes.size() + htmlInfo.size > quota - used)
+                    return skip(QStringLiteral("quota"), true, htmlInfo.size > MaxText - r.bytes.size() ? MaxText : std::numeric_limits<qint64>::max());
+                QFile htmlSource(htmlPath);
+                if (!openRegular(htmlSource)) return skip(QStringLiteral("unreadable"));
+                const QByteArray htmlBytes = htmlSource.read(MaxText + 1);
+                if (htmlSource.error() != QFileDevice::NoError || htmlBytes.size() != htmlInfo.size || !htmlSource.atEnd())
+                    return skip(QStringLiteral("copy_failed"));
+                QStringDecoder htmlDecoder(QStringDecoder::Utf8);
+                r.html = htmlDecoder(htmlBytes);
+                if (htmlDecoder.hasError() || !safeString(r.html)) return skip(QStringLiteral("invalid_text"));
+            } else if (r.type == QStringLiteral("text/rich")) {
+                r.html = c.value(QStringLiteral("html")).toString();
+            }
+            r.size = r.bytes.size() + r.html.toUtf8().size();
+        }
+    } else {
+        if (!c.value(QStringLiteral("text")).isString()) return skip(QStringLiteral("invalid_text"));
+        r.text = c.value(QStringLiteral("text")).toString();
+        r.html = c.value(QStringLiteral("html")).toString();
+        if (!safeString(r.text) || r.html.contains(QChar::Null) || (r.type == QStringLiteral("text/rich") && !safeString(r.html)))
+            return skip(QStringLiteral("invalid_text"));
+        r.bytes = r.text.toUtf8();
+        r.size = r.bytes.size() + r.html.toUtf8().size();
+        r.owned = true;
+        if (r.size > InlineLimit) return skip(QStringLiteral("inline_limit"), true, InlineLimit);
+        r.key = QStringLiteral("text:") + QString::fromLatin1(QCryptographicHash::hash(r.type.toUtf8() + '\0' + r.bytes + '\0' + r.html.toUtf8(), QCryptographicHash::Sha256).toHex());
+    }
+    if (r.textContent && r.type == QStringLiteral("text/url")) {
+        const QUrl url(r.text, QUrl::StrictMode);
+        if (!url.isValid() || (url.scheme() != QStringLiteral("https") && url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("mailto") && url.scheme() != QStringLiteral("ftp")))
+            return skip(QStringLiteral("invalid_url"));
+    }
+    if (r.textContent) {
+        if (r.key.isEmpty()) r.key = QStringLiteral("text:") + QString::fromLatin1(QCryptographicHash::hash(r.type.toUtf8() + '\0' + r.text.toUtf8() + '\0' + r.html.toUtf8(), QCryptographicHash::Sha256).toHex());
+        r.name = c.value(QStringLiteral("name")).toString(r.text.section(QLatin1Char('\n'), 0, 0).simplified().left(80));
+    }
+    return r;
+}
+
+// "Added 2 items to Inbox · 1 already there · 1 skipped".
+QString addMessage(const QString &shelfName, const QJsonArray &added, const QJsonArray &skipped)
+{
+    QString message = added.isEmpty() ? QStringLiteral("Already in %1").arg(shelfName) : QStringLiteral("Added %1 %2 to %3").arg(added.size()).arg(added.size() == 1 ? QStringLiteral("item") : QStringLiteral("items"), shelfName);
+    int duplicates = 0;
+    for (const auto &s : skipped)
+        if (s.toObject().value(QStringLiteral("reason")) == QStringLiteral("duplicate")) ++duplicates;
+    if (duplicates && !added.isEmpty()) message += QStringLiteral(" · %1 already there").arg(duplicates);
+    if (skipped.size() > duplicates) message += QStringLiteral(" · %1 skipped").arg(skipped.size() - duplicates);
+    return message;
+}
 } // namespace
 
 Store::Store(QString root) : m_root(QDir::cleanPath(std::move(root))), m_connection(uid(QStringLiteral("shelf-"))) {}
@@ -394,25 +570,7 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
         result.error = failure(QStringLiteral("unsupported_input"), QStringLiteral("The target shelf does not exist"));
         return result;
     }
-    QJsonArray expanded;
-    for (const auto &value : inputs) {
-        const auto c = value.toObject();
-        if (c.value(QStringLiteral("type")).toString().endsWith(QStringLiteral("[]"))) {
-            if (!c.value(QStringLiteral("paths")).isArray() || c.value(QStringLiteral("paths")).toArray().isEmpty()) {
-                expanded.append(c);
-                continue;
-            }
-            for (const auto &path : c.value(QStringLiteral("paths")).toArray()) {
-                auto one = c;
-                one.insert(QStringLiteral("type"), c.value(QStringLiteral("type")).toString().chopped(2));
-                one.remove(QStringLiteral("paths"));
-                one.insert(QStringLiteral("path"), path);
-                expanded.append(one);
-                if (expanded.size() > MaxInputs) break;
-            }
-        } else expanded.append(value);
-        if (expanded.size() > MaxInputs) break;
-    }
+    const QJsonArray expanded = expandInputs(inputs);
     if (expanded.size() > MaxInputs) {
         result.error = failure(QStringLiteral("unsupported_input"), QStringLiteral("At most 1000 items can be added in one request"));
         return result;
@@ -421,25 +579,9 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
         result.error = failure(QStringLiteral("unsupported_input"));
         return result;
     }
-    // An array of short path values can fit the request line but overflow the
-    // response after adding stable IDs and structured skip reasons. Reject
-    // before persistence so callers never see a transport failure after commit.
-    qint64 responseBytes = 4096;
-    for (const auto &value : expanded) {
-        const auto c = value.toObject();
-        QJsonObject added{{QStringLiteral("item"), QString(35, QLatin1Char('x'))}};
-        QJsonObject skipped{{QStringLiteral("reason"), QString(32, QLatin1Char('x'))}};
-        if (c.contains(QStringLiteral("path"))) {
-            added.insert(QStringLiteral("path"), c.value(QStringLiteral("path")));
-            skipped.insert(QStringLiteral("path"), c.value(QStringLiteral("path")));
-        } else skipped.insert(QStringLiteral("type"), c.value(QStringLiteral("type")));
-        responseBytes += qMax(QJsonDocument(added).toJson(QJsonDocument::Compact).size(),
-                              QJsonDocument(skipped).toJson(QJsonDocument::Compact).size()) +
-                         1;
-        if (responseBytes > 900 * 1024) {
-            result.error = failure(QStringLiteral("too_large"), {}, ArcadeLink::MaxLineBytes);
-            return result;
-        }
+    if (!responseFits(expanded)) {
+        result.error = failure(QStringLiteral("too_large"), {}, ArcadeLink::MaxLineBytes);
+        return result;
     }
     const qint64 quota = settings().value(QStringLiteral("quotaBytes")).toVariant().toLongLong();
     qint64 used = ownedBytes();
@@ -467,167 +609,22 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
         result.addedIds.clear();
         result.error = failure(QStringLiteral("internal"), QStringLiteral("Couldn't persist items"));
     };
-    const QSet<QString> fileKinds{QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("audio"), QStringLiteral("pdf"), QStringLiteral("document"), QStringLiteral("spreadsheet"), QStringLiteral("presentation"), QStringLiteral("archive"), QStringLiteral("text"), QStringLiteral("code"), QStringLiteral("font"), QStringLiteral("model"), QStringLiteral("any")};
     for (const auto &value : expanded) {
         const auto c = value.toObject();
-        QString type = c.value(QStringLiteral("type")).toString();
-        const bool file = type.startsWith(QStringLiteral("file/")) && fileKinds.contains(type.mid(5));
-        const bool folder = type == QStringLiteral("folder/reference");
-        const bool textContent = type == QStringLiteral("text/plain") || type == QStringLiteral("text/rich") || type == QStringLiteral("text/url");
-        if (!value.isObject() || (!file && !folder && !textContent)) {
-            skip(c, QStringLiteral("unsupported_type"));
+        Input in = resolveInput(value, quota, used);
+        if (!in.skip.isEmpty()) {
+            if (in.exceeded) {
+                exceeded = true;
+                rejectedLimit = qMin(rejectedLimit, in.limit);
+            }
+            skip(c, in.skip);
             continue;
         }
-        QString path, text, html, key, name;
-        bool owned = false;
-        qint64 size = 0;
-        QByteArray bytes;
-        if (file || folder || c.contains(QStringLiteral("path"))) {
-            if (!c.value(QStringLiteral("path")).isString()) {
-                skip(c, QStringLiteral("invalid_path"));
-                continue;
-            }
-            path = c.value(QStringLiteral("path")).toString();
-            if (!safeString(path) || !QDir::isAbsolutePath(path) || path.toUtf8().size() > 32768) {
-                skip(c, QStringLiteral("invalid_path"));
-                continue;
-            }
-            const auto info = inspect(path);
-            if (!info.exists) {
-                skip(c, QStringLiteral("missing"));
-                continue;
-            }
-            // A link is kept as the link (its path is the identity), but sized
-            // and typed by what it points to; a dangling one is refused (SH-2).
-            const QFileInfo target(path);
-            if (info.symlink && !target.exists()) {
-                skip(c, QStringLiteral("broken_link"));
-                continue;
-            }
-            const QString kindPath = info.symlink ? target.canonicalFilePath() : path;
-            // Qt's native URI conversion classifies a directory alias as a
-            // folder. Verify that claim using metadata only, while retaining
-            // the alias path itself for identity, persistence, and transfer.
-            const bool directoryTarget = info.directory || (info.symlink && QFileInfo(path).isDir());
-            if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && type != QStringLiteral("file/any") && type.mid(5) != ArcadeLink::fileKindForPath(kindPath))) {
-                skip(c, QStringLiteral("type_mismatch"));
-                continue;
-            }
-            if (file && type == QStringLiteral("file/any")) type = QStringLiteral("file/") + ArcadeLink::fileKindForPath(kindPath);
-            name = QFileInfo(path).fileName();
-            if (name.isEmpty()) name = path;
-            size = info.symlink && target.isFile() ? target.size() : info.size;
-            owned = isHandoff(c, path);
-            // Some peers tag durable outputs with owner as provenance. The owner
-            // field alone never permits copying: only actual handoff paths do.
-            if ((c.contains(QStringLiteral("owner")) && beneath(ArcadeLink::Locations::discover().handoff, path) && !owned) ||
-                (textContent && (!owned || !info.regular)) || (owned && !info.regular)) {
-                skip(c, QStringLiteral("invalid_handoff"));
-                continue;
-            }
-            if (!owned) key = QStringLiteral("path:") + referenceKey(path);
-            if (textContent) {
-                if (size > MaxText || size > quota - used) {
-                    exceeded = true;
-                    if (size > MaxText) rejectedLimit = qMin(rejectedLimit, MaxText);
-                    skip(c, QStringLiteral("quota"));
-                    continue;
-                }
-                QFile source(path);
-                if (!openRegular(source)) {
-                    skip(c, QStringLiteral("unreadable"));
-                    continue;
-                }
-                bytes = source.read(MaxText + 1);
-                if (source.error() != QFileDevice::NoError || bytes.size() != size) {
-                    skip(c, QStringLiteral("copy_failed"));
-                    continue;
-                }
-                if (bytes.size() > MaxText || !source.atEnd()) {
-                    exceeded = true;
-                    rejectedLimit = qMin(rejectedLimit, MaxText);
-                    skip(c, QStringLiteral("quota"));
-                    continue;
-                }
-                QStringDecoder decoder(QStringDecoder::Utf8);
-                text = decoder(bytes);
-                if (decoder.hasError() || !safeString(text)) {
-                    skip(c, QStringLiteral("invalid_text"));
-                    continue;
-                }
-                if (type == QStringLiteral("text/rich") && c.contains(QStringLiteral("htmlPath"))) {
-                    // Large rich text sends its HTML as a second handoff file.
-                    const QString htmlPath = c.value(QStringLiteral("htmlPath")).toString();
-                    const auto htmlInfo = inspect(htmlPath);
-                    if (!safeString(htmlPath) || !QDir::isAbsolutePath(htmlPath) || !htmlInfo.exists || !htmlInfo.regular || !isHandoff(c, htmlPath)) {
-                        skip(c, QStringLiteral("invalid_handoff"));
-                        continue;
-                    }
-                    if (htmlInfo.size > MaxText - bytes.size() || bytes.size() + htmlInfo.size > quota - used) {
-                        exceeded = true;
-                        if (htmlInfo.size > MaxText - bytes.size()) rejectedLimit = qMin(rejectedLimit, MaxText);
-                        skip(c, QStringLiteral("quota"));
-                        continue;
-                    }
-                    QFile htmlSource(htmlPath);
-                    if (!openRegular(htmlSource)) {
-                        skip(c, QStringLiteral("unreadable"));
-                        continue;
-                    }
-                    const QByteArray htmlBytes = htmlSource.read(MaxText + 1);
-                    if (htmlSource.error() != QFileDevice::NoError || htmlBytes.size() != htmlInfo.size || !htmlSource.atEnd()) {
-                        skip(c, QStringLiteral("copy_failed"));
-                        continue;
-                    }
-                    QStringDecoder htmlDecoder(QStringDecoder::Utf8);
-                    html = htmlDecoder(htmlBytes);
-                    if (htmlDecoder.hasError() || !safeString(html)) {
-                        skip(c, QStringLiteral("invalid_text"));
-                        continue;
-                    }
-                } else if (type == QStringLiteral("text/rich")) {
-                    html = c.value(QStringLiteral("html")).toString();
-                }
-                size = bytes.size() + html.toUtf8().size();
-            }
-        } else {
-            if (!c.value(QStringLiteral("text")).isString()) {
-                skip(c, QStringLiteral("invalid_text"));
-                continue;
-            }
-            text = c.value(QStringLiteral("text")).toString();
-            html = c.value(QStringLiteral("html")).toString();
-            if (!safeString(text) || html.contains(QChar::Null) || (type == QStringLiteral("text/rich") && !safeString(html))) {
-                skip(c, QStringLiteral("invalid_text"));
-                continue;
-            }
-            bytes = text.toUtf8();
-            size = bytes.size() + html.toUtf8().size();
-            owned = true;
-            if (size > InlineLimit) {
-                exceeded = true;
-                rejectedLimit = qMin(rejectedLimit, InlineLimit);
-                skip(c, QStringLiteral("inline_limit"));
-                continue;
-            }
-            key = QStringLiteral("text:") + QString::fromLatin1(QCryptographicHash::hash(type.toUtf8() + '\0' + bytes + '\0' + html.toUtf8(), QCryptographicHash::Sha256).toHex());
-        }
-        if (textContent && type == QStringLiteral("text/url")) {
-            const QUrl url(text, QUrl::StrictMode);
-            if (!url.isValid() || (url.scheme() != QStringLiteral("https") && url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("mailto") && url.scheme() != QStringLiteral("ftp"))) {
-                skip(c, QStringLiteral("invalid_url"));
-                continue;
-            }
-        }
-        if (textContent) {
-            if (key.isEmpty()) key = QStringLiteral("text:") + QString::fromLatin1(QCryptographicHash::hash(type.toUtf8() + '\0' + text.toUtf8() + '\0' + html.toUtf8(), QCryptographicHash::Sha256).toHex());
-            name = c.value(QStringLiteral("name")).toString(text.section(QLatin1Char('\n'), 0, 0).simplified().left(80));
-        }
-        if (!key.isEmpty()) {
+        if (!in.key.isEmpty()) {
             QSqlQuery exists(m_db);
             exists.prepare(QStringLiteral("SELECT id FROM items WHERE shelf=? AND refkey=?"));
             exists.addBindValue(shelf);
-            exists.addBindValue(key);
+            exists.addBindValue(in.key);
             if (!exists.exec()) {
                 abort();
                 return result;
@@ -638,13 +635,13 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
                 continue;
             }
         }
-        if (owned && size > quota - used) {
+        if (in.owned && in.size > quota - used) {
             exceeded = true;
             skip(c, QStringLiteral("quota"));
             continue;
         }
         const QString id = uid(QStringLiteral("it_"));
-        if (owned && !path.isEmpty()) {
+        if (in.owned && !in.path.isEmpty()) {
             const QString directory = m_root + QStringLiteral("/objects/") + id;
             if (!privateOwnedDirectory(directory)) {
                 skip(c, QStringLiteral("storage_failure"));
@@ -652,11 +649,11 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
             }
             // Keep the source extension: a caller's display-name hint is never
             // allowed to change the verified file kind of staged bytes.
-            const QString dest = directory + QLatin1Char('/') + safeName(QFileInfo(path).fileName(), QStringLiteral("content"));
+            const QString dest = directory + QLatin1Char('/') + safeName(QFileInfo(in.path).fileName(), QStringLiteral("content"));
             QSaveFile out(dest);
-            QFile source(path);
+            QFile source(in.path);
             bool copied = out.open(QIODevice::WriteOnly) && out.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-            if (copied && textContent) copied = out.write(bytes) == bytes.size();
+            if (copied && in.textContent) copied = out.write(in.bytes) == in.bytes.size();
             else if (copied) {
                 copied = openRegular(source);
                 qint64 total = 0;
@@ -669,37 +666,37 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
                     total += chunk.size();
                     copied = total <= quota - used && out.write(chunk) == chunk.size();
                 }
-                copied = copied && total == size;
+                copied = copied && total == in.size;
             }
             if (!copied || !out.commit()) {
                 QDir(directory).removeRecursively();
                 skip(c, QStringLiteral("copy_failed"));
                 continue;
             }
-            path = dest;
+            in.path = dest;
             staged.append(dest);
             // A large text lives once on disk; retain only a small display preview in SQLite.
-            if (textContent && bytes.size() > InlineLimit) text = text.left(2048);
+            if (in.textContent && in.bytes.size() > InlineLimit) in.text = in.text.left(2048);
         }
         QSqlQuery insert(m_db);
         insert.prepare(QStringLiteral("INSERT INTO items(id,shelf,type,name,path,text,html,size,owned,position,created,refkey) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"));
         insert.addBindValue(id);
         insert.addBindValue(shelf);
-        insert.addBindValue(type);
-        insert.addBindValue(name);
-        insert.addBindValue(path.isNull() ? QStringLiteral("") : path);
-        insert.addBindValue(text.isNull() ? QStringLiteral("") : text);
-        insert.addBindValue(html.isNull() ? QStringLiteral("") : html);
-        insert.addBindValue(size);
-        insert.addBindValue(owned);
+        insert.addBindValue(in.type);
+        insert.addBindValue(in.name);
+        insert.addBindValue(in.path.isNull() ? QStringLiteral("") : in.path);
+        insert.addBindValue(in.text.isNull() ? QStringLiteral("") : in.text);
+        insert.addBindValue(in.html.isNull() ? QStringLiteral("") : in.html);
+        insert.addBindValue(in.size);
+        insert.addBindValue(in.owned);
         insert.addBindValue(position++);
         insert.addBindValue(QDateTime::currentMSecsSinceEpoch());
-        insert.addBindValue(key.isEmpty() ? QVariant(QMetaType::fromType<QString>()) : QVariant(key));
+        insert.addBindValue(in.key.isEmpty() ? QVariant(QMetaType::fromType<QString>()) : QVariant(in.key));
         if (!insert.exec()) {
             abort();
             return result;
         }
-        if (owned) used += size;
+        if (in.owned) used += in.size;
         QJsonObject add{{QStringLiteral("item"), id}};
         if (c.contains(QStringLiteral("path"))) add.insert(QStringLiteral("path"), c.value(QStringLiteral("path")));
         added.append(add);
@@ -722,13 +719,7 @@ AddResult Store::add(QJsonArray inputs, QJsonObject options)
     shelfName.exec();
     shelfName.next();
     const QString name = shelfName.value(0).toString();
-    QString message = added.isEmpty() ? QStringLiteral("Already in %1").arg(name) : QStringLiteral("Added %1 %2 to %3").arg(added.size()).arg(added.size() == 1 ? QStringLiteral("item") : QStringLiteral("items"), name);
-    int duplicates = 0;
-    for (const auto &s : skipped)
-        if (s.toObject().value(QStringLiteral("reason")) == QStringLiteral("duplicate")) ++duplicates;
-    if (duplicates && !added.isEmpty()) message += QStringLiteral(" · %1 already there").arg(duplicates);
-    if (skipped.size() > duplicates) message += QStringLiteral(" · %1 skipped").arg(skipped.size() - duplicates);
-    result.result = QJsonObject{{QStringLiteral("message"), message}, {QStringLiteral("data"), QJsonObject{{QStringLiteral("shelf"), QJsonObject{{QStringLiteral("id"), shelf}, {QStringLiteral("name"), name}}}, {QStringLiteral("added"), added}, {QStringLiteral("skipped"), skipped}}}};
+    result.result = QJsonObject{{QStringLiteral("message"), addMessage(name, added, skipped)}, {QStringLiteral("data"), QJsonObject{{QStringLiteral("shelf"), QJsonObject{{QStringLiteral("id"), shelf}, {QStringLiteral("name"), name}}}, {QStringLiteral("added"), added}, {QStringLiteral("skipped"), skipped}}}};
     return result;
 }
 
