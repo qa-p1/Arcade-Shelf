@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Shelf now runs from an unpacked copy of its AppImage, kept in your data folder under `arcade/runtime`, so the helper process that kept the AppImage mounted no longer stays running in the background. The first start after an update takes a moment longer while the copy is made. Uninstalling Shelf removes its copies.
+- Shelf gives memory back a few seconds after it starts and 2 seconds after you close the panel. Opening the panel again before that cancels it.
+- Thumbnails use less memory: the cache holds up to 16 MB (64 MB at most, whatever the stored setting says) and is emptied when the panel closes, so thumbnails load again the next time you open it.
+- Arcade Link 1.0.10.
+
 ## 0.4.0 — 2026-11-01
 
 - New fuchsia accent; Inter and the shared Arcade kit (Arcade Link 0.4.15) on the capsule, docked tab, panel, menus, dialogs and the install prompt, in light and dark.
