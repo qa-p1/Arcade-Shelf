@@ -24,8 +24,6 @@ struct InstallSpec {
     QString tagline, keywords, category;
 };
 
-// True for --install, --uninstall, --repair and --integration-status.
-bool isIntegrationCommand(const QStringList &args);
 // True when the command needs no window (status, repair, silent paths).
 bool isHeadlessIntegrationCommand(const QStringList &args);
 // Runs one integration command; returns the process exit code.

@@ -535,13 +535,6 @@ QStringList launchArgs(const QStringList &args)
 }
 } // namespace
 
-bool isIntegrationCommand(const QStringList &args)
-{
-    for (const auto &a : {"--install", "--uninstall", "--repair", "--integration-status"})
-        if (args.contains(QLatin1String(a))) return true;
-    return false;
-}
-
 bool isHeadlessIntegrationCommand(const QStringList &args)
 {
     const bool lifecycle = args.contains(QStringLiteral("--install")) || args.contains(QStringLiteral("--uninstall"));
