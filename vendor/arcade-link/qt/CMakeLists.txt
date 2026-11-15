@@ -26,7 +26,7 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
 enable_testing()
 add_executable(startup-probe examples/startup-probe.cpp)
 target_link_libraries(startup-probe PRIVATE arcade_link_qt)
-foreach(test_name IN ITEMS Vectors Server Install TrayHost Methods Paths)
+foreach(test_name IN ITEMS Vectors Server Install TrayHost Methods Paths Trim)
     add_executable(tst_${test_name} tests/tst_${test_name}.cpp)
     target_link_libraries(tst_${test_name} PRIVATE arcade_link_qt Qt6::Test)
     target_compile_definitions(tst_${test_name} PRIVATE

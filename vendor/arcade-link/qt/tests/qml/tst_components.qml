@@ -174,11 +174,32 @@ Item {
         function test_dialog_actions_primary_last() {
             dialog.open()
             tryCompare(dialog, "opened", true)
-            compare(dialog.closePolicy, T.Popup.NoAutoClose)
             verify(dialog.width <= 460)
             const k = keep.mapToItem(root, 0, 0), d = del.mapToItem(root, 0, 0)
             verify(d.x > k.x, "the destructive button sits right of Keep")
             dialog.close()
+        }
+
+        // WH-5: Escape cancels a destructive dialog; only a running job holds it.
+        function test_escape_cancels_a_destructive_dialog_unless_busy() {
+            let rejected = 0
+            const onRejected = () => rejected++
+            dialog.rejected.connect(onRejected)
+            dialog.open()
+            tryCompare(dialog, "opened", true)
+            keyClick(Qt.Key_Escape)
+            tryCompare(dialog, "visible", false)
+            compare(rejected, 1)
+
+            dialog.busy = true
+            dialog.open()
+            tryCompare(dialog, "opened", true)
+            keyClick(Qt.Key_Escape)
+            wait(50)
+            verify(dialog.visible, "a busy dialog stays open on Escape")
+            dialog.busy = false
+            dialog.close()
+            dialog.rejected.disconnect(onRejected)
         }
 
         function test_shortcut_recorder() {

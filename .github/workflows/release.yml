@@ -1,20 +1,11 @@
-# Builds, tests and publishes a release through ci.yml. Beta is a private
-# draft prerelease (the rehearsal); stable must run on its v<version> tag,
-# created by tag.yml. Tools installs stable releases through
-# arcade-release.json and SHA256SUMS.txt.
+# Builds every platform once from a release-candidate tag and publishes the three installers as a hidden prerelease
+# on the test channel (Link's reusable publish: arcade-release.json and an unsigned manifest.json). The installers are
+# the ones CI builds and verifies on each OS (ci.yml is called here). "Tag a release" starts it; it can also be run by
+# hand on an rc tag. Every exit gate runs against the published files; "Promote" then republishes the same bytes as
+# stable with a signed manifest. Nothing here publishes stable (PLAN.md rule zero); nightlies come from nightly.yml.
 name: Release
 on:
   workflow_dispatch:
-    inputs:
-      channel:
-        description: Release channel
-        type: choice
-        options: [beta, stable]
-        default: beta
-      draft:
-        description: Keep the release as a private draft
-        type: boolean
-        default: true
 permissions:
   contents: read
 concurrency:
@@ -23,64 +14,34 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate channel, version and publication intent
+      - name: The tag is this version's release candidate
         id: plan
-        env:
-          CHANNEL: ${{ inputs.channel }}
-          DRAFT: ${{ inputs.draft }}
         run: |
           version=$(python3 scripts/check-version.py)
-          if [ "$CHANNEL" = stable ]; then
-            [ "$GITHUB_REF" = "refs/tags/v$version" ] || { echo "Stable releases must run on v$version"; exit 1; }
-            tag="v$version"
-          else
-            [ "$DRAFT" = true ] || { echo "Beta verification is draft-only"; exit 1; }
-            tag="v$version-beta.${GITHUB_RUN_NUMBER}"
-          fi
+          tag="${GITHUB_REF#refs/tags/}"
+          [[ "$GITHUB_REF" == refs/tags/* && "$tag" =~ ^v${version//./\\.}-rc\.[1-9][0-9]*$ ]] \
+            || { echo "::error::run Release on a tag v$version-rc.N (got $GITHUB_REF)"; exit 1; }
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
   ci:
     needs: prepare
     uses: ./.github/workflows/ci.yml
   publish:
     needs: [prepare, ci]
-    runs-on: ubuntu-24.04
     permissions:
       contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      TAG: ${{ needs.prepare.outputs.tag }}
-      CHANNEL: ${{ inputs.channel }}
-      DRAFT: ${{ inputs.draft }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: package-*
-          merge-multiple: true
-          path: dist
-      - name: Release metadata
-        run: |
-          version=$(python3 scripts/check-version.py)
-          # Tools has stable and nightly channels; a beta draft is checked as nightly.
-          manifest_channel=$([ "$CHANNEL" = stable ] && echo stable || echo nightly)
-          python3 scripts/arcade-release.py --id arcade.shelf --version "$version" --channel "$manifest_channel" \
-            --notes "https://github.com/$GH_REPO/blob/$TAG/CHANGELOG.md" dist
-          (cd dist && sha256sum -c SHA256SUMS.txt)
-          python3 scripts/release-notes.py CHANGELOG.md "$version" > notes.md
-          printf '\nUser guide: https://github.com/%s/tree/main/docs/user\n' "$GH_REPO" >> notes.md
-          ls -l dist
-      - name: Publish the requested release
-        run: |
-          assets=(dist/*.AppImage dist/*.exe dist/*.dmg dist/arcade-release.json dist/SHA256SUMS.txt)
-          if [ "$DRAFT" = true ]; then
-            flags=()
-            [ "$CHANNEL" = stable ] || flags+=(--prerelease)
-            gh release create "$TAG" "${assets[@]}" --draft "${flags[@]}" --target "$GITHUB_SHA" --title "Arcade Shelf $TAG" --notes-file notes.md
-          else
-            gh release create "$TAG" "${assets[@]}" --verify-tag --latest --title "Arcade Shelf ${TAG#v}" --notes-file notes.md
-          fi
+    uses: qa-p1/Arcade-Link/.github/workflows/app-publish.yml@v1.0.8
+    with:
+      app: arcade.shelf
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      channel: test
+      # One AppImage, NSIS installer or dmg per platform artifact.
+      artifacts: package-*
+      link-ref: v1.0.8

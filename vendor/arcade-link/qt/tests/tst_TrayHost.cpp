@@ -198,6 +198,24 @@ private slots:
     QTRY_VERIFY(watcher.ready());
     QCOMPARE(watcher.state(), QStringLiteral("none"));
   }
+
+  // On a slow machine the startup gate decides "own" before the worker's
+  // first, undecided report arrives; that report must not undo the decision.
+  void lateUndecidedReportDoesNotUndoTheStartupGate() {
+    QTemporaryDir root;
+    ArcadeTrayHost watcher(Locations::under(root.path()), Ids::Shelf);
+    watcher.start();
+    QSignalSpy states(&watcher, &ArcadeTrayHost::stateChanged);
+    const auto generation = watcher.m_generation;
+    watcher.publish(QStringLiteral("own"), true, generation); // the gate
+    QVERIFY(watcher.ready());
+    watcher.publish(QStringLiteral("none"), false, generation); // the worker
+    QCOMPARE(watcher.state(), QStringLiteral("own"));
+    QCOMPARE(states.count(), 1);
+    watcher.publish(QStringLiteral("hosted"), true, generation);
+    QCOMPARE(watcher.state(), QStringLiteral("hosted"));
+    watcher.stop();
+  }
 };
 QTEST_GUILESS_MAIN(TrayTest)
 #include "tst_TrayHost.moc"

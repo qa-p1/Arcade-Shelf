@@ -7,6 +7,8 @@
 #include <QTimer>
 #include <optional>
 
+class TrayTest;
+
 namespace ArcadeLink {
 inline constexpr int TrayStartupCapMs = 300;
 inline constexpr int TrayRestartGraceMs = 5000;
@@ -54,6 +56,7 @@ signals:
 
 private:
   friend class TrayHostWorker;
+  friend class ::TrayTest; // replays worker reports in a fixed order
   void publish(const QString &state, bool ready, quint64 generation);
   void shutdownWorker(bool restoreOwn);
   Locations m_locations;

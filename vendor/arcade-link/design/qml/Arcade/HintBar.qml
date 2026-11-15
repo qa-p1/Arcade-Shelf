@@ -13,6 +13,7 @@ Rectangle {
     color: "transparent"
     Rectangle { width: parent.width; height: 1; color: Theme.line }
     Row {
+        id: hintRow
         x: Theme.space12
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.space14
@@ -32,6 +33,9 @@ Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space12
         anchors.verticalCenter: parent.verticalCenter
+        // Never drawn over the hints: a long message is cut with an ellipsis.
+        width: Math.min(implicitWidth, parent.width - Theme.space12 * 2 - (root.hints.length ? hintRow.width + Theme.space14 : 0))
+        elide: Text.ElideRight
         text: root.trailing
         kind: "caption"
         color: Theme.muted

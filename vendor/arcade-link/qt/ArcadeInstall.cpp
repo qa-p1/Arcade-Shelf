@@ -14,6 +14,7 @@
 #include <QSet>
 #include <QRandomGenerator>
 #include <functional>
+#include <utility>
 #ifdef Q_OS_UNIX
 #include <cerrno>
 #include <cstring>
@@ -27,6 +28,7 @@
 #define NOMINMAX
 #endif
 #include <aclapi.h>
+#include <fcntl.h>
 #include <io.h>
 #include <sddl.h>
 #include <windows.h>
@@ -953,16 +955,49 @@ static QStringList duplicates(const ArcadeInstall::Environment &e,
     if (!file.open(QIODevice::ReadOnly))
       continue;
     const auto path = desktopExecutable(QString::fromUtf8(file.readAll()));
-    if (!path.isEmpty() && canonical(path) != canonical(exe))
+    // An entry under an older desktop id is a second launcher even when it
+    // runs the same file (e.g. `arcade.shelf` and `dev.arcade.Shelf`).
+    const bool legacy = app.legacyDesktopIds.contains(info.completeBaseName());
+    if (legacy || (!path.isEmpty() && canonical(path) != canonical(exe)))
       result << info.absoluteFilePath();
   }
   return result;
+}
+// Login entries this app wrote under an older desktop id (e.g. `arcade-look`
+// before `dev.arcade.Look`), which would start it a second time at login.
+static QStringList legacyLogins(const ArcadeInstall::Environment &e,
+                                const ArcadeInstall::AppInfo &app,
+                                const QString &current) {
+  QStringList result;
+  for (const auto &id : app.legacyDesktopIds) {
+    const auto path = QDir(e.config).filePath(QStringLiteral("autostart/") + id +
+                                              QStringLiteral(".desktop"));
+    if (path != current && desktopOwned(path, app, false))
+      result << path;
+  }
+  return result;
+}
+// The legacy login entry whose choices (enabled or switched off) carry over.
+static QString carriedLegacyLogin(const QStringList &legacy) {
+  for (const auto &path : legacy)
+    if (ArcadeInstall::autostartEnabled(path))
+      return path;
+  return legacy.isEmpty() ? QString() : legacy.first();
+}
+static bool copyEntry(const QString &from, const QString &to, QString *error) {
+  QFile file(from);
+  if (!file.open(QIODevice::ReadOnly))
+    return fail(error, file.errorString());
+  return atomicWrite(to, file.readAll(), false, error);
 }
 
 
 // Held for the whole of an install, repair or uninstall of one app, across
 // processes: Rust and Qt lock the same <installs>/<id>.lock. A second
 // installer waits (up to two minutes) instead of interleaving with the first.
+// An uninstall removes the file again (retire()); a live lock file is always
+// empty, so a waiter that gets the lock on a file with content knows it was
+// removed and locks the path afresh.
 class AppLock {
 public:
   bool acquire(const ReceiptStore &store, const QString &id, QString *error) {
@@ -971,9 +1006,69 @@ public:
     const auto json = store.path(id);
     if (json.isEmpty())
       return fail(error, QStringLiteral("invalid receipt id"));
-    m_file.setFileName(json.left(json.size() - 4) + QStringLiteral("lock"));
-    if (!m_file.open(QIODevice::ReadWrite))
-      return fail(error, QStringLiteral("Couldn't open %1: %2").arg(m_file.fileName(), m_file.errorString()));
+    const auto path = json.left(json.size() - 4) + QStringLiteral("lock");
+    QElapsedTimer timer;
+    timer.start();
+    bool retired = false;
+    for (;;) {
+      if (timer.elapsed() > 120000)
+        return fail(error, QStringLiteral("another install, update or uninstall of this app is still running"));
+      if (!open(path)) {
+#ifdef Q_OS_WIN
+        // Windows keeps a removed file's name until every handle closes.
+        if (retired && GetLastError() == ERROR_ACCESS_DENIED) {
+          QThread::msleep(100);
+          continue;
+        }
+#endif
+        return fail(error, QStringLiteral("Couldn't open %1: %2").arg(path, m_file.errorString()));
+      }
+      if (!lockHeld(error))
+        return false;
+      if (m_file.size() == 0)
+        return true;
+      // An uninstall removed this file while we waited for it: lock the path afresh.
+      retired = true;
+      m_file.close();
+    }
+  }
+
+  // After an uninstall: removes the lock file while still holding it, so
+  // nothing is left behind. If it can't be removed it is emptied again and
+  // stays a working lock.
+  void retire() {
+    if (!m_file.isOpen())
+      return;
+    const bool marked = m_file.write("retired\n") == 8 && m_file.flush();
+    if (!marked || !QFile::remove(m_file.fileName()))
+      m_file.resize(0);
+  }
+
+private:
+  bool open(const QString &path) {
+#ifdef Q_OS_WIN
+    // Share delete, as Rust does, so an uninstall can remove the file while
+    // another installer has it open.
+    const HANDLE handle = CreateFileW(reinterpret_cast<const wchar_t *>(QDir::toNativeSeparators(path).utf16()),
+                                      GENERIC_READ | GENERIC_WRITE,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                      OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+      return false;
+    const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_RDWR | _O_BINARY);
+    if (fd == -1) {
+      CloseHandle(handle);
+      return false;
+    }
+    m_file.setFileName(path);
+    return m_file.open(fd, QIODevice::ReadWrite, QFileDevice::AutoCloseHandle);
+#else
+    m_file.setFileName(path);
+    return m_file.open(QIODevice::ReadWrite);
+#endif
+  }
+
+  bool lockHeld(QString *error) {
     QElapsedTimer timer;
     timer.start();
     for (;;) {
@@ -997,9 +1092,35 @@ public:
     }
   }
 
-private:
   QFile m_file; // closing it releases the lock
 };
+
+#ifdef Q_OS_LINUX
+// The desktop and icon caches an install refreshes stay behind once the last
+// entry they describe is gone; remove a cache only when it is the last file in
+// its folder, so other programs' entries keep theirs.
+static bool onlyFileIn(const QString &dir, const QString &cache) {
+  const auto entries = QDir(dir).entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+  for (const auto &entry : entries) {
+    if (entry.isDir() && !entry.isSymLink()) {
+      if (!onlyFileIn(entry.filePath(), cache))
+        return false;
+    } else if (entry.filePath() != cache) {
+      return false;
+    }
+  }
+  return true;
+}
+static void dropEmptyCaches(const QString &data) {
+  for (const auto &[folder, name] : {std::pair{QStringLiteral("applications"), QStringLiteral("mimeinfo.cache")},
+                                     std::pair{QStringLiteral("icons/hicolor"), QStringLiteral("icon-theme.cache")}}) {
+    const auto dir = QDir(data).filePath(folder);
+    const auto cache = QDir(dir).filePath(name);
+    if (QFileInfo(cache).isFile() && onlyFileIn(dir, cache))
+      QFile::remove(cache);
+  }
+}
+#endif
 
 #ifdef Q_OS_LINUX
 // $XDG_DOWNLOAD_DIR from user-dirs.dirs, else ~/Downloads.
@@ -1314,13 +1435,22 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
     prepared << qMakePair(target, file.readAll());
     icons << target;
   }
+  // Icons this install didn't supply stay, unless they carry another desktop
+  // ID (a legacy name): those go once this install's icons are written.
+  QStringList retiredIcons;
   for (const auto &icon :
        oldIntegration.value(QStringLiteral("icons")).toArray()) {
     bool blocked = false;
     for (const auto &item : skipped)
       blocked |= item.toObject().value(QStringLiteral("path")) == icon;
-    if (!blocked && !icons.contains(icon))
+    if (blocked || icons.contains(icon))
+      continue;
+    const bool currentId =
+        QFileInfo(icon.toString()).completeBaseName() == opts.app.desktopId;
+    if (currentId || prepared.isEmpty())
       icons << icon;
+    else
+      retiredIcons << icon.toString();
   }
   integration.insert(QStringLiteral("icons"), icons);
   const auto autoPath = QDir(e.config).filePath(QStringLiteral("autostart/") +
@@ -1329,8 +1459,10 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   if (!withinRoot(autoPath,
                   QDir(e.config).filePath(QStringLiteral("autostart")), error))
     return false;
+  const auto legacyLogin = legacyLogins(e, opts.app, autoPath);
+  const auto carriedLogin = carriedLegacyLogin(legacyLogin);
   if (QFileInfo::exists(autoPath) || QFileInfo(autoPath).isSymLink() ||
-      opts.startAtLogin) {
+      opts.startAtLogin || !carriedLogin.isEmpty()) {
     if (availableEntry(
             autoPath,
             oldIntegration.value(QStringLiteral("autostart")).toString() == autoPath
@@ -1363,6 +1495,10 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   for (const auto &path : stale)
     if (!rollback.save(path, error))
       return false;
+  if (integration.value(QStringLiteral("autostart")).isString())
+    for (const auto &path : legacyLogin)
+      if (!rollback.save(path, error))
+        return false;
   auto previous = old.value(QStringLiteral("previous"));
   if (!same) {
     if (!QDir().mkpath(e.applications))
@@ -1434,6 +1570,9 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   for (const auto &icon : prepared)
     if (!atomicWrite(icon.first, icon.second, false, error))
       return false;
+  for (const auto &icon : retiredIcons)
+    if (!removeFile(icon, error))
+      return false;
   const auto entryPath =
       integration.value(QStringLiteral("desktopEntry")).toString();
   if (!entryPath.isEmpty() &&
@@ -1442,10 +1581,19 @@ bool ArcadeInstall::install(const InstallOptions &opts, QJsonObject *out,
   if (integration.value(QStringLiteral("cli")).isString() &&
       !symlink(cli, dest, error))
     return false;
-  if (integration.value(QStringLiteral("autostart")).isString() &&
-      !autostart(autoPath, opts.app, dest, opts.startAtLogin, opts.startAtLogin,
-                 nullptr, error))
-    return false;
+  if (integration.value(QStringLiteral("autostart")).isString()) {
+    if (!carriedLogin.isEmpty() && !QFileInfo::exists(autoPath) &&
+        !QFileInfo(autoPath).isSymLink() &&
+        !copyEntry(carriedLogin, autoPath, error))
+      return false;
+    if (!autostart(autoPath, opts.app, dest,
+                   opts.startAtLogin || !carriedLogin.isEmpty(),
+                   opts.startAtLogin, nullptr, error))
+      return false;
+    for (const auto &path : legacyLogin)
+      if (!removeFile(path, error))
+        return false;
+  }
   for (const auto &path : stale)
     if (!removeFile(path, error))
       return false;
@@ -1558,6 +1706,22 @@ bool ArcadeInstall::repair(const AppInfo &app, const QString &movedTo,
   if (!autoPath.isEmpty() &&
       !autostart(autoPath, app, exe, true, false, nullptr, error))
     return false;
+  const auto standardLogin = QDir(m_environment.config).filePath(
+      QStringLiteral("autostart/") + app.autostartId + QStringLiteral(".desktop"));
+  const auto legacyLogin = legacyLogins(m_environment, app, standardLogin);
+  const auto carriedLogin = carriedLegacyLogin(legacyLogin);
+  if (autoPath.isEmpty() && !carriedLogin.isEmpty() &&
+      !QFileInfo::exists(standardLogin) && !QFileInfo(standardLogin).isSymLink()) {
+    if (!copyEntry(carriedLogin, standardLogin, error) ||
+        !autostart(standardLogin, app, exe, true, false, nullptr, error))
+      return false;
+    integration.insert(QStringLiteral("autostart"), standardLogin);
+    receipt.insert(QStringLiteral("integration"), integration);
+  }
+  if (integration.value(QStringLiteral("autostart")).isString())
+    for (const auto &path : legacyLogin)
+      if (!removeFile(path, error))
+        return false;
   receipt.insert(QStringLiteral("updatedAt"), nowRfc3339());
   if (!m_environment.receipts().write(receipt, error))
     return false;
@@ -1590,8 +1754,10 @@ bool ArcadeInstall::uninstall(const QString &id, const UninstallOptions &opts,
   if (!lock.acquire(m_environment.receipts(), id, error) ||
       !m_environment.receipts().read(id, &receipt, error))
     return false;
-  if (receipt.isEmpty())
+  if (receipt.isEmpty()) {
+    lock.retire();
     return true;
+  }
   if (!validateNativeReceiptPaths(receipt, error))
     return false;
 #ifdef Q_OS_LINUX
@@ -1660,6 +1826,10 @@ bool ArcadeInstall::uninstall(const QString &id, const UninstallOptions &opts,
   if (!removeWindowsPathIfLast(m_environment.bin, error))
     return false;
 #endif
+#ifdef Q_OS_LINUX
+  dropEmptyCaches(m_environment.data);
+#endif
+  lock.retire();
   if (removed)
     *removed = true;
   return true;
