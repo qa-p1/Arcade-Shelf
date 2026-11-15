@@ -1,5 +1,8 @@
 #include "Controller.h"
+#include "Identity.h"
+#include "Startup.h"
 #include "ThumbnailProvider.h"
+#include "arcade_unpacked.h"
 #include "platform/AppInstaller.h"
 #include <QApplication>
 #include <QCommandLineParser>
@@ -126,6 +129,14 @@ int main(int argc, char **argv)
     ArcadeLink::onStartup();
     QStringList arguments;
     for (int i = 1; i < argc; ++i) arguments << QString::fromLocal8Bit(argv[i]);
+    // U1: a start that keeps Shelf resident runs from the AppImage's unpacked
+    // copy, so no FUSE helper stays resident and pages come from the real disk.
+    // The launcher hands over and exits 0; $APPIMAGE still names the installed
+    // file. One-shot commands never keep a process, so they stay on the mount.
+    if (Shelf::startsResident(arguments)) {
+        const int code = arcade_relaunch_unpacked(Shelf::AppId.toUtf8().constData(), Shelf::Version.toUtf8().constData(), 0, argv);
+        if (code >= 0) return code;
+    }
     // The X11 window class is the application name: the OS identifier, as
     // the desktop entry's StartupWMClass says (STANDARD §10).
     QCoreApplication::setOrganizationName("arcade");
