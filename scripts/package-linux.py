@@ -249,12 +249,14 @@ def build_appimage(source: Path, bundle: Path, output: Path, version: str, tools
     shutil.copytree(bundle, appdir / "usr", symlinks=True)
     (appdir / "usr/arcade-shelf").unlink()
     icon = "dev.arcade.Shelf"  # the OS identifier (STANDARD §10)
-    for directory in ("usr/share/applications", "usr/share/icons/hicolor/scalable/apps", "usr/share/metainfo"):
+    for directory in ("usr/share/applications", "usr/share/icons/hicolor/scalable/apps", "usr/share/icons/hicolor/symbolic/apps",
+                      "usr/share/metainfo"):
         (appdir / directory).mkdir(parents=True, exist_ok=True)
     shutil.copy2(source / f"packaging/linux/{icon}.desktop", appdir / f"usr/share/applications/{icon}.desktop")
     shutil.copy2(source / f"packaging/linux/{icon}.desktop", appdir / f"{icon}.desktop")
-    shutil.copy2(source / "packaging/icons/icon.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
-    shutil.copy2(source / "packaging/icons/icon.svg", appdir / f"{icon}.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}-symbolic.svg", appdir / f"usr/share/icons/hicolor/symbolic/apps/{icon}-symbolic.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}.svg", appdir / f"{icon}.svg")
     shutil.copy2(source / f"packaging/linux/{icon}.metainfo.xml", appdir / f"usr/share/metainfo/{icon}.metainfo.xml")
     (appdir / ".DirIcon").symlink_to(f"{icon}.svg")
     apprun = appdir / "AppRun"

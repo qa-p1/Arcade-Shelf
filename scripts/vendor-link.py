@@ -33,13 +33,14 @@ SHARED = {
     "spec/shortcut-sheet.schema.json": "vendor/arcade-link/shared/spec/shortcut-sheet.schema.json",
     "spec/vectors/accelerators.json": "vendor/arcade-link/shared/spec/vectors/accelerators.json",
     "spec/vectors/shortcuts.json": "vendor/arcade-link/shared/spec/vectors/shortcuts.json",
-    # The kit's launcher icon set (STANDARD §8) and Shelf's monochrome glyph (tray).
-    "design/app-icons/shelf/icon.svg": "packaging/icons/icon.svg",
+    # The kit's launcher icon set (STANDARD §8) and Shelf's monochrome glyph (tray). The two SVGs carry the desktop
+    # id, as Link's conformance (ID-3) looks for them: the app icon and the symbolic tray icon.
+    "design/app-icons/shelf/icon.svg": "packaging/linux/dev.arcade.Shelf.svg",
     **{f"design/app-icons/shelf/png/{size}.png": f"packaging/icons/png/{size}.png"
        for size in (16, 24, 32, 48, 64, 128, 256, 512, 1024)},
     "design/app-icons/shelf/shelf.ico": "packaging/icons/arcade-shelf.ico",
     "design/app-icons/shelf/macos/icon.icns": "packaging/icons/arcade-shelf.icns",
-    "design/glyphs/arcade.shelf.svg": "assets/glyph.svg",
+    "design/glyphs/arcade.shelf.svg": "packaging/linux/dev.arcade.Shelf-symbolic.svg",
 }
 
 

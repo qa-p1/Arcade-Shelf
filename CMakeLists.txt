@@ -81,8 +81,9 @@ qt_add_executable(arcade-shelf src/main.cpp src/Controller.cpp src/Controller.h 
 target_link_libraries(arcade-shelf PRIVATE shelf_services shelf_desktop arcade_kitplugin Qt6::Widgets Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
 # The kit's launcher icon (window icon, install icons) and Shelf's monochrome
 # glyph (tray), both vendored from Link by scripts/vendor-link.py.
-set(SHELF_RESOURCES assets/glyph.svg packaging/icons/icon.svg)
-set_source_files_properties(packaging/icons/icon.svg PROPERTIES QT_RESOURCE_ALIAS assets/icon.svg)
+set(SHELF_RESOURCES packaging/linux/dev.arcade.Shelf-symbolic.svg packaging/linux/dev.arcade.Shelf.svg)
+set_source_files_properties(packaging/linux/dev.arcade.Shelf-symbolic.svg PROPERTIES QT_RESOURCE_ALIAS assets/glyph.svg)
+set_source_files_properties(packaging/linux/dev.arcade.Shelf.svg PROPERTIES QT_RESOURCE_ALIAS assets/icon.svg)
 qt_add_qml_module(arcade-shelf URI ArcadeShelf VERSION 1.0
   QML_FILES ${SHELF_QML_FILES}
   RESOURCES ${SHELF_RESOURCES})
