@@ -175,8 +175,8 @@ int main(int argc, char **argv)
     auto &app = *application;
     QCommandLineParser parser;
     parser.setApplicationDescription("A floating workspace for desktop content.");
-    parser.addHelpOption();
-    parser.addVersionOption();
+    const QCommandLineOption helpOption = parser.addHelpOption();
+    const QCommandLineOption versionOption = parser.addVersionOption();
     parser.addOption(QCommandLineOption("background", "Start without showing a window (as at login)."));
     parser.addOption(QCommandLineOption("settings", "Open Settings."));
     parser.addOption(QCommandLineOption("show", "Open the panel."));
@@ -195,7 +195,15 @@ int main(int argc, char **argv)
     parser.addOption(QCommandLineOption("channel", "Select the installation channel.", "channel"));
     parser.addOption(QCommandLineOption("remove-data", "Remove app data while uninstalling."));
     parser.addOption(QCommandLineOption("add", "Stage a local file or folder.", "path"));
-    parser.process(app);
+    // Not process(): it exits 1 on an unknown option. A usage error exits 2 with the usage, as every Arcade app's
+    // command line does (Link conformance CLI-2).
+    if (!parser.parse(app.arguments())) {
+        QTextStream(stderr) << "arcade-shelf: " << parser.errorText() << "\n\n"
+                            << parser.helpText();
+        return 2;
+    }
+    if (parser.isSet(helpOption) || parser.isSet(QStringLiteral("help-all"))) parser.showHelp(0);
+    if (parser.isSet(versionOption)) parser.showVersion();
     const QStringList installActions{"install", "uninstall", "repair", "integration-status"};
     int installActionCount = 0;
     for (const auto &action : installActions)
