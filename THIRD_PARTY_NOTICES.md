@@ -30,7 +30,7 @@ bundle (macOS).
 
 The AppImage also bundles shared libraries from its build host (Ubuntu 22.04 in CI) that Qt and its plugins need:
 `scripts/package-linux.py` copies what `ldd` resolves, except the libraries every desktop provides (the C library,
-`libstdc++`, OpenGL/EGL/Vulkan, fontconfig, freetype, harfbuzz, D-Bus, xkbcommon, Wayland and the X11/XCB client
+`libstdc++`, the OpenGL/EGL/Vulkan drivers (glvnd's `libOpenGL.so.0` dispatcher is bundled), fontconfig, freetype, harfbuzz, D-Bus, xkbcommon, Wayland and the X11/XCB client
 libraries), which stay the system's. Each build records them in the package itself:
 `share/arcade-shelf/licenses/runtime-inventory.json` lists every bundled library with its source path and SHA-256, and
 `share/arcade-shelf/licenses/distribution/` holds the Debian copyright file (authors and licence) of every Ubuntu

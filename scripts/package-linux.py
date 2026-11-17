@@ -27,7 +27,10 @@ BASE_LIBS = re.compile(
     r"^(linux-vdso|ld-linux"
     r"|lib(c|m|pthread|dl|rt|resolv|util|nss_.*)\.so"
     r"|lib(stdc\+\+|gcc_s)\.so"
-    r"|lib(GL|EGL|GLX|GLESv2|OpenGL|GLdispatch|gbm|drm|vulkan)\.so"
+    # Not libOpenGL.so.0, glvnd's vendor-neutral dispatcher, which Qt links: its package (libopengl0) is missing from
+    # some desktops (and Link's Tier 2 sway, KWin, Mutter and X11 sessions), where Shelf then failed to start. It is
+    # bundled; the host's libGLdispatch and drivers stay the system's.
+    r"|lib(GL|EGL|GLX|GLESv2|GLdispatch|gbm|drm|vulkan)\.so"
     r"|lib(fontconfig|freetype|harfbuzz|expat|z|uuid|dbus-1|asound|xkbcommon|xkbcommon-x11)\.so"
     r"|libwayland-|libxcb|libX11|libXau|libXdmcp|libXext|libXrender|libXi|libXfixes|libSM|libICE)")
 APPIMAGETOOL_VERSION = "1.9.0"
