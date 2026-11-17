@@ -105,7 +105,8 @@ def main() -> int:
         executable = bundle / "bin/arcade-shelf"
         if not executable.is_file():
             raise SystemExit("Expected CMake install to create bin/arcade-shelf")
-        for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "platformthemes", "xcbglintegrations", "egldeviceintegrations", "tls"):
+        for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "platformthemes", "xcbglintegrations", "egldeviceintegrations"):
+            # No "tls": Shelf has no network code (SECURITY.md), so Qt's TLS backends would only be unused code.
             for plugin_root in plugin_roots:
                 copy_tree(plugin_root / plugin, bundle / "plugins" / plugin)
         # Shelf uses only SQLite. Other SDK SQL drivers link external server

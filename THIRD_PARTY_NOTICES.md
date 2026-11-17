@@ -1,34 +1,43 @@
-# Dependency provenance and redistribution
+# Third-party notices
 
-Arcade Shelf is MIT licensed. Dependencies retain their own licenses.
+Arcade Shelf is MIT licensed (see `LICENSE`). It includes the open-source parts below, each under its own licence.
+Packages carry these notices in `share/arcade-shelf/licenses/` (Linux), next to the program (Windows) or in the app
+bundle (macOS).
 
-* **Arcade Link:** https://github.com/qa-p1/Arcade-Link, immutable annotated
-  tag `v0.3.0`, code commit `33650a87b6999fbd553ac678cc7bde7a308cb852`.
-  Upstream workspace declares `MIT OR Apache-2.0`; Shelf uses the MIT option.
-  The unmodified Qt implementation, conformance vectors and release metadata
-  generator are tracked by `vendor/arcade-link/provenance.json`. Upstream at
-  this tag has no standalone LICENSE file. Its declared licensing and the
-  standard MIT notice are preserved in `vendor/arcade-link/LICENSE-MIT`.
-* **Arcade Wheel:** small lifecycle/invocation reference code is adapted from
-  https://github.com/qa-p1/Arcade-wheel, MIT licensed. The upstream notice is
-  preserved in `licenses/Arcade-Wheel-MIT.txt`.
-* **Qt 6:** https://www.qt.io/, dynamically linked. Core, Gui, Widgets, Network,
-  Sql, Quick, Qml, QuickControls2, Svg, Concurrent and Linux DBus/Wayland modules are used
-  under LGPL-3.0 where available (or a suitable commercial Qt license).
-  Test is build-time only. See `https://doc.qt.io/qt-6/licensing.html`.
-  Qt distributions may contain additional third-party components; package
-  scripts preserve Qt's installed license directory and their notices.
-* **SQLite:** https://sqlite.org/, through Qt's dynamically loaded QSQLITE
-  plugin. SQLite is public domain. QtSql and the QSQLITE wrapper retain Qt's
-  licensing.
-* **Platform libraries:** system X11/Wayland, D-Bus and their Qt adapters on
-  Linux; OS frameworks on macOS/Windows. The Linux bundler inventories every
-  copied library and stores package copyright notices when supplied by the
-  distribution. Platform dependencies and their versions vary by build host.
+## In this repository
 
-Packages include the source repository URL and build provenance. Qt libraries
-remain separate, replaceable files; Shelf does not statically link Qt. Rebuild
-Shelf with an alternate compatible Qt using the documented CMake commands.
-Release packages are unsigned: SHA-256 sums establish integrity, not an
-authenticated publisher. Review generated dependency inventories and applicable
-Qt/module license texts before redistribution.
+- **Arcade Link** (MIT OR Apache-2.0; Shelf uses the MIT option): the Qt Link module, the QML design kit, the shared
+  Windows installer includes, the release generator and the shortcut tools, copied unchanged from
+  https://github.com/qa-p1/Arcade-Link tag `v1.0.13` (commit `a24146fd87ff77ed362f518a414eaf266512f839`). Every file's
+  SHA-256 is in `vendor/arcade-link/VENDORED.json` and `vendor/arcade-link/shared-provenance.json` (`VENDORED.md`,
+  checked by `scripts/check-vendor.py`). Licence text: `vendor/arcade-link/LICENSE-MIT`.
+- **Inter** (SIL Open Font License 1.1), the typeface of the design kit, carried by Arcade Link:
+  `vendor/arcade-link/design/fonts/InterVariable.ttf`, licence text `vendor/arcade-link/design/fonts/OFL.txt`.
+- **Arcade Wheel** (MIT): `src/link/ShelfInvoke.{h,cpp}` adapts Wheel's `WheelInvoke` at commit
+  `550efe1a56270ed85ad1bb1fe080b37005e65c84` (`src/link/PROVENANCE.md`). Licence text: `licenses/Arcade-Wheel-MIT.txt`.
+
+## Linked at run time
+
+- **Qt 6.8.3** (https://www.qt.io/), LGPL-3.0: Core, Gui, Widgets, Network (local sockets only), Sql, Quick, Qml,
+  QuickControls2, Svg, Concurrent and, on Linux, DBus and the Wayland and XCB platform plugins; QtTest is used only by
+  the tests. Shelf links Qt dynamically and ships its libraries as separate, replaceable files, so a compatible Qt can
+  be swapped in or Shelf rebuilt against one with the CMake commands in `README.md`. Licence texts: `licenses/Qt-LGPL-3.0.txt`
+  and `licenses/Qt-GPL-3.0.txt` (which LGPL-3.0 builds on); the packages also carry the licence folder of the Qt
+  installation they were built with, including the notices of the third-party code inside Qt.
+- **SQLite** (public domain), through Qt's QSQLITE driver plugin, the only SQL driver packaged.
+
+## Linux AppImage
+
+The AppImage also bundles shared libraries from its build host (Ubuntu 22.04 in CI) that Qt and its plugins need:
+`scripts/package-linux.py` copies what `ldd` resolves, except the libraries every desktop provides (the C library,
+`libstdc++`, OpenGL/EGL/Vulkan, fontconfig, freetype, harfbuzz, D-Bus, xkbcommon, Wayland and the X11/XCB client
+libraries), which stay the system's. Each build records them in the package itself:
+`share/arcade-shelf/licenses/runtime-inventory.json` lists every bundled library with its source path and SHA-256, and
+`share/arcade-shelf/licenses/distribution/` holds the Debian copyright file (authors and licence) of every Ubuntu
+package they came from. Those files, not this list, are the notice for that build, because the set depends on the host.
+
+## Releases
+
+Release candidates are published with their SHA-256 sums; a stable release republishes the same files with a
+`manifest.json` signed by Arcade's release key, which Arcade Tools checks before it installs or updates Shelf
+(`SECURITY.md`).
