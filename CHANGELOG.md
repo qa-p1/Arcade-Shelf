@@ -5,11 +5,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-17
+
 ### Changed
 - Shelf now runs from an unpacked copy of its AppImage, kept in your data folder under `arcade/runtime`, so the helper process that kept the AppImage mounted no longer stays running in the background. The first start after an update takes a moment longer while the copy is made. Uninstalling Shelf removes its copies.
 - Shelf gives memory back a few seconds after it starts and 2 seconds after you close the panel. Opening the panel again before that cancels it.
 - Thumbnails use less memory: the cache holds up to 16 MB (64 MB at most, whatever the stored setting says) and is emptied when the panel closes, so thumbnails load again the next time you open it.
-- Arcade Link 1.0.10.
+- The Linux AppImage is built on Ubuntu 22.04, so it starts on distributions with an older C library (glibc 2.35 and later).
+- The app and tray icons are installed under Shelf's desktop id (`dev.arcade.Shelf`), so desktops find the right icon.
+- `SECURITY.md` describes what Shelf keeps, what it asks before and how to report a problem; the third-party notices list exactly what each package ships, and the AppImage no longer carries Qt's unused TLS plugins.
+- Arcade Link 1.0.13.
+
+### Security
+- Shelf asks before it runs a connected app's action that can run commands or control windows. It already asked before actions that use the network, keep, copy, write or delete anything.
 
 ## [0.4.0] - 2026-11-01
 
