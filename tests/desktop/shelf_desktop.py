@@ -40,7 +40,10 @@ os.chmod(app, 0o755)
 profile = Path(home, "profile")
 env = {**os.environ, "HOME": home, "XDG_CONFIG_HOME": f"{home}/.config", "XDG_DATA_HOME": f"{home}/.local/share",
        "XDG_CACHE_HOME": f"{home}/.cache", "ARCADE_HOME": f"{home}/arcade-link", "ARCADE_SHELF_HOME": str(profile),
-       "ARCADE_NO_INSTALL_PROMPT": "1"}
+       "ARCADE_NO_INSTALL_PROMPT": "1",
+       # ARCADE_HOME alone turns off Shelf's desktop integration (hyprctl placement, which floats the panel), as in
+       # the unit tests; this session is private, so it stays on, as for a user.
+       "ARCADE_SHELF_ALLOW_DESKTOP_IN_TESTS": "1"}
 # The harness marks AppImages "already unpacked" so tests keep the process they start; Shelf is followed through
 # --status and the compositor instead, so it runs as a user's would.
 env.pop("ARCADE_UNPACKED", None)
@@ -78,6 +81,13 @@ def sized(test, timeout=10, what="panel size"):
         return None
 
 
+def wait_for(probe, what, timeout=15):
+    try:
+        return d.wait(probe, timeout, what)
+    except DesktopError:
+        return None
+
+
 def is_open(size):
     return size[0] >= OPEN_MIN[0] and size[1] >= OPEN_MIN[1]
 
@@ -109,6 +119,9 @@ try:
     check("ID-1: the panel's class is Shelf's desktop id", window.get("class") == CLASS, window.get("class", ""))
     window = sized(is_open, what="the open panel")
     check("the panel opens at its open size", window is not None, str(panel() and panel()["size"]))
+    check("the panel floats (Hyprland would otherwise tile it)",
+          wait_for(lambda: (panel() or {}).get("floating"), "the panel to float", 10) is not None,
+          json.dumps(panel() and {k: panel().get(k) for k in ("floating", "size", "at")}))
     resident = status()
     check("--status reports the running Shelf", bool(resident.get("running")), json.dumps(resident))
 
