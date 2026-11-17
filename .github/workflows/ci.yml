@@ -194,6 +194,25 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Tier 1: the panel, capsule and Settings on headless Hyprland (Link's desktop harness), from the AppImage built
+  # above; Tier 2: start, --status, tray and quit on sway, KWin, Mutter and X11.
+  desktop:
+    needs: package
+    uses: qa-p1/Arcade-Link/.github/workflows/desktop-e2e.yml@v1.0.13
+    with:
+      name: shelf
+      test: tests/desktop/shelf_desktop.py
+      args: '"$APP"'
+      artifact: package-linux-x64
+      link-ref: v1.0.13
+  desktop-tier2:
+    needs: package
+    uses: qa-p1/Arcade-Link/.github/workflows/desktop-tier2.yml@v1.0.13
+    with:
+      artifact: package-linux-x64
+      show: --show
+      link-ref: v1.0.13
+
   # The three installers together, as one release would carry them.
   manifest:
     name: arcade-release.json
