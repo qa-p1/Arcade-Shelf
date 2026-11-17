@@ -16,6 +16,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - `SECURITY.md` describes what Shelf keeps, what it asks before and how to report a problem; the third-party notices list exactly what each package ships, and the AppImage no longer carries Qt's unused TLS plugins.
 - Arcade Link 1.0.13.
 
+### Fixed
+- An unknown command-line option now exits with code 2 and prints the usage, as every Arcade app does; it exited 1.
+
 ### Security
 - Shelf asks before it runs a connected app's action that can run commands or control windows. It already asked before actions that use the network, keep, copy, write or delete anything.
 

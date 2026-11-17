@@ -253,6 +253,18 @@ class ShelfProcessTests(unittest.TestCase):
         self.assertTrue(result["message"].strip())
         self.assertIn(result["data"]["shelf"]["name"], result["message"])
 
+    def test_usage_errors_exit_2_and_help_exits_0(self):
+        # Link conformance CLI-2: QCommandLineParser::process() would exit 1 on an unknown option.
+        for args in (["--no-such-flag"], ["--show", "--no-such-flag"]):
+            r = subprocess.run([str(BINARY), *args], env=self.shelf.env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(r.returncode, 2, f"{args}: {r.stderr}")
+            self.assertIn("no-such-flag", r.stderr)
+            self.assertIn("--background", r.stderr, "a usage error prints the usage")
+            self.assertEqual(r.stdout, "")
+        r = subprocess.run([str(BINARY), "--help"], env=self.shelf.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("--background", r.stdout)
+
     def test_manifest_has_no_side_effects(self):
         before = sorted(str(p.relative_to(self.shelf.root)) for p in self.shelf.root.rglob("*"))
         r = subprocess.run([str(BINARY), "--arcade-manifest"], env=self.shelf.env,
