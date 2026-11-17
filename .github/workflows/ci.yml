@@ -184,7 +184,7 @@ jobs:
       - name: Report bounded failure diagnostics
         if: failure()
         run: python scripts/ci-diagnostics.py --build build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.name }}
           path: |
@@ -230,7 +230,7 @@ jobs:
             --notes "https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/CHANGELOG.md" dist
           ls -l dist
           (cd dist && sha256sum -c SHA256SUMS.txt)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-metadata
           path: |
