@@ -88,5 +88,4 @@ jobs:
     uses: qa-p1/Arcade-Link/.github/workflows/desktop-tier2.yml@v1.0.13
     with:
       artifact: gate-appimage
-      show: --show
       link-ref: v1.0.13

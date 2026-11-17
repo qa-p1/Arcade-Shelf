@@ -210,7 +210,6 @@ jobs:
     uses: qa-p1/Arcade-Link/.github/workflows/desktop-tier2.yml@v1.0.13
     with:
       artifact: package-linux-x64
-      show: --show
       link-ref: v1.0.13
 
   # The three installers together, as one release would carry them.
