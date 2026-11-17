@@ -26,13 +26,21 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
 enable_testing()
 add_executable(startup-probe examples/startup-probe.cpp)
 target_link_libraries(startup-probe PRIVATE arcade_link_qt)
-foreach(test_name IN ITEMS Vectors Server Install TrayHost Methods Paths Trim)
+# The helper tst_Unpacked copies into a fake AppDir and runs from there (no Qt).
+add_executable(unpacked-probe tests/unpacked_probe.cpp)
+target_include_directories(unpacked-probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+foreach(test_name IN ITEMS Vectors Server Install TrayHost Methods Paths Trim Unpacked)
     add_executable(tst_${test_name} tests/tst_${test_name}.cpp)
     target_link_libraries(tst_${test_name} PRIVATE arcade_link_qt Qt6::Test)
     target_compile_definitions(tst_${test_name} PRIVATE
         ARCADE_LINK_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../spec/vectors"
         ARCADE_LINK_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures"
         ARCADE_LINK_INSTALL_STRINGS="${CMAKE_CURRENT_SOURCE_DIR}/../assets/strings/install.json")
+    if(test_name STREQUAL "Unpacked")
+        target_include_directories(tst_Unpacked PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_compile_definitions(tst_Unpacked PRIVATE ARCADE_UNPACKED_PROBE="$<TARGET_FILE:unpacked-probe>")
+        add_dependencies(tst_Unpacked unpacked-probe)
+    endif()
     # Windows QtTest may otherwise select debugger output instead of stdout.
     add_test(NAME ${test_name} COMMAND tst_${test_name} -o -,txt
         -o "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.txt,txt" -v2)

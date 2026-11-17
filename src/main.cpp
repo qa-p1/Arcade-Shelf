@@ -1,5 +1,10 @@
 #include "Controller.h"
+#include "HideRelease.h"
+#include "Identity.h"
+#include "Startup.h"
 #include "ThumbnailProvider.h"
+#include "arcade_trim.h"
+#include "arcade_unpacked.h"
 #include "platform/AppInstaller.h"
 #include <QApplication>
 #include <QCommandLineParser>
@@ -29,6 +34,19 @@
 Q_IMPORT_QML_PLUGIN(ArcadePlugin)
 
 namespace {
+// How long after start the event loop has settled (Link, the tray, the first
+// surface) and the pages startup touched can go back.
+constexpr int StartupTrimMs = 3000;
+
+// Gives freed heap and clean file pages back to the system (W0, RT-5): after
+// startup and after the panel has been closed for a moment.
+void releaseFreedHeap()
+{
+#if defined(__GLIBC__)
+    arcade_trim();
+#endif
+}
+
 // Asks the Shelf that owns `root` to quit and waits for it. True when none runs there.
 bool quitResident(const QString &root, QString *message)
 {
@@ -126,6 +144,14 @@ int main(int argc, char **argv)
     ArcadeLink::onStartup();
     QStringList arguments;
     for (int i = 1; i < argc; ++i) arguments << QString::fromLocal8Bit(argv[i]);
+    // U1: a start that keeps Shelf resident runs from the AppImage's unpacked
+    // copy, so no FUSE helper stays resident and pages come from the real disk.
+    // The launcher hands over and exits 0; $APPIMAGE still names the installed
+    // file. One-shot commands never keep a process, so they stay on the mount.
+    if (Shelf::startsResident(arguments)) {
+        const int code = arcade_relaunch_unpacked(Shelf::AppId.toUtf8().constData(), Shelf::Version.toUtf8().constData(), 0, argv);
+        if (code >= 0) return code;
+    }
     // The X11 window class is the application name: the OS identifier, as
     // the desktop entry's StartupWMClass says (STANDARD §10).
     QCoreApplication::setOrganizationName("arcade");
@@ -309,6 +335,17 @@ int main(int argc, char **argv)
         if (preferences.contains("thumbnailQuotaBytes"))
             thumbnails->setCacheLimitBytes(preferences.value("thumbnailQuotaBytes").toLongLong());
     });
+    // The panel stays closed for a moment: give back the decoded thumbnails
+    // (SH1; they decode again on reopen) and freed heap and code pages (W0). A
+    // reopen before then cancels it; nothing runs while the panel is open.
+    Shelf::HideRelease hideRelease;
+    QObject::connect(&hideRelease, &Shelf::HideRelease::released, thumbnails, [thumbnails] {
+        thumbnails->clearCache();
+        releaseFreedHeap();
+    });
+    QObject::connect(&controller, &Shelf::Controller::changed, &hideRelease, [&controller, &hideRelease] {
+        hideRelease.setOpen(controller.expanded() && controller.visible());
+    });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("ArcadeShelf", "Main");
     if (engine.rootObjects().isEmpty()) return 1;
@@ -350,5 +387,7 @@ int main(int argc, char **argv)
         else if (parser.isSet("show") || parser.isSet("toggle")) controller.show();
         if (parser.isSet("add")) controller.acceptDrop(QVariantList{QUrl::fromLocalFile(QFileInfo(parser.value("add")).absoluteFilePath())}, {}, {});
     });
+    // Startup touched far more pages than an idle resident keeps (W0).
+    QTimer::singleShot(StartupTrimMs, &app, releaseFreedHeap);
     return app.exec();
 }

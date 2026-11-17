@@ -190,10 +190,21 @@ class AppImageLifecycleTests(unittest.TestCase):
             self.assertEqual(relaunched_status["version"], version)
             self.assertEqual(relaunched_receipt["previous"], updated["previous"])
 
+            # Shelf's own unpacked runtime copies (U1), finished or interrupted, go with
+            # an uninstall through Link's ArcadeInstall; another app's stay.
+            runtime = data_home / "arcade/runtime"
+            own = [runtime / "shelf-0.0.1-0123456789abcdef", runtime / ".shelf-0.0.1-0123456789abcdef.tmp-1"]
+            other = runtime / "tools-1.0.0-0123456789abcdef"
+            for directory in (*own, other):
+                (directory / "usr/bin").mkdir(parents=True)
+                (directory / "usr/bin/app").write_text("copy\n", encoding="utf-8")
             removed = json.loads(run(installed, "--uninstall", "--silent"))
             self.assertTrue(removed["uninstalled"])
             for path in [receipt_path, installed, previous, desktop, cli, *icons]:
                 self.assertFalse(path.exists() or path.is_symlink(), f"Uninstall retained {path}")
+            for path in own:
+                self.assertFalse(path.exists(), f"Uninstall retained its unpacked copy {path}")
+            self.assertTrue((other / "usr/bin/app").is_file(), "Uninstall removed another app's unpacked copy")
             if integration.get("autostart"):
                 self.assertFalse(Path(integration["autostart"]).exists())
             for path in sentinels:

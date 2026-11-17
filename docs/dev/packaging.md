@@ -83,7 +83,7 @@ python3 scripts/arcade-release.py --id arcade.shelf --version 0.4.0 --channel st
   --notes https://github.com/qa-p1/Arcade-Shelf/blob/v0.4.0/CHANGELOG.md dist
 ```
 
-The generator is unmodified Arcade Link `v0.3.0` code and writes
+The generator is unmodified Arcade Link `v1.0.10` code and writes
 `arcade-release.json` plus `SHA256SUMS.txt`. SHA-256 establishes integrity, not
 publisher authentication. The checked-in CI builds/tests/packages all three
 OS families and uploads development artifacts on branch pushes. Merging to

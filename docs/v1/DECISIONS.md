@@ -88,3 +88,55 @@ Checked and kept (each has a real use):
   exposed to QML, but they are metadata on members that C++ calls, so removing them would not remove code.
   `Controller::clearSelection` and `newCollectionFromTray` are `Q_INVOKABLE` but called only from C++; the functions
   are used, so they stay.
+
+## D6 — Step 5: memory
+
+Follows the audit's `AUDIT/memory.md` items U1, W0 and SH1 (and SPEC "Memory": background budget 40 PSS / 48 RSS).
+Link moves to v1.0.10 first (`2748ebf`, `scripts/vendor-link.py --revision v1.0.10`; `check-vendor.py` also passes
+against the Link checkout; the three reusable-workflow pins and the stale `v0.3.0` lines in `VENDORED.md` and
+`docs/dev/` follow). 1.0.9 touches only Link's own harness and workflows. 1.0.10 adds `qt/arcade_unpacked.h` and makes
+`ArcadeInstall::uninstall` remove the app's own unpacked copies.
+
+**Done**
+
+- **U1, a resident start runs unpacked.** `main()` calls `arcade_relaunch_unpacked("arcade.shelf", version, 0, argv)`
+  right after `ArcadeLink::onStartup()` and before any `QApplication`; a code >= 0 is returned at once (the launcher
+  exits 0), -1 (not an AppImage, or already the copy) carries on. The decision is `Shelf::startsResident` in
+  `src/Startup.h`, a pure function tested in `tst_Memory`. It is an allow-list: only `--background`, `--show`,
+  `--toggle`, `--settings`, `--add <path>` and `--wait-for-exit <pid>` (and no arguments) relaunch. Everything else
+  runs from the mount as before: the install commands, `--status`, `--quit`, `--hide`, `--restart`, `--version`,
+  `--help`, the manifest, a malformed command line and any unknown option. Box's rule is "one-shot commands never
+  relaunch"; an allow-list errs the other way from a deny-list, so a command line Shelf does not know can never hand
+  its error to a copy whose exit status the launcher drops.
+- **The relaunch comes before the install prompt.** `offerInstall` needs a `QApplication`, so it runs in the copy; the
+  copy sees the AppImage as `$APPIMAGE` and its own `$APPDIR`, so the prompt, an install and the receipt behave as
+  before (`appimage_lifecycle.py` passes against the real image). The price is one extraction for a user who is shown
+  the prompt and installs at once.
+- **Known cost of wait=0.** The launcher cannot tell a first start from `--show`, `--toggle`, `--settings` or `--add`
+  forwarded to a running Shelf, so a forwarded call that fails (for example `--add` of a missing file) prints its
+  error from the copy but the launcher's exit status is 0. The audit and Link's RT-7 take the same trade for a
+  resident start.
+- **W0, trim.** `arcade_trim()` runs once 3 s after the event loop starts and 2 s after the panel closes. Shelf's
+  window stays up as a capsule or docked tab, so "hide" is the panel closing: `Shelf::HideRelease` is driven by
+  `Controller::changed` with "expanded and visible" (this also covers a hover peek ending and the fullscreen guard
+  hiding Shelf). Opening again cancels the pending release; there is no periodic timer. Glibc only, like Wheel.
+- **SH1, thumbnails.** Default cache 16 MiB (the provider and the `thumbnailQuotaBytes` default), `setCacheLimitBytes`
+  clamps to 0..64 MiB, and the cache is cleared with the trim 2 s after a close. Thumbnails decode again on reopen.
+  The preference's accepted range (up to 1 GiB) is unchanged on purpose: tightening it would reject backups and
+  settings files that already hold a larger value. `saveSettings` stores every default with the first change, so an
+  install that has saved any setting keeps its stored 64 MiB: it is honoured (it is the cap), the clear on hide is
+  what frees the memory for it.
+- **Uninstall.** `--uninstall` goes through `ArcadeInstall::uninstall` (`AppInstaller.cpp`, the Linux and macOS path; the
+  removal is Linux code, and Windows uses its own uninstaller and has no unpacked copies), which in 1.0.10 removes `<data>/arcade/runtime/shelf-*` and interrupted
+  `.shelf-*.tmp-*` copies and leaves other apps'. Shelf adds no second removal. `appimage_lifecycle.py` checks it.
+- **Packaged checks follow the resident.** CI's inline "show, `kill -0` the launcher, quit" step assumed the launcher
+  is the app and failed on a working build; `tests/appimage_resident.py` replaces it (see `docs/dev/testing.md`).
+  Link's e2e harness sets `ARCADE_UNPACKED=1`, which makes the relaunch do nothing there.
+
+**Not done, and why**
+
+- W1 (release after the last window), W3b (page-out of hidden WebKit heaps) and OPEN1 (trim while a window is open)
+  are for WebKit apps; Shelf has no WebKit. `arcade_page_out_hidden` is not called.
+- WH1 (software renderer) is Wheel's; Shelf already forces Qt's software renderer (`main.cpp`).
+- No second trimmer while the panel is open: the audit measured the open panel as +0...2 MB.
+- The budget (40 PSS / 48 RSS) is not measured here: the lab harness and a real session were not available.

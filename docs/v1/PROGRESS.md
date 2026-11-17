@@ -3,6 +3,39 @@
 Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Tested locally" names the command;
 "not run" says why.
 
+## 2026-11-15 - step 5, memory (local session, branch `local/shelf-step5`)
+
+- Done (DECISIONS D6): Link v1.0.8 to v1.0.10 (`2748ebf`); U1 (resident starts run from the unpacked copy,
+  `Shelf::startsResident` decides); W0 (`arcade_trim()` 3 s after start and 2 s after each close, cancelled by a
+  reopen); SH1 (thumbnail cache 16 MiB default, 64 MiB cap, cleared with the trim); uninstall's removal of Shelf's own
+  copies confirmed to go through Link's `ArcadeInstall::uninstall` and covered in `appimage_lifecycle.py`; CI's inline
+  AppImage step replaced by `tests/appimage_resident.py`, which follows the resident. W1, W3b, OPEN1 and WH1 do not apply.
+- Tested locally, Qt 6.8.3, Ubuntu 24.04, final tree:
+  - `xvfb-run -a python3 scripts/check.py --build <dir>`: build with warnings as errors, clang-format 18, qmllint at
+    zero warnings, `check-vendor.py` (v1.0.10, 114 Qt and kit files, 25 shared), `check-shortcuts.py`,
+    `check-doc-links.py`, `test_arcade_release.py`, and 20/20 ctest (offscreen, software). New: `Memory`, `LinkTrim`,
+    `LinkUnpacked`, and two cases in `Thumbnail`.
+  - `check-vendor.py --upstream /home/user/Arcade-Link`: all hashes match the pinned commit.
+  - `QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software xvfb-run -a ctest`: 20/20 (CI's "Linux X11" step).
+  - New tests fail without the change: `startsResident` forced true (all 23 one-shot rows of the table fail), `HideRelease` not
+    cancelled by a reopen (`aReopenBeforeTheDelayCancelsTheRelease` fails), thumbnail defaults and `clearCache`
+    reverted (both new `Thumbnail` cases fail), and with the relaunch call disabled `appimage_resident.py` fails on
+    an AppImage built that way ("launcher is still running after 120 s"). CI's old inline step run against the new
+    AppImage fails (the launcher is gone), which is why it was replaced.
+  - Packaged, as CI's package job does: `scripts/package-linux.py` (AppImage 0.4.0, 99 libraries), `--appimage-extract`
+    then `tests/process_smoke.py --binary <extracted>` (14 tests), `xvfb-run -a python3 tests/appimage_resident.py
+    --appimage <file>` (passes: launcher exits 0, resident runs from `<data>/arcade/runtime/shelf-0.4.0-<16 hex>/`,
+    `--status` and `--quit` follow it, no runtime process left) and `dbus-run-session -- python3
+    tests/appimage_lifecycle.py --appimage <file>` (2 tests, including the new uninstall-removes-copies check). All
+    with `APPIMAGE_EXTRACT_AND_RUN=1`, as CI.
+  - W0 spot check: a `--background` resident on the extracted binary went from 66 MB RSS (50 MB file pages) at 1.5 s
+    to 19.5 MB (3.6 MB file pages) at 6.5 s. A lab number, not the audit's budget.
+- Not run: Windows and macOS builds and installers (CI only; the changed code is Linux-guarded or portable Qt);
+  the AppImage on a real FUSE mount (extract-and-run only, as CI); the audit's lab harness and the 40 PSS / 48 RSS
+  budget; a real desktop or GPU. Link's `v1.0.10` tag was not yet on the remote when this was vendored, so the pin
+  was made from the commit through a scratch clone tagged locally; the reusable-workflow pins (`@v1.0.10`) resolve
+  only once Link publishes that tag.
+
 ## 2026-11-15 - step 4 (cloud session, branch `claude/sharp-cori-29w5eg`)
 
 - Dead code removed, one commit each (DECISIONS D5, with how each was proved unused): `Store::add` split into stages

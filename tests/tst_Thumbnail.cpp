@@ -230,6 +230,45 @@ private slots:
         QVERIFY(read(provider, first, {256, 180}, &image));
         QCOMPARE(image.pixelColor(0, 0), QColor(Qt::cyan));
     }
+    void cacheDefaultsToSixteenMiBAndNeverExceedsSixtyFour()
+    {
+        constexpr qint64 MiB = 1024 * 1024;
+        ThumbnailProvider provider;
+        QCOMPARE(provider.cacheLimitBytes(), 16 * MiB);
+        provider.setCacheLimitBytes(32 * MiB);
+        QCOMPARE(provider.cacheLimitBytes(), 32 * MiB);
+        provider.setCacheLimitBytes(64 * MiB);
+        QCOMPARE(provider.cacheLimitBytes(), 64 * MiB);
+        // The stored preference may go up to 1 GiB; the cache stops at 64 MiB.
+        provider.setCacheLimitBytes(1024 * MiB);
+        QCOMPARE(provider.cacheLimitBytes(), 64 * MiB);
+        provider.setCacheLimitBytes(-1);
+        QCOMPARE(provider.cacheLimitBytes(), 0);
+    }
+    void clearCacheDropsDecodedThumbnailsAndTheNextRequestDecodesAgain()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("shown.bmp");
+        const QDateTime modified = QDateTime::fromMSecsSinceEpoch(1700000000000, QTimeZone::UTC);
+        QVERIFY(saveBmp(path, Qt::red, {900, 600}, modified));
+        ThumbnailProvider provider;
+        QCOMPARE(provider.cachedBytes(), 0);
+        QImage image;
+        QVERIFY(read(provider, path, {256, 180}, &image));
+        QCOMPARE(image.pixelColor(0, 0), QColor(Qt::red));
+        QVERIFY(provider.cachedBytes() >= image.sizeInBytes());
+        // Same size and timestamp: only a decode can show the new colour.
+        QVERIFY(saveBmp(path, Qt::blue, {900, 600}, modified));
+        QVERIFY(read(provider, path, {256, 180}, &image));
+        QCOMPARE(image.pixelColor(0, 0), QColor(Qt::red));
+        provider.clearCache();
+        QCOMPARE(provider.cachedBytes(), 0);
+        QCOMPARE(provider.cacheLimitBytes(), 16 * 1024 * 1024);
+        QVERIFY(read(provider, path, {256, 180}, &image));
+        QCOMPARE(image.pixelColor(0, 0), QColor(Qt::blue));
+        QVERIFY(provider.cachedBytes() > 0);
+    }
     void pendingRequestsFinishDuringProviderShutdown()
     {
         QTemporaryDir directory;

@@ -23,8 +23,9 @@ The GUI thread renders and handles gestures. One event-loop worker owns Store
 and the two local servers. Another event-loop worker owns the watched registry.
 A temporary invocation thread handles one active peer call; thumbnails use a
 dedicated pool of at most two workers, created on demand and expired after five
-seconds. Its cache honors `thumbnailQuotaBytes` (64 MiB by default; zero disables
-the cache), separately from Qt Quick textures. No discovery, filesystem scan,
+seconds. Its cache honors `thumbnailQuotaBytes` (16 MiB by default, at most 64 MiB
+whatever is stored; zero disables the cache) and is emptied two seconds after
+the panel closes, separately from Qt Quick textures. No discovery, filesystem scan,
 or clipboard polling timer runs while idle. A cancellation timer exists only
 while an interactive picker is outstanding.
 
@@ -130,8 +131,8 @@ X11 test covers the delayed retrieval and original-file safety.
 ## Dependencies and evidence
 
 Arcade Link Qt source is unchanged from code commit
-`33650a87b6999fbd553ac678cc7bde7a308cb852` (`v0.3.0`, with optional hub methods,
-tray hosting and installation). Hash checks and all protocol
+`2748ebf49eba78b131a1d41a40f92997d9141ffb` (`v1.0.10`, with hub methods,
+tray hosting, installation and the unpacked runtime). Hash checks and all protocol
 vectors are included. ShelfInvoke adapts Wheel's existing bounded lifecycle
 pattern because the shared Qt client can wait indefinitely for a noncompliant
 job. No frozen protocol or release tag is changed.

@@ -1,0 +1,91 @@
+name: Gates
+
+# PLAN "Release" step 2: every exit gate against the published files of a release candidate, never a local build.
+# Run it on the rc tag ("Use workflow from: v1.0.0-rc.N") once "Release" has published it; "Promote" only after a
+# green run on the rc it promotes. The shared gates (published files and manifest, conformance, N-1, budgets, the
+# delta through Tools' updater, Windows and macOS smoke) are Link's app-gates.yml; Shelf adds its own Linux checks on
+# the published AppImage, the upgrade from the previous release and both desktop suites.
+on:
+  workflow_dispatch:
+    inputs:
+      previous:
+        description: The previous stable release (upgrade test, and the delta "from the previous release")
+        default: v0.4.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shelf-gates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gates:
+    uses: qa-p1/Arcade-Link/.github/workflows/app-gates.yml@v1.0.13
+    with:
+      app: arcade.shelf
+      name: shelf
+      previous: ${{ inputs.previous }}
+      link-ref: v1.0.13
+      # What Qt's xcb platform plugin loads from the system (the AppImage keeps the X11/XCB client libraries the
+      # system's), and xauth for xvfb-run.
+      linux-packages: >-
+        xauth libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0
+        libxcb-xkb1 libxkbcommon-x11-0
+      # The packaged resident (it runs from its unpacked copy, --status and --quit reach it, nothing is left) and the
+      # install, repair and uninstall lifecycle, on the published AppImage.
+      linux-checks: |
+        env -u QT_QUICK_BACKEND -u LD_LIBRARY_PATH xvfb-run -a python3 tests/appimage_resident.py --appimage "$RC"
+        dbus-run-session -- python3 tests/appimage_lifecycle.py --appimage "$RC"
+      # The installers' files carry the version without the rc suffix (Arcade-Shelf-1.0.0-windows-x64.exe).
+      windows-check: >-
+        v="${GITHUB_REF_NAME#v}";
+        pwsh -NoProfile -File scripts/test-windows-installer.ps1 -Version "${v%-rc.*}" -Output rc
+      macos-check: v="${GITHUB_REF_NAME#v}"; sh scripts/test-macos-installer.sh "${v%-rc.*}" rc
+
+  # The upgrade with a user's data from the previous release. Not in the gates' Linux job: that runs on Ubuntu 22.04
+  # (the oldest supported), and 0.4.0 was built on 24.04 and needs glibc 2.38, so it cannot start there. The files
+  # are the ones the gates downloaded and checked against SHA256SUMS.txt.
+  upgrade:
+    name: Upgrade from the previous release with the user's data
+    needs: gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux packages
+        timeout-minutes: 15
+        run: |
+          for i in 1 2 3; do
+            sudo apt-get update -o Acquire::Retries=3 && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              --no-install-recommends xvfb xauth dbus-x11 desktop-file-utils libfuse2t64 libegl1 libgl1-mesa-dri libfontconfig1 \
+              libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 \
+              libxcb-xkb1 libxkbcommon-x11-0 && break
+            sleep $((i * 10))
+          done
+      - uses: actions/download-artifact@v4
+        with: { name: gate-rc, path: rc }
+      - uses: actions/download-artifact@v4
+        with: { name: gate-previous, path: previous }
+      - name: Upgrade the previous release to the rc
+        run: |
+          chmod +x rc/*.AppImage previous/*.AppImage
+          dbus-run-session -- xvfb-run -a python3 scripts/verify-upgrade.py \
+            "$PWD/$(ls previous/*.AppImage)" "$PWD/$(ls rc/*.AppImage)"
+
+  # Tier 1 (headless Hyprland) blocks on any failure; Tier 2 (sway, KWin, Mutter, X11) on a crash or data loss.
+  desktop:
+    needs: gates
+    uses: qa-p1/Arcade-Link/.github/workflows/desktop-e2e.yml@v1.0.13
+    with:
+      name: shelf
+      test: tests/desktop/shelf_desktop.py
+      args: '"$APP"'
+      artifact: gate-appimage
+      link-ref: v1.0.13
+  desktop-tier2:
+    needs: gates
+    uses: qa-p1/Arcade-Link/.github/workflows/desktop-tier2.yml@v1.0.13
+    with:
+      artifact: gate-appimage
+      link-ref: v1.0.13

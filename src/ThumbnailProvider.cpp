@@ -19,7 +19,7 @@
 namespace Shelf {
 struct ThumbnailCache {
     QMutex mutex;
-    QCache<QString, QImage> images{64 * 1024}; // Costs in KiB.
+    QCache<QString, QImage> images{int(ThumbnailProvider::DefaultCacheBytes / 1024)}; // Costs in KiB.
 };
 namespace {
 class Response final : public QQuickImageResponse, public QRunnable {
@@ -120,9 +120,24 @@ ThumbnailProvider::ThumbnailProvider() : m_cache(std::make_shared<ThumbnailCache
 ThumbnailProvider::~ThumbnailProvider() { m_pool.waitForDone(); }
 void ThumbnailProvider::setCacheLimitBytes(qint64 bytes)
 {
-    const int kib = int(qBound<qint64>(0, bytes, 1024LL * 1024 * 1024) / 1024);
+    const int kib = int(qBound<qint64>(0, bytes, MaxCacheBytes) / 1024);
     QMutexLocker lock(&m_cache->mutex);
     if (m_cache->images.maxCost() != kib) m_cache->images.setMaxCost(kib);
+}
+qint64 ThumbnailProvider::cacheLimitBytes() const
+{
+    QMutexLocker lock(&m_cache->mutex);
+    return qint64(m_cache->images.maxCost()) * 1024;
+}
+void ThumbnailProvider::clearCache()
+{
+    QMutexLocker lock(&m_cache->mutex);
+    m_cache->images.clear();
+}
+qint64 ThumbnailProvider::cachedBytes() const
+{
+    QMutexLocker lock(&m_cache->mutex);
+    return qint64(m_cache->images.totalCost()) * 1024;
 }
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &requestedSize)
 {

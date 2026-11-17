@@ -50,3 +50,33 @@ adopting v0.3.0. No Qt Tools-side host is required in this release.
 The five test executables run every old/new vector, native platform helpers,
 Qt client ↔ Rust methods and Qt watcher → Rust fake-host interop. Set
 `ARCADE_LINK_CLI` to the built Rust CLI for those interop tests.
+
+## Unpacked runtime (`arcade_unpacked.h`)
+
+`arcade_relaunch_unpacked(app_id, version, wait, argv)` is the C twin of
+`arcade_link::runtime::relaunch_unpacked` (RT-7): an app running from its
+AppImage's FUSE mount copies the image once to
+`<data>/arcade/runtime/<app>-<version>-<key>/` and runs the same command line
+from there, so no FUSE helper stays resident. Call it first thing in `main`,
+before `QApplication` (or the Flutter engine), and exit with the returned code
+unless it is `-1`:
+
+```cpp
+int main(int argc, char **argv) {
+    const int code = arcade_relaunch_unpacked("arcade.shelf", APP_VERSION, 0, argv);
+    if (code != -1)
+        return code;
+    QApplication app(argc, argv);
+    ...
+}
+```
+
+`-1` means nothing was done and the app keeps running (not in an AppImage,
+already the copy or `ARCADE_UNPACKED=1`, copying failed). The copy runs with
+`ARCADE_UNPACKED` set to its own folder; a value naming another folder was
+inherited (a Restart's successor, an app started by a copy) and is dropped, so
+that process still relaunches. `arcade_is_unpacked_copy()` tells the app
+whether it is the copy. One-shot CLI calls pass
+`wait=1` and get the copy's exit status; resident starts pass `wait=0` and
+get 0 at once. The header is Linux only (a no-op returning `-1` elsewhere)
+and compiles as C and C++.

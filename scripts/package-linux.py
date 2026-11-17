@@ -27,7 +27,10 @@ BASE_LIBS = re.compile(
     r"^(linux-vdso|ld-linux"
     r"|lib(c|m|pthread|dl|rt|resolv|util|nss_.*)\.so"
     r"|lib(stdc\+\+|gcc_s)\.so"
-    r"|lib(GL|EGL|GLX|GLESv2|OpenGL|GLdispatch|gbm|drm|vulkan)\.so"
+    # Not libOpenGL.so.0, glvnd's vendor-neutral dispatcher, which Qt links: its package (libopengl0) is missing from
+    # some desktops (and Link's Tier 2 sway, KWin, Mutter and X11 sessions), where Shelf then failed to start. It is
+    # bundled; the host's libGLdispatch and drivers stay the system's.
+    r"|lib(GL|EGL|GLX|GLESv2|GLdispatch|gbm|drm|vulkan)\.so"
     r"|lib(fontconfig|freetype|harfbuzz|expat|z|uuid|dbus-1|asound|xkbcommon|xkbcommon-x11)\.so"
     r"|libwayland-|libxcb|libX11|libXau|libXdmcp|libXext|libXrender|libXi|libXfixes|libSM|libICE)")
 APPIMAGETOOL_VERSION = "1.9.0"
@@ -105,7 +108,8 @@ def main() -> int:
         executable = bundle / "bin/arcade-shelf"
         if not executable.is_file():
             raise SystemExit("Expected CMake install to create bin/arcade-shelf")
-        for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "platformthemes", "xcbglintegrations", "egldeviceintegrations", "tls"):
+        for plugin in ("platforms", "wayland-decoration-client", "wayland-graphics-integration-client", "wayland-shell-integration", "imageformats", "iconengines", "platformthemes", "xcbglintegrations", "egldeviceintegrations"):
+            # No "tls": Shelf has no network code (SECURITY.md), so Qt's TLS backends would only be unused code.
             for plugin_root in plugin_roots:
                 copy_tree(plugin_root / plugin, bundle / "plugins" / plugin)
         # Shelf uses only SQLite. Other SDK SQL drivers link external server
@@ -249,12 +253,14 @@ def build_appimage(source: Path, bundle: Path, output: Path, version: str, tools
     shutil.copytree(bundle, appdir / "usr", symlinks=True)
     (appdir / "usr/arcade-shelf").unlink()
     icon = "dev.arcade.Shelf"  # the OS identifier (STANDARD §10)
-    for directory in ("usr/share/applications", "usr/share/icons/hicolor/scalable/apps", "usr/share/metainfo"):
+    for directory in ("usr/share/applications", "usr/share/icons/hicolor/scalable/apps", "usr/share/icons/hicolor/symbolic/apps",
+                      "usr/share/metainfo"):
         (appdir / directory).mkdir(parents=True, exist_ok=True)
     shutil.copy2(source / f"packaging/linux/{icon}.desktop", appdir / f"usr/share/applications/{icon}.desktop")
     shutil.copy2(source / f"packaging/linux/{icon}.desktop", appdir / f"{icon}.desktop")
-    shutil.copy2(source / "packaging/icons/icon.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
-    shutil.copy2(source / "packaging/icons/icon.svg", appdir / f"{icon}.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}.svg", appdir / f"usr/share/icons/hicolor/scalable/apps/{icon}.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}-symbolic.svg", appdir / f"usr/share/icons/hicolor/symbolic/apps/{icon}-symbolic.svg")
+    shutil.copy2(source / f"packaging/linux/{icon}.svg", appdir / f"{icon}.svg")
     shutil.copy2(source / f"packaging/linux/{icon}.metainfo.xml", appdir / f"usr/share/metainfo/{icon}.metainfo.xml")
     (appdir / ".DirIcon").symlink_to(f"{icon}.svg")
     apprun = appdir / "AppRun"

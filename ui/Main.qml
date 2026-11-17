@@ -102,9 +102,11 @@ Window {
         grid.positionViewAtIndex(cursorIndex, GridView.Contain);
     }
     function runOffer(offer: var) {
+        // PeerHub's confirmationRequired (tests/tst_PeerHub.cpp) is the rule; the panel also asks before a peer
+        // keeps, copies or writes anything. Before 1.0 this list missed executes-commands and window-control.
         const effects = offer.effects || [];
-        const confirm = ["network", "uploads-content", "sends-to-device", "persists", "clipboard", "writes-files", "overwrites-files", "deletes-files"];
-        if (effects.some(effect => confirm.indexOf(effect) >= 0)) {
+        const confirm = ["network", "uploads-content", "sends-to-device", "persists", "clipboard", "writes-files", "overwrites-files", "deletes-files", "executes-commands", "window-control"];
+        if (offer.confirmationRequired || effects.some(effect => confirm.indexOf(effect) >= 0)) {
             pendingOffer = offer;
             (confirmActionLoader.get() as Dialog).open();
         } else shelf.runPeer(offer.app, offer.action || offer.id);

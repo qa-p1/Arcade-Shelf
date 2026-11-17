@@ -12,9 +12,10 @@ if(UNIX AND NOT APPLE)
             DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
     install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/dev.arcade.Shelf.metainfo.xml"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
-    install(FILES "${PROJECT_SOURCE_DIR}/packaging/icons/icon.svg"
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
-            RENAME dev.arcade.Shelf.svg)
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/dev.arcade.Shelf.svg"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/dev.arcade.Shelf-symbolic.svg"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/symbolic/apps")
 endif()
 set(CPACK_PACKAGE_NAME "Arcade-Shelf")
 set(CPACK_PACKAGE_VENDOR "Arcade contributors")
