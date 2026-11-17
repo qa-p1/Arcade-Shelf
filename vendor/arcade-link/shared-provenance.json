@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-Link",
-  "commit": "2748ebf49eba78b131a1d41a40f92997d9141ffb",
-  "reference": "v1.0.10",
+  "commit": "a24146fd87ff77ed362f518a414eaf266512f839",
+  "reference": "v1.0.13",
   "files": [
     {
       "source": "packaging/windows/README.md",
@@ -65,7 +65,7 @@
     },
     {
       "source": "design/app-icons/shelf/icon.svg",
-      "destination": "packaging/icons/icon.svg",
+      "destination": "packaging/linux/dev.arcade.Shelf.svg",
       "sha256": "c7428b971ce6da52c69c4f69f0584fa45715a5af8ef181a5a0f4c76b56ecce0e"
     },
     {
@@ -125,7 +125,7 @@
     },
     {
       "source": "design/glyphs/arcade.shelf.svg",
-      "destination": "assets/glyph.svg",
+      "destination": "packaging/linux/dev.arcade.Shelf-symbolic.svg",
       "sha256": "42ff3fbca18365d18875061617446aca6876bf5f740160412663d3460f81e0cc"
     }
   ]

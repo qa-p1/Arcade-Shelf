@@ -38,6 +38,7 @@ class UnpackedTest : public QObject {
     writeFile(dir + "/AppRun",
               "#!/bin/sh\n"
               "{ echo \"APPDIR=$APPDIR\"; echo \"UNPACKED=$ARCADE_UNPACKED\"; echo \"APPIMAGE=$APPIMAGE\"; echo \"ARENAS=$MALLOC_ARENA_MAX\";\n"
+              "  echo \"SCHEMAS=$GSETTINGS_SCHEMA_DIR\"; echo \"DATA=$XDG_DATA_DIRS\"; echo \"OWD=$OWD\"; echo \"PREFIX=$GTK_DATA_PREFIX\";\n"
               "  for a in \"$@\"; do echo \"ARG=$a\"; done; } > \"$MARKER\"\n"
               "exit 7\n",
               Exec);
@@ -107,7 +108,7 @@ private slots:
     QVERIFY(QFile::exists(copy + "/.complete"));
     const QStringList m = marker();
     QVERIFY2(m.contains("APPDIR=" + copy), qPrintable(m.join('|')));
-    QVERIFY(m.contains("UNPACKED=1"));
+    QVERIFY2(m.contains("UNPACKED=" + copy), qPrintable(m.join('|')));
     QVERIFY(m.contains("APPIMAGE=" + m_image));
     QVERIFY(m.contains("ARG=a"));
     QVERIFY(m.contains("ARG=b c"));
@@ -130,6 +131,50 @@ private slots:
     QCOMPARE(copies().size(), 1); // no tmp folder left, no second folder
     QVERIFY(QFile::exists(copy + "/.complete"));
     QVERIFY(QRegularExpression("^test-1\\.2\\.3-[0-9a-f]{16}$").match(copies().first()).hasMatch());
+  }
+
+  // The copy runs with its own folder as the marker and does not relaunch again.
+  void theCopyWithItsOwnMarkerKeepsRunning() {
+    QCOMPARE(runProbe(m_mount + "/usr/bin/probe", baseEnv()), 7);
+    const QString copy = m_data + "/arcade/runtime/" + copies().first();
+    auto env = baseEnv();
+    env.insert("APPDIR", copy);
+    env.insert(QStringLiteral(ARCADE_UNPACKED_ENV), copy);
+    QFile::remove(m_marker);
+    QCOMPARE(runProbe(copy + "/usr/bin/probe", env), 42);
+    QVERIFY(!QFile::exists(m_marker));
+  }
+
+  // A marker inherited from another copy (a Restart's successor, an app started by one) does not stop the relaunch.
+  void anInheritedMarkerStillRelaunches() {
+    const QString other = m_data + "/arcade/runtime/other-1.0.0-0123456789abcdef";
+    QVERIFY(QDir().mkpath(other));
+    auto env = baseEnv();
+    env.insert(QStringLiteral(ARCADE_UNPACKED_ENV), other);
+    QCOMPARE(runProbe(m_mount + "/usr/bin/probe", env), 7);
+    const QString copy = m_data + "/arcade/runtime/" + copies().filter(QStringLiteral("test-")).first();
+    QVERIFY2(marker().contains("UNPACKED=" + copy), qPrintable(marker().join('|')));
+    env.insert(QStringLiteral(ARCADE_UNPACKED_ENV), m_root + "/gone");
+    QFile::remove(m_marker);
+    QCOMPARE(runProbe(m_mount + "/usr/bin/probe", env), 7);
+    QVERIFY(QFile::exists(m_marker));
+  }
+
+  // The launcher's AppRun pointed variables into the mount, which goes away when it exits: the copy sees none of
+  // them (a hook that ran gsettings on the vanishing mount crashed and hung), but keeps APPIMAGE and OWD.
+  void theCopySeesNothingOfTheMount() {
+    auto env = baseEnv();
+    env.insert("GSETTINGS_SCHEMA_DIR", m_mount + "//usr/share/glib-2.0/schemas");
+    env.insert("XDG_DATA_DIRS", m_mount + "/usr/share:/usr/share:/tmp/.mount_Other/usr/share:/usr/share");
+    env.insert("GTK_DATA_PREFIX", m_mount);
+    env.insert("OWD", "/home/u/Pictures");
+    QCOMPARE(runProbe(m_mount + "/usr/bin/probe", env), 7);
+    const QStringList m = marker();
+    QVERIFY2(m.contains("SCHEMAS="), qPrintable(m.join('|')));
+    QVERIFY2(m.contains("DATA=/usr/share"), qPrintable(m.join('|')));
+    QVERIFY2(m.contains("PREFIX="), qPrintable(m.join('|')));
+    QVERIFY2(m.contains("OWD=/home/u/Pictures"), qPrintable(m.join('|')));
+    QVERIFY(m.contains("APPIMAGE=" + m_image));
   }
 
   void aUserArenaCapIsPassedOn() {

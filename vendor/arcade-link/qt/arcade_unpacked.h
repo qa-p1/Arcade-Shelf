@@ -9,8 +9,14 @@
  * come from the real disk. $APPIMAGE is kept, so everything that advertises or
  * restarts the app still uses the installed AppImage.
  *
+ * The copy runs with ARCADE_UNPACKED set to its folder. "1" (a test harness,
+ * or by hand) means never relaunch; any other folder was inherited from
+ * another copy (a Restart's successor, an app one started) and is dropped, so
+ * this process still relaunches. arcade_is_unpacked_copy() answers "am I the
+ * copy" for the app.
+ *
  * Returns -1 when nothing is to be done and the app keeps running (not in an
- * AppImage, ARCADE_UNPACKED already set, the executable is outside $APPDIR,
+ * AppImage, already the copy or ARCADE_UNPACKED=1, the executable is outside $APPDIR,
  * copying or starting the copy failed). Otherwise the copy has been started
  * and the return value is the code the caller must exit with: with wait
  * (one-shot CLI calls) the copy's own exit status, without it (resident
@@ -348,6 +354,104 @@ static inline int arcade_unpacked_key(const char *appimage, char out[17])
     return 0;
 }
 
+/* Whether entry (len bytes, one element of a ':' list) lies in the image's mount: appdir itself or below it, or any
+ * component starting with ".mount_" (childenv::in_mount). */
+static inline int arcade_unpacked_in_mount(const char *entry, size_t len, const char *appdir)
+{
+    size_t d = appdir ? strlen(appdir) : 0;
+    while (len > 0 && entry[len - 1] == '/')
+        --len;
+    while (d > 0 && appdir[d - 1] == '/')
+        --d;
+    if (d > 0 && len >= d && strncmp(entry, appdir, d) == 0 && (len == d || entry[d] == '/'))
+        return 1;
+    for (size_t i = 0; i + 7 <= len; ++i)
+        if ((i == 0 || entry[i - 1] == '/') && strncmp(entry + i, ".mount_", 7) == 0)
+            return 1;
+    return 0;
+}
+
+/* Whether the ':' list kept (its first n bytes) already holds entry. */
+static inline int arcade_unpacked_listed(const char *kept, size_t n, const char *entry, size_t len)
+{
+    for (size_t i = 0; i < n;) {
+        size_t j = i;
+        while (j < n && kept[j] != ':')
+            ++j;
+        if (j - i == len && strncmp(kept + i, entry, len) == 0)
+            return 1;
+        i = j + 1;
+    }
+    return 0;
+}
+
+/* The entry var ("NAME=value") as the unpacked copy gets it (runtime.rs copy_changes): var itself, a new string with
+ * the mount's entries taken out of a ':' list (also stored in *fresh, for the caller to free), or 0 to leave it out.
+ * This process's AppRun pointed GSETTINGS_SCHEMA_DIR, GIO_EXTRA_MODULES, XDG_DATA_DIRS and more into the mount,
+ * which goes away when this process exits; the copy's AppRun sets them again, but only after its GTK hook has run
+ * gsettings, which then read the vanishing mount, crashed and hung in its core dump. APPIMAGE, OWD and ARGV0 stay. */
+static inline const char *arcade_unpacked_child_var(const char *var, const char *appdir, int gtk_hook, char **fresh)
+{
+    static const char *const drop[] = {"APPDIR", ARCADE_UNPACKED_ENV, "GTK_DATA_PREFIX", "GTK_EXE_PREFIX", "GTK_PATH",
+                                       "GTK_IM_MODULE_FILE", "GDK_PIXBUF_MODULE_FILE", "GIO_MODULE_DIR",
+                                       "GI_TYPELIB_PATH", "PYTHONHOME", "PYTHONDONTWRITEBYTECODE",
+                                       "QT_QPA_PLATFORM_PLUGIN_PATH", 0};
+    const char *eq = strchr(var, '=');
+    const char *value, *p;
+    size_t name;
+    int any = 0, kept = 0;
+    char *out, *w;
+    *fresh = 0;
+    if (!eq)
+        return var;
+    name = (size_t)(eq - var);
+    for (const char *const *d = drop; *d; ++d)
+        if (strlen(*d) == name && strncmp(var, *d, name) == 0)
+            return 0;
+    /* linuxdeploy's GTK hook forces Adwaita whenever it runs (its signature: GTK_DATA_PREFIX in the mount). */
+    if (gtk_hook && name == 9 && strncmp(var, "GTK_THEME", 9) == 0)
+        return 0;
+    value = eq + 1;
+    for (p = value;;) {
+        const char *e = strchr(p, ':');
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        if (arcade_unpacked_in_mount(p, len, appdir))
+            any = 1;
+        if (!e)
+            break;
+        p = e + 1;
+    }
+    if (!any)
+        return var;
+    out = (char *)malloc(strlen(var) + 1);
+    if (!out)
+        return 0;
+    memcpy(out, var, name + 1);
+    w = out + name + 1;
+    for (p = value;;) {
+        const char *e = strchr(p, ':');
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        if (len > 0 && !arcade_unpacked_in_mount(p, len, appdir) &&
+            !arcade_unpacked_listed(out + name + 1, (size_t)(w - (out + name + 1)), p, len)) {
+            if (kept)
+                *w++ = ':';
+            memcpy(w, p, len);
+            w += len;
+            kept = 1;
+        }
+        if (!e)
+            break;
+        p = e + 1;
+    }
+    *w = '\0';
+    if (!kept) {
+        free(out);
+        return 0;
+    }
+    *fresh = out;
+    return out;
+}
+
 /* Runs dir/AppRun with argv[1..] and the unpacked environment. The child makes
  * every descriptor above stdio close-on-exec first (childenv::detach_from_image).
  * Returns the pid, or -1 when the copy could not be started. */
@@ -364,12 +468,19 @@ static inline pid_t arcade_unpacked_spawn(const char *dir, char *const argv[])
         ++nenv;
     char **args = (char **)malloc((nargs + 2) * sizeof *args);
     char **env = (char **)malloc((nenv + 3) * sizeof *env);
+    char **fresh = (char **)calloc(nenv + 1, sizeof *fresh);
+    const char *appdir = getenv("APPDIR");
+    const char *prefix = getenv("GTK_DATA_PREFIX");
+    const int gtk_hook = prefix && arcade_unpacked_in_mount(prefix, strlen(prefix), appdir);
+    size_t nfresh = 0;
     char *appdir_var = (char *)malloc(strlen(dir) + 8);
+    char *marker_var = (char *)malloc(strlen(dir) + sizeof ARCADE_UNPACKED_ENV + 1);
     pid_t pid = -1;
     int errpipe[2] = {-1, -1};
-    if (!args || !env || !appdir_var)
+    if (!args || !env || !fresh || !appdir_var || !marker_var)
         goto done;
     sprintf(appdir_var, "APPDIR=%s", dir);
+    sprintf(marker_var, ARCADE_UNPACKED_ENV "=%s", dir);
     args[0] = apprun;
     for (size_t i = 1; i < nargs; ++i)
         args[i] = argv[i];
@@ -377,13 +488,14 @@ static inline pid_t arcade_unpacked_spawn(const char *dir, char *const argv[])
     {
         size_t k = 0;
         for (size_t i = 0; i < nenv; ++i) {
-            const char *v = environ[i];
-            if (strncmp(v, "APPDIR=", 7) == 0 || strncmp(v, ARCADE_UNPACKED_ENV "=", sizeof ARCADE_UNPACKED_ENV) == 0)
-                continue;
-            env[k++] = environ[i];
+            const char *v = arcade_unpacked_child_var(environ[i], appdir, gtk_hook, &fresh[nfresh]);
+            if (fresh[nfresh])
+                ++nfresh;
+            if (v)
+                env[k++] = (char *)v;
         }
         env[k++] = appdir_var;
-        env[k++] = (char *)(ARCADE_UNPACKED_ENV "=1");
+        env[k++] = marker_var;
         env[k] = 0;
     }
     if (pipe2(errpipe, O_CLOEXEC) != 0)
@@ -426,10 +538,40 @@ done:
         close(errpipe[1]);
     free(args);
     free(env);
+    if (fresh)
+        for (size_t i = 0; i < nfresh; ++i)
+            free(fresh[i]);
+    free(fresh);
     free(appdir_var);
+    free(marker_var);
     return pid > 0 ? pid : -1;
 }
 #endif /* __linux__ */
+
+/* Whether this process runs from its unpacked copy (or was told never to
+ * relaunch): ARCADE_UNPACKED is "1" or names the folder this executable runs
+ * from, compared canonical. The C twin of runtime::is_unpacked_copy. */
+static inline int arcade_is_unpacked_copy(void)
+{
+#if defined(__linux__)
+    char exe[PATH_MAX], folder[PATH_MAX];
+    const char *value = getenv(ARCADE_UNPACKED_ENV);
+    ssize_t n;
+    if (!value)
+        return 0;
+    if (strcmp(value, "1") == 0)
+        return 1;
+    if (!*value || !realpath(value, folder))
+        return 0;
+    n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n <= 0)
+        return 0;
+    exe[n] = '\0';
+    return arcade_unpacked_inside(exe, folder);
+#else
+    return 0;
+#endif
+}
 
 static inline int arcade_relaunch_unpacked(const char *app_id, const char *version, int wait, char *const argv[])
 {
@@ -439,8 +581,12 @@ static inline int arcade_relaunch_unpacked(const char *app_id, const char *versi
     const char *appdir = getenv("APPDIR");
     ssize_t n;
     pid_t pid;
-    if (getenv(ARCADE_UNPACKED_ENV))
-        return -1;
+    if (getenv(ARCADE_UNPACKED_ENV)) {
+        if (arcade_is_unpacked_copy())
+            return -1;
+        /* Inherited from another copy: not this process's (first thing in main, no threads yet). */
+        unsetenv(ARCADE_UNPACKED_ENV);
+    }
     if (!appimage || !*appimage || !appdir || !*appdir)
         return -1;
     n = readlink("/proc/self/exe", exe, sizeof exe - 1);

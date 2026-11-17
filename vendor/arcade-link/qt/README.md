@@ -72,7 +72,11 @@ int main(int argc, char **argv) {
 ```
 
 `-1` means nothing was done and the app keeps running (not in an AppImage,
-`ARCADE_UNPACKED` already set, copying failed). One-shot CLI calls pass
+already the copy or `ARCADE_UNPACKED=1`, copying failed). The copy runs with
+`ARCADE_UNPACKED` set to its own folder; a value naming another folder was
+inherited (a Restart's successor, an app started by a copy) and is dropped, so
+that process still relaunches. `arcade_is_unpacked_copy()` tells the app
+whether it is the copy. One-shot CLI calls pass
 `wait=1` and get the copy's exit status; resident starts pass `wait=0` and
 get 0 at once. The header is Linux only (a no-op returning `-1` elsewhere)
 and compiles as C and C++.

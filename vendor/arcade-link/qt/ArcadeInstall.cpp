@@ -1936,7 +1936,9 @@ QProcessEnvironment ArcadeInstall::childEnvironment(QProcessEnvironment environm
       QStringLiteral("GTK_DATA_PREFIX"), QStringLiteral("GTK_EXE_PREFIX"), QStringLiteral("GTK_PATH"),
       QStringLiteral("GTK_IM_MODULE_FILE"), QStringLiteral("GDK_PIXBUF_MODULE_FILE"), QStringLiteral("GIO_MODULE_DIR"),
       QStringLiteral("GI_TYPELIB_PATH"), QStringLiteral("PYTHONHOME"), QStringLiteral("PYTHONDONTWRITEBYTECODE"),
-      QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH")};
+      QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"),
+      // Marks the unpacked copy (arcade_unpacked.h); a program it starts is not that copy.
+      QStringLiteral("ARCADE_UNPACKED")};
   const bool gtkHook = inMount(environment.value(QStringLiteral("GTK_DATA_PREFIX"))) &&
                        environment.contains(QStringLiteral("GTK_DATA_PREFIX"));
   for (const auto &key : environment.keys()) {
