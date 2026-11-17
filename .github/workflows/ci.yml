@@ -17,6 +17,16 @@ concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  # Shelf's only package-manager dependencies are GitHub Actions (Qt is pinned above and Link is vendored, see
+  # SECURITY.md); a pull request that adds or bumps one with a known advisory fails here. Dependabot keeps them current.
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
   check:
     name: check (${{ matrix.os }})
     strategy:
@@ -47,6 +57,7 @@ jobs:
           cache: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 20
         run: sudo apt-get update && sudo apt-get install -y ninja-build clang-format-18 xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Windows build tools
         if: runner.os == 'Windows'
@@ -83,7 +94,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          # The AppImage bundles libraries from the build host, so it is built on the oldest supported Ubuntu
+          # (package-linux.py). 0.4.0 was built on 24.04 and needs glibc 2.38; this one starts on 22.04 and later,
+          # which Link's gates also need (their Linux job runs the published AppImage on 22.04).
+          - os: ubuntu-22.04
             name: linux-x64
             qt_arch: linux_gcc_64
           - os: windows-2022
@@ -107,6 +121,7 @@ jobs:
           cache: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 20
         run: sudo apt-get update && sudo apt-get install -y ninja-build patchelf desktop-file-utils xvfb xauth xdotool libx11-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Windows build tools
         if: runner.os == 'Windows'
