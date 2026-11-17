@@ -27,11 +27,16 @@ jobs:
       name: shelf
       previous: ${{ inputs.previous }}
       link-ref: v1.0.13
-      # What Qt's xcb platform plugin loads from the system (the AppImage keeps the X11/XCB client libraries the
-      # system's), and xauth for xvfb-run.
+      # Every library the AppImage takes from the system (what a desktop always has: GL/EGL, X11/XCB, Wayland,
+      # fonts, D-Bus; `readelf -d` over the published image minus what it bundles), Mesa's software renderer for the
+      # headless checks, and xauth for xvfb-run. The hosted runner image is not a desktop: rc.1's gates found no
+      # libEGL.so.1 there.
       linux-packages: >-
-        xauth libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-image0 libxcb-xinerama0
-        libxcb-xkb1 libxkbcommon-x11-0
+        xauth libgl1-mesa-dri libegl1 libgl1 libglx0 libglvnd0 libgbm1 libdrm2 libwayland-client0 libwayland-cursor0
+        libwayland-egl1 libfontconfig1 libfreetype6 libharfbuzz0b libdbus-1-3 zlib1g libx11-6 libx11-xcb1 libxext6
+        libxfixes3 libxi6 libxinerama1 libxrender1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libxcb-cursor0
+        libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-render-util0
+        libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
       # The packaged resident (it runs from its unpacked copy, --status and --quit reach it, nothing is left) and the
       # install, repair and uninstall lifecycle, on the published AppImage.
       linux-checks: |
