@@ -19,7 +19,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: The tag is this version's release candidate
         id: plan
         run: |
