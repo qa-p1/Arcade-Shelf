@@ -3,6 +3,25 @@
 Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Tested locally" names the command;
 "not run" says why.
 
+## 2026-11-18 (cloud session) - 1.0.0 promoted
+
+`v1.0.0-rc.4` (e8b4a26, Link 1.0.13, Tier 2 from Link 1.0.14) passed
+[Gates](https://github.com/qa-p1/Arcade-Shelf/actions/runs/44222853395) 13/13 on its published files: published files,
+delta from v0.4.0, memory and performance budgets, Linux conformance, Windows and macOS installer smoke, N-1, the upgrade
+from 0.4.0 with the user's data, and both desktop suites (Tier 1 Hyprland; Tier 2 sway, KWin, Mutter, X11).
+[Promote](https://github.com/qa-p1/Arcade-Shelf/actions/runs/44226166895) made it
+[1.0.0](https://github.com/qa-p1/Arcade-Shelf/releases/tag/v1.0.0), now the latest release. The AppImage, dmg, setup.exe
+and SHA256SUMS.txt have the same SHA-256 digests as rc.4; `manifest.json` and `arcade-release.json` differ only in the
+channel (`test` to `stable`), the tag and the notes link, and `manifest.json.sig` is new.
+
+What the earlier rcs' Gates found, each fixed before the next rc:
+- rc.1 (d416f14): the gates runner lacked libraries the AppImage takes from the desktop (`libEGL.so.1`), so every CLI
+  conformance check exited 127. #22 installs the full list.
+- rc.2 (c619159): CLI-2, an unknown option exited 1 instead of 2 with the usage. Fixed in #23 (changelog "Fixed").
+- rc.3 (0e5da77): the upgrade job could not start 0.4.0 without libOpenGL (#24 installs every library both AppImages
+  take), and Tier 2's Mutter job timed out installing packages from a slow mirror (Link 1.0.14 caches and prefetches
+  them, #24).
+
 ## 2026-11-15 - step 5, memory (local session, branch `local/shelf-step5`)
 
 - Done (DECISIONS D6): Link v1.0.8 to v1.0.10 (`2748ebf`); U1 (resident starts run from the unpacked copy,
