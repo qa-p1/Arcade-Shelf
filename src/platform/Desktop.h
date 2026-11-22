@@ -59,6 +59,10 @@ public:
     QString lastError() const;
     // The compositor's own corner radius when it shapes Shelf's window, else -1.
     int compositorRadius() const;
+    // Whether the window's transparent margin is composited. False only on X11 with no compositing manager
+    // (openbox or i3 alone): there the margin around the rounded capsule shows as a black box, so the surface
+    // fills the window instead. Wayland, Windows and macOS always composite.
+    bool composited() const;
     // The usable area of a monitor, without panels and bars where known.
     QRect availableGeometry(const QString &screenName) const;
     Q_INVOKABLE void configureShortcut(const QString &accelerator,
@@ -115,6 +119,8 @@ private:
     void installHyprlandShortcut(quint64 generation);
     void reconcileHyprland();
     void queryHyprlandRounding();
+    void watchCompositing();
+    static bool compositingManagerRuns();
     void dispatchHyprland(const QList<std::pair<QString, QString>> &commands,
                           std::function<void(bool)> done);
 };

@@ -5,6 +5,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-22
+
+### Fixed
+- On X11 without a compositing manager (openbox or i3 alone), the capsule sat in a black box: the see-through margin
+  around its rounded card and its shadow can't be drawn there. Shelf now checks whether something composites and, when
+  nothing does, fills its window with a square surface; it checks again every few seconds, so starting or stopping a
+  compositor changes the look while Shelf runs.
+
+### Changed
+- Release, gates and CI call Arcade Link's reusable workflows at v1.0.15.
+
 ## [1.0.0] - 2026-11-17
 
 ### Changed

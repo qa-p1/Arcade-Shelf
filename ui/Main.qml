@@ -239,6 +239,7 @@ Window {
         // initiate ordinary file-manager drag transfers reliably on Wayland.
         Rectangle {
             id: shell
+            objectName: "surface"
             function updateBackdrop() {
                 window.shelf.setBackdropRegion(Qt.rect(x, y, width, height), radius);
             }
@@ -251,8 +252,11 @@ Window {
             anchors.fill: parent
             // A compositor that rounds and blurs the whole window (Hyprland)
             // gets a surface that fills it, or its blur shows square margins.
-            anchors.margins: window.dockEdge.length || window.shelf.compositorRadius >= 0 ? 0 : 6
-            radius: window.dockEdge.length ? window.tabThickness / 2 : window.shelf.compositorRadius >= 0 ? window.shelf.compositorRadius : Theme.radiusLg
+            // Without a compositor (X11 with openbox or i3 alone) nothing is
+            // see-through: the margin and the rounded corners showed as a
+            // black box, so the surface fills the window, square.
+            anchors.margins: window.dockEdge.length || window.shelf.compositorRadius >= 0 || !window.shelf.composited ? 0 : 6
+            radius: !window.shelf.composited ? 0 : window.dockEdge.length ? window.tabThickness / 2 : window.shelf.compositorRadius >= 0 ? window.shelf.compositorRadius : Theme.radiusLg
             // The tab's edge side sits flat against the screen edge.
             topLeftRadius: window.dockEdge === "left" || window.dockEdge === "top" ? 0 : radius
             topRightRadius: window.dockEdge === "right" || window.dockEdge === "top" ? 0 : radius

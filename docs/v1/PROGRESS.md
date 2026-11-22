@@ -3,6 +3,11 @@
 Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Tested locally" names the command;
 "not run" says why.
 
+## 2026-11-22 (cloud session) - 1.0.1
+
+- D7: without a compositor the capsule fills its window, square (it sat in a black box on openbox); Link workflows at
+  v1.0.15. Built and tested by CI (no Qt in the cloud container).
+
 ## 2026-11-18 (cloud session) - 1.0.0 promoted
 
 `v1.0.0-rc.4` (e8b4a26, Link 1.0.13, Tier 2 from Link 1.0.14) passed
