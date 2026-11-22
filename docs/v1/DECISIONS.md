@@ -140,3 +140,16 @@ against the Link checkout; the three reusable-workflow pins and the stale `v0.3.
 - WH1 (software renderer) is Wheel's; Shelf already forces Qt's software renderer (`main.cpp`).
 - No second trimmer while the panel is open: the audit measured the open panel as +0...2 MB.
 - The budget (40 PSS / 48 RSS) is not measured here: the lab harness and a real session were not available.
+
+## D7 — 1.0.1: a square surface when nothing composites
+
+- **Found in the owner's real-user run of Tools 1.0.1** (X11, openbox, no compositing manager): the capsule's rounded
+  card sat in a black box. The window is transparent around the card for its corners and the kit's shadow; without a
+  compositor X11 shows those pixels black.
+- **Decision:** `Desktop::composited()` is false only on X11 when no client owns `_NET_WM_CM_S<screen>` (the
+  compositing manager selection, as GTK and Qt themselves check it); Wayland, Windows and macOS always composite. It is
+  checked at start and every 5 s, so a compositor started later (picom from a session script) changes the look. When
+  false the surface fills the window with square corners, so the shadow (drawn only in the margin) is gone too. The
+  docked tab and Hyprland's rounding are unchanged. Test: `withoutACompositorTheSurfaceFillsTheWindow` (CI's Xvfb runs
+  no compositor).
+- Link's reusable workflows at v1.0.15 (they were at 1.0.13 and 1.0.14).

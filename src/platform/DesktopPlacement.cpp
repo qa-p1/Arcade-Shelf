@@ -8,8 +8,24 @@
 #include <QKeyEvent>
 #include <QRegularExpression>
 #include <QScreen>
+#include <QTimer>
 #include <array>
 #include <utility>
+
+#if defined(ARCADE_SHELF_HAVE_X11)
+#include <X11/Xlib.h>
+// Xlib's macros collide with Qt and the rest of this file.
+#undef None
+#undef Bool
+#undef Status
+#undef KeyPress
+#undef KeyRelease
+#undef FocusIn
+#undef FocusOut
+#undef Always
+#undef Success
+#undef CursorShape
+#endif
 
 Q_LOGGING_CATEGORY(lcPlacement, "arcade.shelf.placement", QtWarningMsg)
 
@@ -91,6 +107,41 @@ QRect Desktop::availableGeometry(const QString &screenName) const
 }
 
 int Desktop::compositorRadius() const { return d->hyprland() ? d->hyprRounding : -1; }
+
+bool Desktop::composited() const { return d->composited; }
+
+bool Desktop::compositingManagerRuns()
+{
+#if defined(ARCADE_SHELF_HAVE_X11)
+    if (QGuiApplication::platformName() != QStringLiteral("xcb")) return true;
+    auto *x11 = qGuiApp ? qGuiApp->nativeInterface<QNativeInterface::QX11Application>() : nullptr;
+    Display *display = x11 ? x11->display() : nullptr;
+    if (!display) return true;
+    const QByteArray selection = "_NET_WM_CM_S" + QByteArray::number(DefaultScreen(display));
+    const Atom atom = XInternAtom(display, selection.constData(), False);
+    return atom == 0 || XGetSelectionOwner(display, atom) != 0; // 0 is Xlib's None
+#else
+    return true;
+#endif
+}
+
+void Desktop::watchCompositing()
+{
+    d->composited = compositingManagerRuns();
+#if defined(ARCADE_SHELF_HAVE_X11)
+    if (QGuiApplication::platformName() != QStringLiteral("xcb")) return;
+    // A compositor can start or stop while Shelf runs (picom from a session script, a WM toggle).
+    auto *timer = new QTimer(this);
+    timer->setInterval(5000);
+    QObject::connect(timer, &QTimer::timeout, this, [this] {
+        const bool now = compositingManagerRuns();
+        if (now == d->composited) return;
+        d->composited = now;
+        emit compositorChanged();
+    });
+    timer->start();
+#endif
+}
 
 bool Desktop::move(QWindow *window)
 {

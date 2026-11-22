@@ -39,6 +39,7 @@ class Controller : public QObject {
     // The remembered edge, also while the panel is open (empty when floating).
     Q_PROPERTY(QString dockedTo READ dockedTo NOTIFY changed)
     Q_PROPERTY(int compositorRadius READ compositorRadius NOTIFY changed)
+    Q_PROPERTY(bool composited READ composited NOTIFY changed)
     Q_PROPERTY(int count READ count NOTIFY itemsChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY changed)
     Q_PROPERTY(int selectionRevision READ selectionRevision NOTIFY changed)
@@ -92,6 +93,7 @@ public:
     // When the compositor rounds and blurs Shelf's whole window itself, the
     // surface fills the window and matches its corners.
     int compositorRadius() const { return m_desktop.compositorRadius(); }
+    bool composited() const { return m_desktop.composited(); }
     int count() const { return m_items.size(); }
     int selectedCount() const { return int(m_selected.size()); }
     int selectionRevision() const { return m_selectionRevision; }

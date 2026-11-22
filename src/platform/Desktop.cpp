@@ -74,6 +74,7 @@ Desktop::Desktop(QObject *parent) : QObject(parent), d(std::make_unique<Native>(
 {
     if (qGuiApp) qGuiApp->installNativeEventFilter(this);
     watchShortcutPortal();
+    watchCompositing();
     if (d->hyprland()) {
         const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
         const QString socket = QDir(runtime).filePath(QStringLiteral("hypr/%1/.socket2.sock").arg(d->hyprSignature));

@@ -80,6 +80,8 @@ struct Desktop::Native {
                             Legacy };
     HyprSyntax hyprSyntax = HyprSyntax::Unknown;
     int hyprRounding = -1;
+    // X11: a compositing manager owns _NET_WM_CM_S<screen>; checked again every few seconds.
+    bool composited = true;
     QPointer<QWindow> placedWindow;
     Placement placement;
     bool placementValid = false;

@@ -219,6 +219,25 @@ private slots:
         QTRY_VERIFY(!m_controller->expanded());
         QTRY_VERIFY(m_window->width() < 300);
     }
+    void withoutACompositorTheSurfaceFillsTheWindow()
+    {
+        settle();
+        auto *surface = find("surface");
+        QVERIFY(surface);
+        QTRY_VERIFY(m_window->width() < 300);
+        if (QGuiApplication::platformName() == "xcb" && !m_controller->composited()) {
+            // Xvfb runs no compositing manager, like openbox or i3 alone: nothing is see-through there, and the
+            // rounded capsule sat in a black box. The surface fills the window, square, with no shadow margin.
+            QCOMPARE(surface->property("radius").toReal(), 0.0);
+            QCOMPARE(surface->x(), 0.0);
+            QCOMPARE(surface->width(), qreal(m_window->width()));
+            QCOMPARE(surface->height(), qreal(m_window->height()));
+        } else if (m_controller->compositorRadius() < 0) {
+            // Composited: the rounded capsule with its shadow inside the window's margin, as before.
+            QVERIFY(surface->property("radius").toReal() > 0);
+            QVERIFY(surface->width() < m_window->width());
+        }
+    }
     void nativeMimeDropSelectionRemoveAndUndo()
     {
         const QString a = writeFile("brief.txt"), b = writeFile("notes.md");
