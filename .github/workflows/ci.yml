@@ -46,13 +46,27 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install Qt
+        id: qt
         # Pin the built Node action directly so its composite wrapper cannot
         # introduce a nested floating @v4 dependency.
         uses: jurplel/install-qt-action/action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        # It takes under a minute; a stalled mirror download hung for hours
+        # with no limit (2026-11-23), so cap it and try once more.
+        timeout-minutes: 10
+        continue-on-error: true
         with:
           version: '6.8.3'
           arch: ${{ matrix.qt_arch }}
           # QtSvg ships in the essentials; it is not a selectable aqt addon.
+          modules: qtimageformats
+          cache: true
+      - name: Install Qt (second try)
+        if: steps.qt.outcome == 'failure'
+        uses: jurplel/install-qt-action/action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        timeout-minutes: 10
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.qt_arch }}
           modules: qtimageformats
           cache: true
       - name: Linux native dependencies
@@ -113,7 +127,19 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install Qt
+        id: qt
         uses: jurplel/install-qt-action/action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        timeout-minutes: 10
+        continue-on-error: true
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.qt_arch }}
+          modules: qtimageformats
+          cache: true
+      - name: Install Qt (second try)
+        if: steps.qt.outcome == 'failure'
+        uses: jurplel/install-qt-action/action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        timeout-minutes: 10
         with:
           version: '6.8.3'
           arch: ${{ matrix.qt_arch }}
