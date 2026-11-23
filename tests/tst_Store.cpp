@@ -162,6 +162,38 @@ private slots:
     }
 #endif
 
+    // Every file kind Link names is kept, including Link 1.1's refinements, and a file whose kind refines the declared
+    // one (an .svg sent as file/image) is kept as its own kind; a file that isn't the declared kind is refused.
+    void everyLinkFileKindIsKept()
+    {
+        QTemporaryDir d;
+        Store store(d.path() + "/store");
+        QString error;
+        QVERIFY2(store.open(&error), qPrintable(error));
+        const QList<std::tuple<QString, QString, QString>> cases{
+            {"drawing.svg", "file/image", "file/svg"},
+            {"notes.md", "file/markdown", "file/markdown"},
+            {"notes2.md", "file/text", "file/markdown"},
+            {"data.json", "file/code", "file/json"},
+            {"table.csv", "file/any", "file/csv"},
+            {"talk.srt", "file/subtitle", "file/subtitle"},
+            {"book.epub", "file/document", "file/ebook"},
+            {"page.html", "file/html", "file/html"},
+        };
+        QJsonArray inputs;
+        for (const auto &[name, declared, kept] : cases) inputs.append(file(writeFile(d.path() + "/" + name), declared));
+        inputs.append(file(writeFile(d.path() + "/photo.png"), "file/svg"));
+        const auto r = store.add(inputs);
+        QVERIFY2(!r.error.isError(), qPrintable(r.error.message));
+        QCOMPARE(r.addedIds.size(), cases.size());
+        const auto skipped = r.result["data"].toObject()["skipped"].toArray();
+        QCOMPARE(skipped.size(), 1);
+        QCOMPARE(skipped.first().toObject()["reason"].toString(), QString("type_mismatch"));
+        QHash<QString, QString> stored;
+        for (const auto &value : store.items("quick")) stored.insert(QFileInfo(value.toObject()["path"].toString()).fileName(), value.toObject()["type"].toString());
+        for (const auto &[name, declared, kept] : cases) QCOMPARE(stored.value(name), kept);
+    }
+
     void fileArrayMixedFoldersAndPartialSuccess()
     {
         QTemporaryDir d;

@@ -5,6 +5,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Shelf's Actions menu shows Arcade Link's shared answer to "what can I do with this?" instead of a list of its own:
+  the same actions, order, names and limits as your file manager's menu and the browser extension. Actions the
+  catalog renames or that you hid elsewhere follow along; an app's own best matches come first. Files selected
+  together with a folder get no actions, as everywhere else in Arcade.
+- Arcade Box 1.0 lists each saved pipeline as its own action, so Shelf no longer asks Box for its pipelines.
+- "Add to Shelf" runs straight from file manager menus and the browser extension, listed after what the item is for;
+  "Show Shelf" and "Pick from Shelf" appear only in searchable lists.
+- Arcade Link 1.1.1 (Qt module, design kit, release tools); GitHub Actions updated (checkout 7, setup-python 7,
+  upload-artifact 7, dependency-review 5, install-qt 4.5.0).
+
+### Fixed
+- Shelf keeps every kind of file Arcade Link knows. SVG drawings, Markdown, JSON, CSV, HTML, subtitles and e-books
+  were refused with "unsupported type" once their kinds became distinct in Link 1.1, and a file whose kind is a
+  narrower one than the app said (an SVG sent as an image) is kept as its own kind.
+
 ## [1.0.1] - 2026-11-22
 
 ### Fixed

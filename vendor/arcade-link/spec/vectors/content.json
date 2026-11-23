@@ -1,46 +1,371 @@
 {
-  "comment": "Content type matching and file kinds (SPEC §5). accept;hint=x requires the hint.",
+  "comment": "Content type matching and file kinds (SPEC §5). accept;hint=x requires the hint. Refined kinds (csv, json, html, svg, ebook, markdown) match their broader type (SPEC §5.1); sendAs: the type a caller sends to a card with these accepts (SPEC §5.2).",
   "matches": [
-    { "accept": "file/*", "offered": "file/image", "expected": true },
-    { "accept": "file/*", "offered": "file/image[]", "expected": false },
-    { "accept": "file/*[]", "offered": "file/image[]", "expected": true },
-    { "accept": "file/*[]", "offered": "file/video", "expected": true },
-    { "accept": "file/image[]", "offered": "file/image", "expected": true },
-    { "accept": "file/image[]", "offered": "file/pdf[]", "expected": false },
-    { "accept": "file/image", "offered": "file/image", "expected": true },
-    { "accept": "file/image", "offered": "file/pdf", "expected": false },
-    { "accept": "file/any", "offered": "file/pdf", "expected": true },
-    { "accept": "file/any[]", "offered": "file/pdf[]", "expected": true },
-    { "accept": "text/plain", "offered": "text/url", "expected": true },
-    { "accept": "text/plain", "offered": "text/rich", "expected": true },
-    { "accept": "text/url", "offered": "text/plain", "expected": false },
-    { "accept": "text/*", "offered": "text/rich", "expected": true },
-    { "accept": "text/*", "offered": "file/text", "expected": false },
-    { "accept": "folder/reference", "offered": "folder/reference", "expected": true },
-    { "accept": "folder/reference", "offered": "file/any", "expected": false },
-    { "accept": "structured/*", "offered": "structured/color", "expected": true },
-    { "accept": "structured/color", "offered": "structured/table", "expected": false },
-    { "accept": "*", "offered": "screen/region", "expected": true },
-    { "accept": "text/plain;hint=command", "offered": "text/plain", "hints": ["command"], "expected": true },
-    { "accept": "text/plain;hint=command", "offered": "text/plain", "hints": [], "expected": false },
-    { "accept": "text/plain;hint=command", "offered": "text/url", "hints": ["command"], "expected": true }
+    {
+      "accept": "file/*",
+      "offered": "file/image",
+      "expected": true
+    },
+    {
+      "accept": "file/*",
+      "offered": "file/image[]",
+      "expected": false
+    },
+    {
+      "accept": "file/*[]",
+      "offered": "file/image[]",
+      "expected": true
+    },
+    {
+      "accept": "file/*[]",
+      "offered": "file/video",
+      "expected": true
+    },
+    {
+      "accept": "file/image[]",
+      "offered": "file/image",
+      "expected": true
+    },
+    {
+      "accept": "file/image[]",
+      "offered": "file/pdf[]",
+      "expected": false
+    },
+    {
+      "accept": "file/image",
+      "offered": "file/image",
+      "expected": true
+    },
+    {
+      "accept": "file/image",
+      "offered": "file/pdf",
+      "expected": false
+    },
+    {
+      "accept": "file/any",
+      "offered": "file/pdf",
+      "expected": true
+    },
+    {
+      "accept": "file/any[]",
+      "offered": "file/pdf[]",
+      "expected": true
+    },
+    {
+      "accept": "text/plain",
+      "offered": "text/url",
+      "expected": true
+    },
+    {
+      "accept": "text/plain",
+      "offered": "text/rich",
+      "expected": true
+    },
+    {
+      "accept": "text/url",
+      "offered": "text/plain",
+      "expected": false
+    },
+    {
+      "accept": "text/*",
+      "offered": "text/rich",
+      "expected": true
+    },
+    {
+      "accept": "text/*",
+      "offered": "file/text",
+      "expected": false
+    },
+    {
+      "accept": "folder/reference",
+      "offered": "folder/reference",
+      "expected": true
+    },
+    {
+      "accept": "folder/reference",
+      "offered": "file/any",
+      "expected": false
+    },
+    {
+      "accept": "structured/*",
+      "offered": "structured/color",
+      "expected": true
+    },
+    {
+      "accept": "structured/color",
+      "offered": "structured/table",
+      "expected": false
+    },
+    {
+      "accept": "*",
+      "offered": "screen/region",
+      "expected": true
+    },
+    {
+      "accept": "text/plain;hint=command",
+      "offered": "text/plain",
+      "hints": [
+        "command"
+      ],
+      "expected": true
+    },
+    {
+      "accept": "text/plain;hint=command",
+      "offered": "text/plain",
+      "hints": [],
+      "expected": false
+    },
+    {
+      "accept": "text/plain;hint=command",
+      "offered": "text/url",
+      "hints": [
+        "command"
+      ],
+      "expected": true
+    },
+    {
+      "accept": "file/spreadsheet",
+      "offered": "file/csv",
+      "expected": true
+    },
+    {
+      "accept": "file/spreadsheet[]",
+      "offered": "file/csv[]",
+      "expected": true
+    },
+    {
+      "accept": "file/spreadsheet[]",
+      "offered": "file/csv",
+      "expected": true
+    },
+    {
+      "accept": "file/spreadsheet",
+      "offered": "file/csv[]",
+      "expected": false
+    },
+    {
+      "accept": "file/csv",
+      "offered": "file/spreadsheet",
+      "expected": false
+    },
+    {
+      "accept": "file/code",
+      "offered": "file/json",
+      "expected": true
+    },
+    {
+      "accept": "file/code",
+      "offered": "file/html",
+      "expected": true
+    },
+    {
+      "accept": "file/image",
+      "offered": "file/svg",
+      "expected": true
+    },
+    {
+      "accept": "file/document",
+      "offered": "file/ebook",
+      "expected": true
+    },
+    {
+      "accept": "file/text",
+      "offered": "file/markdown",
+      "expected": true
+    },
+    {
+      "accept": "text/plain",
+      "offered": "text/markdown",
+      "expected": true
+    },
+    {
+      "accept": "text/markdown",
+      "offered": "text/plain",
+      "expected": false
+    },
+    {
+      "accept": "file/image",
+      "offered": "file/subtitle",
+      "expected": false
+    },
+    {
+      "accept": "file/any",
+      "offered": "file/subtitle",
+      "expected": true
+    },
+    {
+      "accept": "file/*",
+      "offered": "file/csv",
+      "expected": true
+    }
   ],
   "kinds": [
-    { "path": "/home/u/a.PNG", "kind": "image" },
-    { "path": "photo.heic", "kind": "image" },
-    { "path": "clip.mkv", "kind": "video" },
-    { "path": "song.flac", "kind": "audio" },
-    { "path": "paper.pdf", "kind": "pdf" },
-    { "path": "letter.docx", "kind": "document" },
-    { "path": "sheet.csv", "kind": "spreadsheet" },
-    { "path": "deck.pptx", "kind": "presentation" },
-    { "path": "backup.tar.gz", "kind": "archive" },
-    { "path": "notes.md", "kind": "text" },
-    { "path": "main.rs", "kind": "code" },
-    { "path": "app.ts", "kind": "code" },
-    { "path": "Inter.woff2", "kind": "font" },
-    { "path": "teapot.glb", "kind": "model" },
-    { "path": "README", "kind": "any" },
-    { "path": "data.bin", "kind": "any" }
+    {
+      "path": "/home/u/a.PNG",
+      "kind": "image"
+    },
+    {
+      "path": "photo.heic",
+      "kind": "image"
+    },
+    {
+      "path": "clip.mkv",
+      "kind": "video"
+    },
+    {
+      "path": "song.flac",
+      "kind": "audio"
+    },
+    {
+      "path": "paper.pdf",
+      "kind": "pdf"
+    },
+    {
+      "path": "letter.docx",
+      "kind": "document"
+    },
+    {
+      "path": "sheet.csv",
+      "kind": "csv"
+    },
+    {
+      "path": "deck.pptx",
+      "kind": "presentation"
+    },
+    {
+      "path": "backup.tar.gz",
+      "kind": "archive"
+    },
+    {
+      "path": "notes.md",
+      "kind": "markdown"
+    },
+    {
+      "path": "main.rs",
+      "kind": "code"
+    },
+    {
+      "path": "app.ts",
+      "kind": "code"
+    },
+    {
+      "path": "Inter.woff2",
+      "kind": "font"
+    },
+    {
+      "path": "teapot.glb",
+      "kind": "model"
+    },
+    {
+      "path": "README",
+      "kind": "any"
+    },
+    {
+      "path": "data.bin",
+      "kind": "any"
+    },
+    {
+      "path": "data.TSV",
+      "kind": "csv"
+    },
+    {
+      "path": "feed.json",
+      "kind": "json"
+    },
+    {
+      "path": "page.html",
+      "kind": "html"
+    },
+    {
+      "path": "logo.svg",
+      "kind": "svg"
+    },
+    {
+      "path": "book.epub",
+      "kind": "ebook"
+    },
+    {
+      "path": "film.srt",
+      "kind": "subtitle"
+    },
+    {
+      "path": "captions.vtt",
+      "kind": "subtitle"
+    },
+    {
+      "path": "readme.markdown",
+      "kind": "markdown"
+    },
+    {
+      "path": "report.xlsx",
+      "kind": "spreadsheet"
+    },
+    {
+      "path": "letter.docx",
+      "kind": "document"
+    },
+    {
+      "path": "config.yaml",
+      "kind": "code"
+    }
+  ],
+  "sendAs": [
+    {
+      "accepts": [
+        "file/spreadsheet"
+      ],
+      "offered": "file/csv",
+      "send": "file/spreadsheet"
+    },
+    {
+      "accepts": [
+        "file/csv",
+        "file/spreadsheet"
+      ],
+      "offered": "file/csv",
+      "send": "file/csv"
+    },
+    {
+      "accepts": [
+        "file/*"
+      ],
+      "offered": "file/csv",
+      "send": "file/csv"
+    },
+    {
+      "accepts": [
+        "file/any"
+      ],
+      "offered": "file/json",
+      "send": "file/json"
+    },
+    {
+      "accepts": [
+        "file/spreadsheet[]"
+      ],
+      "offered": "file/csv[]",
+      "send": "file/spreadsheet[]"
+    },
+    {
+      "accepts": [
+        "file/spreadsheet[]"
+      ],
+      "offered": "file/csv",
+      "send": "file/spreadsheet"
+    },
+    {
+      "accepts": [
+        "text/plain"
+      ],
+      "offered": "text/markdown",
+      "send": "text/plain"
+    },
+    {
+      "accepts": [
+        "file/image"
+      ],
+      "offered": "file/pdf",
+      "send": "file/pdf"
+    }
   ]
 }

@@ -49,6 +49,8 @@ QStringList apps();
 QString appName(const QString &id);
 QString appPitch(const QString &id);
 QString releasesUrl(const QString &id);
+// What `app` and `peer` do together (compiled; Catalog::pair reads the shared list first).
+QString peerDescription(const QString &app, const QString &peer);
 // The app's OS identifier (STANDARD.md §10), e.g. dev.arcade.Box; empty for an unknown id.
 QString osIdentifier(const QString &id);
 
@@ -62,7 +64,29 @@ struct Locations {
     static Locations under(const QString &root);
     QString manifestPath(const QString &appId) const;
     QString endpointPath(const QString &appId) const;
+    // The shared app list, next to the registry folder (never inside it).
+    QString catalogPath() const;
+    // The user's choices about offers (offers.json), next to the registry folder.
+    QString offerPrefsPath() const;
 };
+
+// The shared app list (SPEC §3.1), from Arcade-catalog's catalog.json, kept by Arcade Tools at
+// Locations::catalogPath(). Every lookup falls back to the compiled value, so each app still works alone.
+struct Catalog {
+    QList<QJsonObject> apps;
+    // Entries with the wrong shape, or an id that isn't arcade.<name>, are skipped; no `apps` array → *ok false.
+    static Catalog parse(const QByteArray &json, bool *ok = nullptr);
+    static Catalog load(const Locations &locations); // re-read only when the file changes
+    QJsonObject app(const QString &id) const;
+    QString name(const QString &id) const;
+    QString tagline(const QString &id) const;
+    QString pair(const QString &app, const QString &peer) const;
+    QString releasesUrl(const QString &id) const;
+    QStringList appIds() const; // known apps still listed (usual order), then new ones (catalog order); no Tools
+    QJsonObject rules;          // corrections to offers (SPEC §5.5); empty when absent
+};
+// Tools: store a downloaded catalog. Refuses text that isn't a catalog with an app. Returns false on error.
+bool writeSharedCatalog(const Locations &locations, const QByteArray &json, bool *changed = nullptr, QString *error = nullptr);
 
 QString currentPlatform();                     // "linux", "windows", "macos"
 bool ensurePrivateDir(const QString &dir);     // mkpath + 0700 on Unix
@@ -115,6 +139,13 @@ QString standardMessage(const QString &code, const QString &app, const QString &
 
 // ---- Content (SPEC §5) -----------------------------------------------------
 
+// A refined type's broader type (SPEC §5.1: file/csv → file/spreadsheet), or empty.
+QString parentType(const QString &kind);
+QStringList ancestorTypes(const QString &kind);
+bool isKind(const QString &kind, const QString &of);
+// The type to send `offered` as to an action accepting `accepts`: itself if named, else the closest named parent.
+QString typeFor(const QJsonArray &accepts, const QString &offered);
+QJsonObject adaptInputs(const QJsonObject &request, const QJsonArray &accepts);
 bool typeMatches(const QString &accept, const QString &offered);
 bool contentMatches(const QString &accept, const QJsonObject &content);
 bool acceptsContent(const QJsonArray &accepts, const QJsonObject &content);
@@ -147,6 +178,22 @@ QString executablePath();                      // $APPIMAGE or the running binar
 // Shown for this content: link enabled, available, on this OS, accepts it.
 bool actionOffered(const QJsonObject &manifest, const QJsonObject &action, const QJsonObject &content);
 bool actionUsable(const QJsonObject &manifest, const QJsonObject &action);
+
+// "What can I do with this?" (SPEC §5.5), the same rules as Rust's offers module (spec/vectors/offers.json).
+// Items are {type, size?, hints?}. Offers are {app, action, title, group?, rank, enabled, reason?, install?, job?,
+// preferred?, other?, choose?, pinned?, oneClick?} (absent booleans are false).
+QString offerInputType(const QJsonArray &items); // empty: nothing selected, or no shared type
+QList<QJsonObject> offers(const QJsonArray &items, const QString &surface, const QList<QJsonObject> &cards,
+                          const QJsonObject &rules, const QJsonObject &prefs);
+QJsonObject loadOfferPrefs(const Locations &locations); // {} when missing or malformed
+bool saveOfferPrefs(const Locations &locations, const QJsonObject &prefs);
+// Link 1.1 (SPEC §3). A malformed field reads as absent, as in Rust.
+// Where the action is offered: its `surfaces`, else derived from `accepts` (always with "palette").
+QStringList actionSurfaces(const QJsonObject &action);
+// Marked oneClick, not interactive, and no overwriting, deleting, uploading or command effect.
+bool actionIsOneClick(const QJsonObject &action);
+// 0–100: the highest `rank` whose pattern takes `kind`; without `rank`, 60 when `featuredFor` takes it.
+int actionRankFor(const QJsonObject &action, const QString &kind);
 
 class Registry : public QObject {
     Q_OBJECT

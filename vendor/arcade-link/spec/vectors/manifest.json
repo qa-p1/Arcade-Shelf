@@ -29,6 +29,32 @@
       "expect": { "id": "arcade.box", "actions": 1, "linkEnabled": true, "invoke": false, "firstActionAvailable": true, "firstActionVersion": 1 }
     },
     {
+      "name": "Link 1.1 action fields",
+      "manifest": {
+        "schema": 1, "id": "arcade.box", "name": "Arcade Box", "version": "1.0.0", "executable": "/x",
+        "launch": { "invoke": ["--arcade-invoke"] },
+        "actions": [{
+          "id": "box.image.resize", "version": 1, "title": "Resize images", "group": "Images",
+          "accepts": ["file/image", "file/image[]"], "produces": ["file/image"], "effects": ["writes-files"],
+          "options": { "version": 1, "controls": [{ "key": "width", "label": "Width", "type": "number", "default": 1280, "minimum": 1 }] },
+          "surfaces": ["file-menu", "browser-image", "palette"], "rank": { "file/image": 70 }, "keywords": ["scale", "shrink"],
+          "job": "image.resize", "oneClick": true, "maxItems": 500, "requires": ["engine:ffmpeg"], "output": "beside"
+        }]
+      },
+      "expect": { "id": "arcade.box", "actions": 1, "linkEnabled": true, "invoke": true, "firstActionAvailable": true, "firstActionVersion": 1 }
+    },
+    {
+      "name": "malformed Link 1.1 fields don't hide the card",
+      "manifest": {
+        "schema": 1, "id": "arcade.box", "name": "Arcade Box", "executable": "/x",
+        "actions": [{
+          "id": "box.x", "title": "X", "options": "big", "surfaces": "file-menu", "rank": { "file/image": -5 },
+          "keywords": 3, "job": [], "oneClick": "yes", "maxItems": -1, "requires": "ffmpeg", "output": 7
+        }]
+      },
+      "expect": { "id": "arcade.box", "actions": 1, "linkEnabled": true, "invoke": false, "firstActionAvailable": true, "firstActionVersion": 1 }
+    },
+    {
       "name": "newer schema is read",
       "manifest": { "schema": 2, "id": "arcade.wheel", "name": "Arcade Wheel", "executable": "/x", "settings": { "linkEnabled": false } },
       "expect": { "id": "arcade.wheel", "actions": 0, "linkEnabled": false, "invoke": false }

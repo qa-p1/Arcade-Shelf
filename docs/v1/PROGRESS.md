@@ -3,6 +3,18 @@
 Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Tested locally" names the command;
 "not run" says why.
 
+## 2026-11-23 (cloud session) - 1.1.0 (stage 6 of Arcade-catalog `dev/everywhere/PLAN.md`)
+
+- Link 1.1.1; the Actions menu is Link's `offers` (surface `palette`, catalog rules, the user's choices); the Box
+  pipeline fetch and the `box.pipeline.run` expansion are gone (Box 1.0 lists each pipeline as its own action).
+- Found while moving to Link 1.1: its refined file kinds (`file/svg`, `file/markdown`, …) were refused by the store's
+  own kind list. One list (`isFileType`) now serves the store and settings import, and a refining kind is accepted;
+  `tst_Store::everyLinkFileKindIsKept` failed on the old code (1 of 8 kept) and passes.
+- Large collections measured (`tst_Ui::aLargeCollectionStaysResponsive`); drag-out and the Windows/macOS adapters
+  recorded in STATUS's backlog with where they get checked.
+- Dependabot #17–#21 (GitHub Actions) applied here, proven by this rc; the PRs are closed as included.
+- Tested locally: `scripts/check.py` with Qt 6.8.3 and the Link mock on PATH, 20/20 CTest suites.
+
 ## 2026-11-22 (cloud session) - 1.0.1
 
 - D7: without a compositor the capsule fills its window, square (it sat in a black box on openbox); Link workflows at

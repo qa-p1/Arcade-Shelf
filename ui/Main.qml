@@ -78,7 +78,7 @@ Window {
         if (type === "folder/reference") return "folder";
         if (type === "text/url") return "link";
         if (type.indexOf("text/") === 0) return "type";
-        if (type.indexOf("file/image") === 0) return "image";
+        if (type.indexOf("file/image") === 0 || type === "file/svg") return "image";
         if (type.indexOf("file/video") === 0) return "video";
         if (type.indexOf("file/audio") === 0) return "audio";
         return "file";

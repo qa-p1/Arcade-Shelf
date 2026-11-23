@@ -1,4 +1,24 @@
-# Status — 2026-11-01
+# Status — 2026-11-23
+
+## 2026-11-23: 1.1.0 (Arcade everywhere)
+
+- Released: 1.0.0 (2026-11-18) and 1.0.1 (2026-11-22), each promoted from a release candidate that passed Gates and
+  checked byte for byte. 1.1.0 is in progress: Arcade Link 1.1.1, the Actions menu from Link's shared `offers`, Link
+  1.1's file kinds kept (`isFileType`), and the card's Link 1.1 fields. Details in [CHANGELOG](../CHANGELOG.md) and
+  [v1 progress](v1/PROGRESS.md).
+- Large collections: `tst_Ui::aLargeCollectionStaysResponsive` loads 5,000 references, filters them and selects them
+  all with the Actions menu computed (on the cloud container under software rendering: 175 ms, 11 ms and 29 ms; the
+  test allows 15 s, 3 s and 5 s, so only work that grows with the square of the collection fails it). The core's
+  10,000-reference test stays.
+
+### Backlog (each needs something a CI runner or this container doesn't have)
+
+| Item | Why not here | Where it gets checked |
+|---|---|---|
+| Native drag out to Nautilus, Dolphin and other apps on Wayland | Needs a real compositor and a real target app; the X11 two-process drag test (real pointer injection) covers Shelf's side | The plan's stage 8 real-user run (Linux desktop with Nautilus and Dolphin) |
+| Windows and macOS native drag, shortcut, geometry, tray and login adapters | Built and smoke-tested by CI on both OSes, but no interactive desktop there | The owner's Windows and macOS checks (prompts C and D) |
+| Automatic edge activation and snapping, platform blur, fullscreen refinements | Native work per compositor; manual edge docking is implemented and tested | After stage 8, from what the real-user run reports |
+
 
 ## 2026-11-01: 0.4.0 (SHELF.md overhaul)
 
@@ -187,8 +207,8 @@ new tag; see [ONBOARDING.md](dev/history/ecosystem-onboarding.md).
   refinements need further native work; manual edge docking is implemented.
 - Native peer flows and platform packaging must be exercised, then address
   any platform-specific defects they expose.
-- Broader collection/UI performance under very large visible datasets needs
-  benchmarking beyond the core's 10,000-reference test.
+- Large visible collections: measured by `tst_Ui::aLargeCollectionStaysResponsive` (5,000 references, see the top
+  of this page).
 
 ## Documents
 

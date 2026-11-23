@@ -16,9 +16,19 @@ QJsonArray publicActions()
     const auto action = [](QString id, QString title, QString verb, QJsonArray accepts, QJsonArray produces, QString effect, bool interactive) {
         return QJsonObject{{"id", id}, {"version", 1}, {"title", title}, {"verb", verb}, {"accepts", accepts}, {"produces", produces}, {"effects", QJsonArray{effect}}, {"interactive", interactive}, {"privacy", "local"}};
     };
-    return {action("shelf.add", "Add to Shelf", "add", {"file/*", "file/*[]", "folder/reference", "text/plain", "text/url", "text/rich"}, {}, "persists", false),
-            action("shelf.show", "Show Shelf", "show", {}, {}, "opens-ui", true),
-            action("shelf.pick", "Pick from Shelf", "pick", {}, {"file/*[]", "folder/reference", "text/plain", "text/url"}, "opens-ui", true)};
+    // Link 1.1: "Add to Shelf" takes anything a menu or the browser extension can hand over (every file kind, folders,
+    // text, links, rich text), runs straight from a menu, and sits below what the item is for. Show and Pick open
+    // Shelf itself, so they are offered in searchable lists only.
+    auto add = action("shelf.add", "Add to Shelf", "add", {"file/*", "file/*[]", "folder/reference", "text/plain", "text/url", "text/rich"}, {}, "persists", false);
+    add.insert("oneClick", true);
+    add.insert("output", "none");
+    add.insert("rank", QJsonObject{{"*", 15}});
+    add.insert("keywords", QJsonArray{"keep", "save for later", "collect", "stash"});
+    auto show = action("shelf.show", "Show Shelf", "show", {}, {}, "opens-ui", true);
+    show.insert("surfaces", QJsonArray{"palette"});
+    auto pick = action("shelf.pick", "Pick from Shelf", "pick", {}, {"file/*[]", "folder/reference", "text/plain", "text/url"}, "opens-ui", true);
+    pick.insert("surfaces", QJsonArray{"palette"});
+    return {add, show, pick};
 }
 QJsonArray trayMenu()
 {

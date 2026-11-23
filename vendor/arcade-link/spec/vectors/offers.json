@@ -1,0 +1,861 @@
+{
+  "comment": "Offers (SPEC \u00a75.5). Every case runs against `cards`. `expect` lists the offers in order by reference (<app>/<action>). Always compared: enabled (true when not listed), preferred, other, choose, pinned (false when not listed). Compared only when listed: rank, title, reason, install, group, oneClick. inputType: the type a selection is offered as (null: none).",
+  "cards": [
+    {
+      "schema": 1,
+      "id": "arcade.box",
+      "name": "Arcade Box",
+      "executable": "/x",
+      "actions": [
+        {
+          "id": "box:image.convert",
+          "title": "Convert images",
+          "accepts": [
+            "file/image",
+            "file/image[]"
+          ],
+          "rank": {
+            "file/image": 70
+          },
+          "job": "image.convert",
+          "oneClick": true,
+          "group": "Images",
+          "effects": [
+            "writes-files"
+          ]
+        },
+        {
+          "id": "box:image.ocr",
+          "title": "Read text",
+          "accepts": [
+            "file/image"
+          ],
+          "rank": {
+            "file/image": 40
+          },
+          "job": "image.read-text"
+        },
+        {
+          "id": "box:media.compress",
+          "title": "Compress video",
+          "accepts": [
+            "file/video"
+          ],
+          "available": false,
+          "reason": "FFmpeg isn't installed",
+          "requires": [
+            "engine:ffmpeg"
+          ]
+        },
+        {
+          "id": "box:pdf.merge",
+          "title": "Merge PDFs",
+          "accepts": [
+            "file/pdf[]"
+          ],
+          "maxItems": 50,
+          "rank": {
+            "file/pdf": 50
+          }
+        },
+        {
+          "id": "box:sheet.convert",
+          "title": "Convert spreadsheet",
+          "accepts": [
+            "file/spreadsheet"
+          ]
+        },
+        {
+          "id": "box:broken",
+          "title": "Broken",
+          "accepts": [
+            "file/image"
+          ],
+          "available": false,
+          "reason": "Missing"
+        },
+        {
+          "id": "box.open",
+          "title": "Open in Arcade Box",
+          "accepts": [
+            "*"
+          ],
+          "interactive": true
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "id": "arcade.lens",
+      "name": "Arcade Lens",
+      "executable": "/x",
+      "actions": [
+        {
+          "id": "lens.recognize",
+          "title": "Recognize text",
+          "accepts": [
+            "file/image",
+            "text/plain"
+          ],
+          "featuredFor": [
+            "file/image"
+          ],
+          "job": "image.read-text"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "id": "arcade.clipboard",
+      "name": "Arcade Clipboard",
+      "executable": "/x",
+      "actions": [
+        {
+          "id": "clipboard.add",
+          "title": "Send to phone",
+          "accepts": [
+            "text/*",
+            "file/image",
+            "file/any[]"
+          ],
+          "maxBytes": 16777216,
+          "effects": [
+            "sends-to-device"
+          ]
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "id": "arcade.wheel",
+      "name": "Arcade Wheel",
+      "executable": "/x",
+      "settings": {
+        "linkEnabled": false
+      },
+      "actions": [
+        {
+          "id": "wheel.add_action",
+          "title": "Add to wheel",
+          "accepts": [
+            "file/*"
+          ]
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "id": "arcade.shelf",
+      "name": "Arcade Shelf",
+      "executable": "/x",
+      "actions": [
+        {
+          "id": "shelf.add",
+          "title": "Keep on shelf",
+          "accepts": [
+            "file/*",
+            "file/*[]",
+            "folder/reference",
+            "text/plain"
+          ],
+          "surfaces": [
+            "file-menu",
+            "palette"
+          ]
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "id": "arcade.find",
+      "name": "Arcade Find",
+      "executable": "/x",
+      "actions": [
+        {
+          "id": "find.show",
+          "title": "Search files",
+          "accepts": [],
+          "interactive": true
+        },
+        {
+          "id": "find.terminal",
+          "title": "Run in terminal",
+          "accepts": [
+            "text/plain;hint=command"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputType": [
+    {
+      "items": [],
+      "type": null
+    },
+    {
+      "items": [
+        {
+          "type": "file/csv"
+        }
+      ],
+      "type": "file/csv"
+    },
+    {
+      "items": [
+        {
+          "type": "file/csv"
+        },
+        {
+          "type": "file/spreadsheet"
+        }
+      ],
+      "type": "file/spreadsheet[]"
+    },
+    {
+      "items": [
+        {
+          "type": "file/csv"
+        },
+        {
+          "type": "file/csv"
+        }
+      ],
+      "type": "file/csv[]"
+    },
+    {
+      "items": [
+        {
+          "type": "file/image"
+        },
+        {
+          "type": "file/pdf"
+        }
+      ],
+      "type": "file/any[]"
+    },
+    {
+      "items": [
+        {
+          "type": "file/svg"
+        },
+        {
+          "type": "file/image"
+        }
+      ],
+      "type": "file/image[]"
+    },
+    {
+      "items": [
+        {
+          "type": "text/plain"
+        },
+        {
+          "type": "file/image"
+        }
+      ],
+      "type": null
+    },
+    {
+      "items": [
+        {
+          "type": "folder/reference"
+        },
+        {
+          "type": "folder/reference"
+        }
+      ],
+      "type": null
+    }
+  ],
+  "cases": [
+    {
+      "name": "one image in the file menu: two apps read text, no default yet",
+      "items": [
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "file-menu",
+      "expect": [
+        {
+          "ref": "arcade.box/box:image.convert",
+          "rank": 70,
+          "oneClick": true,
+          "group": "Images"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize",
+          "rank": 60,
+          "choose": true
+        },
+        {
+          "ref": "arcade.box/box:image.ocr",
+          "rank": 40,
+          "choose": true
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "with a default, the other app's way moves to Other apps",
+      "items": [
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "file-menu",
+      "prefs": {
+        "defaults": {
+          "image.read-text": "arcade.lens/lens.recognize"
+        }
+      },
+      "expect": [
+        {
+          "ref": "arcade.box/box:image.convert"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize",
+          "preferred": true
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        },
+        {
+          "ref": "arcade.box/box:image.ocr",
+          "other": true
+        }
+      ]
+    },
+    {
+      "name": "a default naming an action that isn't offered is ignored",
+      "items": [
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "file-menu",
+      "prefs": {
+        "defaults": {
+          "image.read-text": "arcade.paint/paint.ocr"
+        }
+      },
+      "expect": [
+        {
+          "ref": "arcade.box/box:image.convert"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize",
+          "choose": true
+        },
+        {
+          "ref": "arcade.box/box:image.ocr",
+          "choose": true
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "hidden and pinned",
+      "items": [
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "file-menu",
+      "prefs": {
+        "hidden": [
+          "arcade.box/box.open"
+        ],
+        "pinned": [
+          "arcade.clipboard/clipboard.add"
+        ]
+      },
+      "expect": [
+        {
+          "ref": "arcade.clipboard/clipboard.add",
+          "pinned": true
+        },
+        {
+          "ref": "arcade.box/box:image.convert"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize",
+          "choose": true
+        },
+        {
+          "ref": "arcade.box/box:image.ocr",
+          "choose": true
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        }
+      ]
+    },
+    {
+      "name": "a big video: install entry and a size limit, both last",
+      "items": [
+        {
+          "type": "file/video",
+          "size": 104857600
+        }
+      ],
+      "surface": "file-menu",
+      "expect": [
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.box/box:media.compress",
+          "enabled": false,
+          "install": "engine:ffmpeg",
+          "reason": "FFmpeg isn't installed"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add",
+          "enabled": false,
+          "reason": "Takes files up to 16 MB"
+        }
+      ]
+    },
+    {
+      "name": "three images, one an svg: offered as images, ranked like one",
+      "items": [
+        {
+          "type": "file/image"
+        },
+        {
+          "type": "file/svg"
+        },
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "file-menu",
+      "expect": [
+        {
+          "ref": "arcade.box/box:image.convert",
+          "rank": 70
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "too many PDFs",
+      "items": [
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        },
+        {
+          "type": "file/pdf"
+        }
+      ],
+      "surface": "file-menu",
+      "expect": [
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        },
+        {
+          "ref": "arcade.box/box:pdf.merge",
+          "enabled": false,
+          "reason": "Takes at most 50 items",
+          "rank": 50
+        }
+      ]
+    },
+    {
+      "name": "a csv reaches a spreadsheet action",
+      "items": [
+        {
+          "type": "file/csv"
+        }
+      ],
+      "surface": "file-menu",
+      "expect": [
+        {
+          "ref": "arcade.box/box:sheet.convert"
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "a command in a browser selection",
+      "items": [
+        {
+          "type": "text/plain",
+          "hints": [
+            "command"
+          ]
+        }
+      ],
+      "surface": "browser-selection",
+      "expect": [
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize"
+        },
+        {
+          "ref": "arcade.find/find.terminal"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "plain text: the command action needs its hint",
+      "items": [
+        {
+          "type": "text/plain"
+        }
+      ],
+      "surface": "browser-selection",
+      "expect": [
+        {
+          "ref": "arcade.box/box.open"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "nothing selected: actions that take no input",
+      "items": [],
+      "surface": "palette",
+      "expect": [
+        {
+          "ref": "arcade.find/find.show"
+        }
+      ]
+    },
+    {
+      "name": "text and a file together have no shared type",
+      "items": [
+        {
+          "type": "text/plain"
+        },
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "",
+      "expect": []
+    },
+    {
+      "name": "catalog rules hide, rename, boost and assign a job",
+      "items": [
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "file-menu",
+      "rules": {
+        "hide": [
+          "arcade.box/box.open"
+        ],
+        "rename": {
+          "arcade.lens/lens.recognize": "Copy text from image"
+        },
+        "boost": {
+          "arcade.box/box:image.ocr": {
+            "file/image": 30,
+            "file/*": 5
+          }
+        },
+        "jobs": {
+          "arcade.clipboard/clipboard.add": "share"
+        }
+      },
+      "expect": [
+        {
+          "ref": "arcade.box/box:image.convert",
+          "rank": 70
+        },
+        {
+          "ref": "arcade.box/box:image.ocr",
+          "rank": 70,
+          "choose": true
+        },
+        {
+          "ref": "arcade.lens/lens.recognize",
+          "title": "Copy text from image",
+          "choose": true
+        },
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "browser image menu",
+      "items": [
+        {
+          "type": "file/image"
+        }
+      ],
+      "surface": "browser-image",
+      "expect": [
+        {
+          "ref": "arcade.box/box:image.convert"
+        },
+        {
+          "ref": "arcade.lens/lens.recognize",
+          "choose": true
+        },
+        {
+          "ref": "arcade.box/box:image.ocr",
+          "choose": true
+        },
+        {
+          "ref": "arcade.clipboard/clipboard.add"
+        }
+      ]
+    },
+    {
+      "name": "any surface",
+      "items": [
+        {
+          "type": "folder/reference"
+        }
+      ],
+      "surface": "",
+      "expect": [
+        {
+          "ref": "arcade.shelf/shelf.add"
+        },
+        {
+          "ref": "arcade.box/box.open"
+        }
+      ]
+    }
+  ]
+}
