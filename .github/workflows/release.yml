@@ -19,7 +19,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: The tag is this version's release candidate
         id: plan
         run: |
@@ -36,7 +36,7 @@ jobs:
     needs: [prepare, ci]
     permissions:
       contents: write
-    uses: qa-p1/Arcade-Link/.github/workflows/app-publish.yml@v1.0.15
+    uses: qa-p1/Arcade-Link/.github/workflows/app-publish.yml@v1.1.0
     with:
       app: arcade.shelf
       version: ${{ needs.prepare.outputs.version }}
@@ -44,4 +44,4 @@ jobs:
       channel: test
       # One AppImage, NSIS installer or dmg per platform artifact.
       artifacts: package-*
-      link-ref: v1.0.15
+      link-ref: v1.1.0

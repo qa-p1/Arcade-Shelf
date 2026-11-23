@@ -113,6 +113,48 @@ IDs, which never change.
 | `featuredFor` | [type] | — | Box: types for which peers show it inline (3–5 per type) |
 | `maxBytes` | int | — | Largest accepted input; callers disable the entry above it, with the reason |
 | `group` | string | — | Grouping label in long lists |
+| `options` | Form | — | Link 1.1: the options form, so any caller can ask for them (below) |
+| `surfaces` | [surface] | derived | Link 1.1: where it's offered (below). Empty: derived from `accepts` |
+| `rank` | {pattern: 0–100} | — | Link 1.1: how strongly the app suggests it per accepted type; supersedes `featuredFor` |
+| `keywords` | [string] | [] | Link 1.1: search words beyond the title ("join", "combine") |
+| `job` | string | — | Link 1.1: a shared name for what it does (`image.read-text`), so two apps doing the same job are recognized without a central list |
+| `oneClick` | bool | false | Link 1.1: safe to run with the form's defaults straight from a menu (below) |
+| `maxItems` | int | — | Link 1.1: most inputs per run; callers disable the entry above it, with the reason |
+| `requires` | [string] | [] | Link 1.1: `engine:<name>` or `app:<arcade-id>` it needs; callers offer the install |
+| `output` | string | — | Link 1.1: where results go by default: `beside` (next to the input, never overwriting), `downloads`, `ask`, `none` |
+
+**Link 1.1 action fields.** Every one is optional, and an app writes only the
+ones it uses, so older cards are unchanged. A reader treats a malformed value
+(wrong JSON type, a rank above 255) as absent rather than dropping the card.
+Apps built on Link 1.0 ignore them.
+
+- *Surfaces*: `file-menu`, `folder-menu`, `browser-image`, `browser-link`,
+  `browser-video`, `browser-audio`, `browser-selection`, `browser-page`,
+  `browser-pdf`, `browser-download`, `palette`, `screen`. Without a list,
+  callers derive one: `folder/reference` → folder menu; `text/url` → browser
+  link and page; other `text/*` → selection; `*` → file menu and selection;
+  `file/*` patterns → file menu, browser download, and each browser media menu
+  whose kind the pattern takes or refines (`file/svg` reaches
+  `browser-image`); `screen/*` → screen; always `palette`. Unknown surface
+  names are ignored.
+- *One click*: an action runs from a menu with its form's defaults only when
+  it sets `oneClick`, is not `interactive`, and has none of the effects
+  `overwrites-files`, `deletes-files`, `uploads-content`, `executes-commands`.
+  Otherwise callers show its form or the app's own window first.
+- *Rank* for an offered type is the highest `rank` value whose pattern takes
+  it, capped at 100; a card without `rank` counts 60 where `featuredFor` takes
+  the type, else 0.
+- *Options form* (`options`) is Arcade Box's tool form: `{version, input?,
+  controls}`. `input` is `{kind: file|files|folder|text|url|none, label,
+  minItems?, maxItems?, sortable?}`. Each control is `{key, label, type,
+  default?, choices?:[{value,label}], minimum?, maximum?, step?, placeholder?,
+  help?, showWhen?:{key, equals | oneOf}, advanced?}` with `type` one of
+  `text`, `number`, `select`, `toggle`, `password`, `directory`, `file`,
+  `color`. Callers skip controls of unknown types (the app's default applies),
+  send only the keys of visible controls, and the app still validates every
+  request (§1).
+
+`spec/vectors/actions.json` pins surfaces, one click and rank.
 
 Rules:
 
@@ -137,6 +179,23 @@ Rules:
   watch (inotify / FSEvents / ReadDirectoryChangesW, or
   `QFileSystemWatcher`) or on demand, off the UI thread. Opening a menu that
   shows peer entries does no disk or IPC work.
+
+### 3.1 The shared app list
+
+Arcade Tools stores the `catalog.json` it downloads from Arcade-catalog next to
+the registry folder (`<registry>/../catalog.json`; never inside it, so it is
+never read as a card), replacing it atomically and only with a document that
+has an `apps` array with at least one app. Every app reads that copy for
+other apps' display name (`name`), one-line `tagline`, release page (`repo`,
+`owner/name` on GitHub) and the "what these two do together" sentence
+(`pairs: {peer-id: sentence}`). Arcade Tools' own entry is the top-level
+`tools` object. The Connected apps page lists the apps the catalog lists
+(never Arcade Tools): the ones Link knows in their usual order, then the others
+in catalog order. A catalog entry with the wrong shape,
+or an id that isn't `arcade.<name>`, is skipped. Without a readable copy, the
+values compiled into Link apply, so each app still works alone. A new Arcade
+app therefore needs its card and a catalog entry, not a Link release. Vectors:
+`spec/vectors/catalog.json`.
 
 ## 4. Transport and wire protocol
 
@@ -269,7 +328,7 @@ isn't running and whose manifest has `launch.invoke`.
 | Type | Transport |
 |---|---|
 | `text/plain`, `text/url`, `text/rich` | `text` inline up to 256 KiB, else a handoff file in `path`. `text/rich` carries `html` plus `text` as the plain fallback; when the text goes in `path`, the HTML goes in a second handoff file in `htmlPath` |
-| `file/<kind>`, `file/<kind>[]` | `path` (single) or `paths` (array) of existing files. Kinds: `image`, `video`, `audio`, `pdf`, `document`, `spreadsheet`, `presentation`, `archive`, `text`, `code`, `font`, `model`, `any` |
+| `file/<kind>`, `file/<kind>[]` | `path` (single) or `paths` (array) of existing files. Kinds: `image`, `video`, `audio`, `pdf`, `document`, `spreadsheet`, `presentation`, `archive`, `text`, `code`, `font`, `model`, `subtitle`, `any`, and the refined kinds below |
 | `folder/reference` | `path` of a directory |
 | `structured/<name>` | `data` (inline JSON): `color`, `barcode`, `findings`, `devices`, `table`, `file-info`, `pipelines`, `arcade-action` |
 | `screen/region` | `data: {rect:{x,y,width,height}, monitor}` in physical pixels of the virtual desktop |
@@ -279,6 +338,22 @@ Other fields: `hints` (semantic detail the type loses, e.g. `["command"]`),
 file name), `size` (bytes).
 
 The kind of a file comes from its extension (`spec/vectors/content.json`).
+
+**Refined types** (Link 1.1) are narrower names for a type that already
+existed. Each has a parent, and is also that parent:
+
+| Refined | Parent | Extensions |
+|---|---|---|
+| `file/svg` | `file/image` | svg, svgz |
+| `file/csv` | `file/spreadsheet` | csv, tsv |
+| `file/json` | `file/code` | json, jsonl, ndjson, geojson |
+| `file/html` | `file/code` | html, htm, xhtml |
+| `file/markdown` | `file/text` | md, markdown, mdown, mkd |
+| `file/ebook` | `file/document` | epub, mobi, azw3, fb2, djvu |
+| `text/markdown` | `text/plain` | — |
+
+`file/subtitle` (srt, vtt, ass, ssa, sub, sbv, lrc) is new and has no parent:
+those files were `file/any` before.
 
 ### 5.2 Matching
 
@@ -291,6 +366,15 @@ An action's `accepts` holds patterns; a value matches if any pattern does:
   (a batch of one). A single pattern never matches an array.
 - `type;hint=name` additionally requires `name` in `hints`
   (`text/plain;hint=command`).
+- A refined type matches its parent's patterns (`file/spreadsheet` takes
+  `file/csv`); a parent never matches a refined pattern.
+
+**Sending.** A caller sends each input as the closest type the target's
+`accepts` names: the type itself when a pattern names it or a wildcard
+(`*`, `file/*`, `file/any`) takes it, else its parent, and so on. So a `.csv`
+reaches an app whose card says only `file/spreadsheet` as `file/spreadsheet`,
+and an app built before a kind was refined never receives a type it doesn't
+know. The vectors' `sendAs` cases pin this.
 
 ### 5.3 Handoff files
 
@@ -324,6 +408,83 @@ writers never remove a field within protocol version 1.
 first node's input in `inputs`; its effects are the union of its nodes'
 effects. A pipeline's `{app:"arcade.box", action:"box.pipeline.run",
 options.pipeline}` is what Wheel slots and Lens/Look entries store.
+
+### 5.5 Offers
+
+"What can I do with this?" has one answer, computed by Link (Rust
+`offers::offers`, Qt `offers`) from the installed cards, the catalog's `rules`
+and the user's choices. Every caller (apps, the file manager menus, the
+browser extension) shows that answer instead of keeping its own list of other
+apps' actions; a caller may add its own actions beside it.
+
+- **Input:** the selected items (`{type, size?, hints?}`) and a surface
+  (§3; empty means any). One item is offered as its type, with its hints;
+  several files as the array of the narrowest type they all are
+  (`file/csv` + `file/spreadsheet` → `file/spreadsheet[]`, otherwise
+  `file/any[]`); nothing selected matches actions with empty `accepts`. Text
+  mixed with files, or several folders, has no shared type and gets no offers.
+- **Included:** every action of a card with Link on, on this OS, offered on
+  the surface, taking the input, and neither hidden by `rules.hide` nor by the
+  user. An unavailable action appears only when it names `requires`, as a
+  disabled entry with `install` set to the first requirement; otherwise it is
+  left out (§1: never a broken entry). More items than `maxItems`, or a file
+  larger than `maxBytes`, gives a disabled entry with the reason ("Takes at
+  most 50 items", "Takes files up to 16 MB").
+- **Rank:** the action's rank for the kind (§3; arrays rank as their base
+  kind) plus the largest matching `rules.boost` value.
+- **Jobs:** an offer's job is `rules.jobs[ref]`, else the card's `job`. When
+  actions of two or more apps share a job: with no default for it, all get
+  `choose` (callers show them all and offer "Always use …"); with a default
+  (`defaults[job]`, an offered reference), that one is `preferred` and the rest
+  are `other` (callers put them under "Other apps").
+- **Order:** pinned first, then enabled before disabled, then not-`other`
+  before `other`, then higher rank, then title (case-insensitive), app id and
+  action id.
+
+References are `<app-id>/<action-id>`. `rules` (in `catalog.json`):
+`{hide:[ref], rename:{ref:title}, boost:{ref:{pattern:points}},
+jobs:{ref:job}}`. The user's choices live in `offers.json` next to the
+registry folder: `{defaults:{job:ref}, hidden:[ref], pinned:[ref],
+outputFolder?, askWhere?}`; a malformed file reads as no choices. Vectors:
+`spec/vectors/offers.json`.
+
+### 5.6 The helper
+
+The file manager menus and the browser extension reach apps through one
+small program, `arcade-helper` (crate `crates/arcade-helper`), which Arcade
+Tools installs and starts at login. It is a Link app like any other
+(`arcade.helper`, a card with only internal actions, so it never appears in
+offers): `helper.run`, `helper.jobs`, `helper.cancel`, `helper.answer`,
+`helper.dismiss` and `helper.integrate`, all accepting
+`structured/arcade-helper` on surface `internal`. The running helper owns
+every job, so closing the progress window or the browser never cancels work.
+Its status says `busy` while a job is unfinished, and Arcade Tools replaces the
+helper only when it isn't (`quit` itself always quits, so removing Tools can
+stop it). Menus must call a path that stays put:
+Tools installs the helper next to itself, and on Linux copies it out of its
+AppImage to a per-user folder (the helper names `$APPIMAGE` only when it runs
+from that AppImage's own mount).
+
+- **Menus:** the helper writes per-user file manager entries (Linux: Open
+  With, Nautilus/Caja scripts, Dolphin, Nemo, Thunar; Windows: a cascading
+  "Arcade" entry under HKCU) for "Arcade…" (the picker) and the user's pins,
+  and rewrites them when cards, the catalog copy or `offers.json` change.
+  macOS gets them from Arcade Tools' bundle (Services). What it wrote is
+  listed in `<registry>/../helper/integrations.json`, so `arcade-helper
+  integrate --remove` takes away exactly that.
+- **Results:** files an action returns are copied, never overwriting
+  (`name (1).ext`), next to the input (file menus) or to the output folder
+  (`outputFolder`, else Downloads; browser), or the user is asked when
+  `askWhere` is set. Clicks on one action within 400 ms run as one job.
+- **Browser:** the extension talks native messaging to host
+  `dev.arcade.helper` (a u32 length in native byte order, then UTF-8 JSON;
+  at most 1 MiB out and 64 MiB in). Only the Arcade extension's ID is let in:
+  the host manifest lists it and the helper checks it again. Requests are
+  `{id, method, params}`, answers `{id, result}` or `{id, error:{code,
+  message}}`; the methods are documented in the crate's `bridge` module.
+- **Installing:** `client::request_install` asks Arcade Tools to install an
+  app (`tools.install`, §11); without Tools the caller opens the app's release
+  page from the catalog.
 
 ## 6. Errors
 

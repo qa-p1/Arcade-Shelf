@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QtTest>
+#include <QTemporaryDir>
 
 #ifndef ARCADE_LINK_VECTORS
 #define ARCADE_LINK_VECTORS "spec/vectors"
@@ -75,6 +76,107 @@ private slots:
         for (const auto &c : v.value(QStringLiteral("kinds")).toArray()) {
             const QJsonObject o = c.toObject();
             QCOMPARE(fileKindForPath(o.value(QStringLiteral("path")).toString()), o.value(QStringLiteral("kind")).toString());
+        }
+        for (const auto &c : v.value(QStringLiteral("sendAs")).toArray()) {
+            const QJsonObject o = c.toObject();
+            QCOMPARE(typeFor(o.value(QStringLiteral("accepts")).toArray(), o.value(QStringLiteral("offered")).toString()),
+                     o.value(QStringLiteral("send")).toString());
+        }
+    }
+
+    void actions()
+    {
+        const QJsonObject v = load(QStringLiteral("actions.json"));
+        for (const auto &c : v.value(QStringLiteral("actions")).toArray()) {
+            const QJsonObject o = c.toObject();
+            const QByteArray name = o.value(QStringLiteral("name")).toString().toUtf8();
+            const QJsonObject action = o.value(QStringLiteral("action")).toObject();
+            if (o.contains(QStringLiteral("surfaces"))) {
+                QStringList want, got = actionSurfaces(action);
+                for (const auto &s : o.value(QStringLiteral("surfaces")).toArray()) want << s.toString();
+                want.sort();
+                got.sort();
+                QVERIFY2(got == want, name.constData());
+            }
+            if (o.contains(QStringLiteral("oneClick")))
+                QVERIFY2(actionIsOneClick(action) == o.value(QStringLiteral("oneClick")).toBool(), name.constData());
+            const QJsonObject rank = o.value(QStringLiteral("rank")).toObject();
+            for (auto it = rank.begin(); it != rank.end(); ++it)
+                QVERIFY2(actionRankFor(action, it.key()) == it.value().toInt(), (name + ": " + it.key().toUtf8()).constData());
+        }
+    }
+
+    void catalog()
+    {
+        const QJsonObject v = load(QStringLiteral("catalog.json"));
+        const auto check = [](const Catalog &c, const QJsonObject &o) {
+            const auto s = [&o](const char *k) { return o.value(QLatin1String(k)).toString(); };
+            const QString fn = s("fn");
+            QJsonValue got;
+            if (fn == u"name") got = c.name(s("id"));
+            else if (fn == u"tagline") got = c.tagline(s("id"));
+            else if (fn == u"releasesUrl") got = c.releasesUrl(s("id"));
+            else if (fn == u"pair") got = c.pair(s("app"), s("peer"));
+            else if (fn == u"appIds") got = QJsonArray::fromStringList(c.appIds());
+            QVERIFY2(got == o.value(QStringLiteral("expect")), qPrintable(QJsonDocument(o).toJson(QJsonDocument::Compact)));
+        };
+        bool ok = false;
+        const Catalog c = Catalog::parse(QJsonDocument(v.value(QStringLiteral("catalog")).toObject()).toJson(), &ok);
+        QVERIFY(ok);
+        for (const auto &l : v.value(QStringLiteral("lookups")).toArray()) check(c, l.toObject());
+        for (const auto &l : v.value(QStringLiteral("fallback")).toArray()) check(Catalog{}, l.toObject());
+    }
+
+    void sharedCatalogCopy()
+    {
+        QTemporaryDir dir;
+        const Locations loc = Locations::under(dir.path());
+        QCOMPARE(Catalog::load(loc).name(QStringLiteral("arcade.box")), QStringLiteral("Arcade Box"));
+        QVERIFY(!writeSharedCatalog(loc, "{\"apps\": []}"));
+        QVERIFY(!writeSharedCatalog(loc, "not json"));
+        const QByteArray text = R"({"apps": [{"id": "arcade.paint", "name": "Arcade Paint", "repo": "qa-p1/Arcade-paint"}]})";
+        bool changed = false;
+        QVERIFY(writeSharedCatalog(loc, text, &changed) && changed);
+        QVERIFY(writeSharedCatalog(loc, text, &changed) && !changed);
+        QVERIFY(!QFileInfo(loc.catalogPath()).absolutePath().startsWith(QFileInfo(loc.registry).absoluteFilePath()));
+        QCOMPARE(Catalog::load(loc).name(QStringLiteral("arcade.paint")), QStringLiteral("Arcade Paint"));
+
+        QCOMPARE(loadOfferPrefs(loc), QJsonObject{});
+        const QJsonObject prefs{{QStringLiteral("pinned"), QJsonArray{QStringLiteral("arcade.clipboard/clipboard.add")}}};
+        QVERIFY(saveOfferPrefs(loc, prefs));
+        QCOMPARE(loadOfferPrefs(loc), prefs);
+        QVERIFY(!QFileInfo(loc.offerPrefsPath()).absolutePath().startsWith(QFileInfo(loc.registry).absoluteFilePath()));
+    }
+
+    void offersVectors()
+    {
+        const QJsonObject v = load(QStringLiteral("offers.json"));
+        QList<QJsonObject> cards;
+        for (const auto &c : v.value(QStringLiteral("cards")).toArray()) cards << c.toObject();
+        for (const auto &c : v.value(QStringLiteral("inputType")).toArray()) {
+            const QJsonObject o = c.toObject();
+            const QString got = offerInputType(o.value(QStringLiteral("items")).toArray());
+            QCOMPARE(got, o.value(QStringLiteral("type")).toString());
+        }
+        for (const auto &c : v.value(QStringLiteral("cases")).toArray()) {
+            const QJsonObject o = c.toObject();
+            const QByteArray name = o.value(QStringLiteral("name")).toString().toUtf8();
+            const QList<QJsonObject> got = offers(o.value(QStringLiteral("items")).toArray(), o.value(QStringLiteral("surface")).toString(),
+                                                  cards, o.value(QStringLiteral("rules")).toObject(), o.value(QStringLiteral("prefs")).toObject());
+            const QJsonArray want = o.value(QStringLiteral("expect")).toArray();
+            QStringList gotRefs, wantRefs;
+            for (const auto &g : got) gotRefs << g.value(QStringLiteral("app")).toString() + QLatin1Char('/') + g.value(QStringLiteral("action")).toString();
+            for (const auto &w : want) wantRefs << w.toObject().value(QStringLiteral("ref")).toString();
+            QVERIFY2(gotRefs == wantRefs, (name + ": " + gotRefs.join(QLatin1Char(',')).toUtf8()).constData());
+            for (qsizetype i = 0; i < got.size(); ++i) {
+                const QJsonObject g = got.at(i), w = want.at(i).toObject();
+                const QByteArray where = name + ": " + wantRefs.at(i).toUtf8();
+                for (const auto &[key, fallback] : {std::pair{"enabled", true}, {"preferred", false}, {"other", false}, {"choose", false}, {"pinned", false}})
+                    QVERIFY2(g.value(QLatin1String(key)).toBool(false) == w.value(QLatin1String(key)).toBool(fallback), (where + " " + key).constData());
+                for (const char *key : {"rank", "title", "reason", "install", "group", "oneClick"})
+                    if (w.contains(QLatin1String(key)))
+                        QVERIFY2(g.value(QLatin1String(key)) == w.value(QLatin1String(key)), (where + " " + key).constData());
+            }
         }
     }
 

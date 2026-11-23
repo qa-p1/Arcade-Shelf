@@ -6,6 +6,8 @@
 #include <QDragLeaveEvent>
 #include <QDropEvent>
 #include <QFile>
+#include <QFileInfo>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -154,6 +156,26 @@ private:
         QVERIFY(image.save(dir + "/" + name + ".png"));
     }
 
+private:
+    // Starts the controller and the window on the current profile.
+    void launch()
+    {
+        m_controller = std::make_unique<Controller>(m_profile->path() + "/shelf", false);
+        m_engine = std::make_unique<QQmlApplicationEngine>();
+        m_engine->setInitialProperties({{QStringLiteral("shelf"), QVariant::fromValue(m_controller.get())}});
+        m_engine->addImageProvider("thumb", new ThumbnailProvider);
+        m_engine->loadFromModule("ShelfUITest", "Main");
+        QVERIFY(!m_engine->rootObjects().isEmpty());
+        m_window = qobject_cast<QQuickWindow *>(m_engine->rootObjects().first());
+        QVERIFY(m_window);
+        m_controller->attachWindow(m_window);
+        m_controller->start();
+        QTRY_COMPARE_WITH_TIMEOUT(m_controller->shelves().size(), 1, 5000);
+        QTRY_COMPARE(m_controller->activeShelf(), QString("quick"));
+        QTRY_VERIFY(m_window->isVisible());
+        settle();
+    }
+
 private slots:
     void initTestCase()
     {
@@ -176,20 +198,7 @@ private slots:
             settings["theme"] = "dark";
             QVERIFY(seed.saveSettings(settings));
         }
-        m_controller = std::make_unique<Controller>(m_profile->path() + "/shelf", false);
-        m_engine = std::make_unique<QQmlApplicationEngine>();
-        m_engine->setInitialProperties({{QStringLiteral("shelf"), QVariant::fromValue(m_controller.get())}});
-        m_engine->addImageProvider("thumb", new ThumbnailProvider);
-        m_engine->loadFromModule("ShelfUITest", "Main");
-        QVERIFY(!m_engine->rootObjects().isEmpty());
-        m_window = qobject_cast<QQuickWindow *>(m_engine->rootObjects().first());
-        QVERIFY(m_window);
-        m_controller->attachWindow(m_window);
-        m_controller->start();
-        QTRY_COMPARE_WITH_TIMEOUT(m_controller->shelves().size(), 1, 5000);
-        QTRY_COMPARE(m_controller->activeShelf(), QString("quick"));
-        QTRY_VERIFY(m_window->isVisible());
-        settle();
+        launch();
     }
     void cleanup()
     {
@@ -558,6 +567,56 @@ private slots:
                 found = true;
             }
         QVERIFY(found);
+    }
+    // A large collection stays responsive (STATUS: visible datasets beyond the core's 10,000-reference test). The
+    // budgets are generous on purpose (software rendering on a shared runner): they catch work that grows with the
+    // square of the collection, not jitter.
+    void aLargeCollectionStaysResponsive()
+    {
+        m_controller->attachWindow(nullptr);
+        m_engine.reset();
+        m_controller.reset();
+        m_window = nullptr;
+        constexpr int total = 5000;
+        {
+            Store seed(m_profile->path() + "/shelf");
+            QVERIFY(seed.open());
+            for (int batch = 0; batch < total / 1000; ++batch) {
+                QJsonArray paths;
+                for (int i = 0; i < 1000; ++i) {
+                    const auto path = m_profile->path() + "/files/item-" + QString::number(batch * 1000 + i) + ".txt";
+                    QDir().mkpath(QFileInfo(path).absolutePath());
+                    QFile f(path);
+                    QVERIFY(f.open(QIODevice::WriteOnly) && f.write("x") == 1);
+                    paths.append(path);
+                }
+                QCOMPARE(seed.add({QJsonObject{{"type", "file/text[]"}, {"paths", paths}}}).addedIds.size(), 1000);
+            }
+        }
+        QElapsedTimer timer;
+        timer.start();
+        launch();
+        QTRY_COMPARE_WITH_TIMEOUT(m_controller->count(), total, 30000);
+        const auto loaded = timer.elapsed();
+        m_controller->setExpanded(true);
+        settle();
+        timer.restart();
+        m_controller->setFilter("item-4999");
+        QCOMPARE(m_controller->items().size(), 1);
+        settle();
+        const auto filtered = timer.elapsed();
+        m_controller->setFilter("");
+        settle();
+        timer.restart();
+        m_controller->selectAll();
+        QTRY_COMPARE_WITH_TIMEOUT(m_controller->selectedCount(), total, 10000);
+        (void)m_controller->offers();
+        settle();
+        const auto selected = timer.elapsed();
+        qInfo("5,000 items: loaded in %lld ms, filtered in %lld ms, all selected with offers in %lld ms", loaded, filtered, selected);
+        QVERIFY2(loaded < 15000, qPrintable(QString::number(loaded)));
+        QVERIFY2(filtered < 3000, qPrintable(QString::number(filtered)));
+        QVERIFY2(selected < 5000, qPrintable(QString::number(selected)));
     }
     void untrustedMarkupStaysLiteralWithoutImageRequests()
     {

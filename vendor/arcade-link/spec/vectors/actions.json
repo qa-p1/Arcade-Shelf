@@ -1,0 +1,323 @@
+{
+  "comment": "Where an action is offered and how strongly (SPEC \u00a73, Link 1.1). surfaces: the action's own list, else derived from accepts; always includes palette when derived; compared as a set. oneClick: marked oneClick, not interactive, and no overwrites-files, deletes-files, uploads-content or executes-commands effect. rank: per offered kind, the highest rank whose pattern takes the kind (capped at 100); without rank, 60 when featuredFor takes it. A malformed Link 1.1 field reads as absent.",
+  "actions": [
+    {
+      "name": "image converter: surfaces from accepts",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/image",
+          "file/image[]"
+        ]
+      },
+      "surfaces": [
+        "browser-download",
+        "browser-image",
+        "file-menu",
+        "palette"
+      ],
+      "oneClick": false,
+      "rank": {
+        "file/image": 0
+      }
+    },
+    {
+      "name": "named surfaces win",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/image"
+        ],
+        "surfaces": [
+          "browser-image"
+        ]
+      },
+      "surfaces": [
+        "browser-image"
+      ]
+    },
+    {
+      "name": "folders and links",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "folder/reference",
+          "text/url"
+        ]
+      },
+      "surfaces": [
+        "browser-link",
+        "browser-page",
+        "folder-menu",
+        "palette"
+      ]
+    },
+    {
+      "name": "anything",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "*"
+        ]
+      },
+      "surfaces": [
+        "browser-selection",
+        "file-menu",
+        "palette"
+      ]
+    },
+    {
+      "name": "any file reaches every browser media menu",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/any"
+        ]
+      },
+      "surfaces": [
+        "browser-audio",
+        "browser-download",
+        "browser-image",
+        "browser-pdf",
+        "browser-video",
+        "file-menu",
+        "palette"
+      ]
+    },
+    {
+      "name": "a refined kind reaches its parent's menu",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/svg"
+        ]
+      },
+      "surfaces": [
+        "browser-download",
+        "browser-image",
+        "file-menu",
+        "palette"
+      ]
+    },
+    {
+      "name": "csv is not a browser image",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/csv"
+        ]
+      },
+      "surfaces": [
+        "browser-download",
+        "file-menu",
+        "palette"
+      ]
+    },
+    {
+      "name": "text with a hint",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "text/plain;hint=command"
+        ]
+      },
+      "surfaces": [
+        "browser-selection",
+        "palette"
+      ]
+    },
+    {
+      "name": "screen",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "screen/region"
+        ]
+      },
+      "surfaces": [
+        "palette",
+        "screen"
+      ]
+    },
+    {
+      "name": "no input: palette only",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": []
+      },
+      "surfaces": [
+        "palette"
+      ]
+    },
+    {
+      "name": "malformed surfaces read as absent",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/pdf"
+        ],
+        "surfaces": "browser-pdf"
+      },
+      "surfaces": [
+        "browser-download",
+        "browser-pdf",
+        "file-menu",
+        "palette"
+      ]
+    },
+    {
+      "name": "one click",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "oneClick": true
+      },
+      "oneClick": true
+    },
+    {
+      "name": "one click needs no window",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "oneClick": true,
+        "interactive": true
+      },
+      "oneClick": false
+    },
+    {
+      "name": "one click never overwrites",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "oneClick": true,
+        "effects": [
+          "writes-files",
+          "overwrites-files"
+        ]
+      },
+      "oneClick": false
+    },
+    {
+      "name": "one click never runs commands",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "oneClick": true,
+        "effects": [
+          "executes-commands"
+        ]
+      },
+      "oneClick": false
+    },
+    {
+      "name": "one click writing new files is fine",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "oneClick": true,
+        "effects": [
+          "writes-files"
+        ]
+      },
+      "oneClick": true
+    },
+    {
+      "name": "malformed oneClick reads as false",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "oneClick": "yes"
+      },
+      "oneClick": false
+    },
+    {
+      "name": "rank: the highest matching pattern",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "accepts": [
+          "file/*"
+        ],
+        "rank": {
+          "file/image": 90,
+          "file/*": 20
+        }
+      },
+      "rank": {
+        "file/image": 90,
+        "file/pdf": 20,
+        "text/plain": 0,
+        "file/svg": 90
+      }
+    },
+    {
+      "name": "rank follows refined kinds",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "rank": {
+          "file/spreadsheet": 80
+        }
+      },
+      "rank": {
+        "file/csv": 80,
+        "file/spreadsheet": 80,
+        "file/json": 0
+      }
+    },
+    {
+      "name": "rank is at most 100",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "rank": {
+          "file/pdf": 150
+        }
+      },
+      "rank": {
+        "file/pdf": 100
+      }
+    },
+    {
+      "name": "without rank, featuredFor counts 60",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "featuredFor": [
+          "file/pdf"
+        ]
+      },
+      "rank": {
+        "file/pdf": 60,
+        "file/image": 0
+      }
+    },
+    {
+      "name": "malformed rank reads as absent",
+      "action": {
+        "id": "x.a",
+        "title": "A",
+        "featuredFor": [
+          "file/pdf"
+        ],
+        "rank": {
+          "file/pdf": 300
+        }
+      },
+      "rank": {
+        "file/pdf": 60
+      }
+    }
+  ]
+}

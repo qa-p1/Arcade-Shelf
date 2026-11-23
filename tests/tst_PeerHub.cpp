@@ -2,6 +2,8 @@
 #include "link/ShelfInvoke.h"
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QFile>
 #include <QJsonDocument>
 #include <QSignalSpy>
@@ -68,10 +70,13 @@ private slots:
             QVERIFY(limitedDisabled);
             auto mixed = one;
             mixed.append(QJsonObject{{"type", "folder/reference"}, {"path", "/folder"}});
-            offers = hub.offers(mixed);
+            // Files with a folder have no shared type (Link SPEC §5.5): nothing is offered, as in every Arcade menu.
+            QVERIFY(hub.offers(mixed).isEmpty());
+            QJsonArray two = one;
+            two.append(QJsonObject{{"type", "file/image"}, {"path", "/b.png"}, {"size", 1}});
+            offers = hub.offers(two);
             QVERIFY(!containsAction(offers, "mock.single"));
             QVERIFY(containsAction(offers, "mock.batch"));
-            QVERIFY(!containsAction(offers, "clipboard.add"));
             QJsonArray textAndFile = one;
             textAndFile.append(QJsonObject{{"type", "text/plain"}, {"text", "hello"}});
             QVERIFY(!containsAction(hub.offers(textAndFile), "clipboard.add"));
@@ -229,38 +234,60 @@ private slots:
         qunsetenv("ARCADE_HOME");
     }
 
-    void pipelineContractsAndEffectsAreDiscovered()
+    void offersAreLinksSharedAnswer()
     {
         QTemporaryDir temp;
         qputenv("ARCADE_HOME", temp.path().toUtf8());
         const auto locations = ArcadeLink::Locations::discover();
-        const auto list = action("box.pipelines", {}, {"structured/pipelines"});
-        const auto run = action("box.pipeline.run", {"*"}, {"*"});
-        QVERIFY(ArcadeLink::writeManifest(locations, manifest("arcade.box", {list, run})));
-        ArcadeLink::Server server("arcade.box", "0.1.0", locations);
-        server.describe = [list, run] { return QJsonArray{list, run}; };
-        server.invoke = [](const QJsonObject &request, const ArcadeLink::Responder &reply) {
-            if (request.value("action").toString() != "box.pipelines") {
-                reply.fail(ArcadeLink::Error::make("unsupported_input", {}));
-                return;
-            }
-            const QJsonObject pipeline{{"id", "share"}, {"name", "Share image"}, {"version", 1}, {"accepts", QJsonArray{"file/image"}}, {"produces", QJsonArray{"file/image"}}, {"effects", QJsonArray{"sends-to-device"}}, {"interactive", false}};
-            reply.done({{"outputs", QJsonArray{QJsonObject{{"type", "structured/pipelines"}, {"data", QJsonArray{pipeline}}}}}});
-        };
-        QVERIFY(server.start());
+        // Arcade Box 1.0: each saved pipeline is its own action; the generic list and runner are for callers only.
+        auto list = action("box.pipelines", {}, {"structured/pipelines"});
+        auto run = action("box.pipeline.run", {"file/image"}, {"file/image"});
+        list.insert("surfaces", QJsonArray{"internal"});
+        run.insert("surfaces", QJsonArray{"internal"});
+        auto share = action("box.pipeline:share", {"file/image"}, {"file/image"});
+        share.insert("title", "Share image");
+        share.insert("effects", QJsonArray{"sends-to-device"});
+        auto convert = action("box:convert", {"file/image"}, {"file/image"});
+        convert.insert("title", "Convert");
+        convert.insert("rank", QJsonObject{{"file/image", 80}});
+        auto hidden = action("box:hidden", {"file/image"}, {"file/image"});
+        auto renamed = action("box:renamed", {"file/image"}, {"file/image"});
+        auto small = action("box:small", {"file/image"}, {"file/image"});
+        small.insert("maxBytes", 4);
+        QVERIFY(ArcadeLink::writeManifest(locations, manifest("arcade.box", {list, run, share, convert, hidden, renamed, small})));
+        QDir().mkpath(QFileInfo(locations.catalogPath()).absolutePath());
+        QFile catalog(locations.catalogPath());
+        QVERIFY(catalog.open(QIODevice::WriteOnly));
+        catalog.write(QJsonDocument(QJsonObject{{"apps", QJsonArray{QJsonObject{{"id", "arcade.box"}, {"name", "Arcade Box"}}}},
+                                                {"rules", QJsonObject{{"rename", QJsonObject{{"arcade.box/box:renamed", "Better name"}}}}}})
+                          .toJson());
+        catalog.close();
+        QVERIFY(ArcadeLink::saveOfferPrefs(locations, {{"hidden", QJsonArray{"arcade.box/box:hidden"}}}));
         {
             PeerHub hub;
             hub.start();
             QTRY_COMPARE_WITH_TIMEOUT(hub.manifests().size(), 1, 3000);
-            const auto offers = hub.offers({QJsonObject{{"type", "file/image"}, {"path", "/image.png"}, {"size", 1}}});
-            QCOMPARE(offers.size(), 1);
-            const auto candidate = offers.first().toObject();
-            QCOMPARE(candidate.value("action").toString(), QString("box.pipeline.run"));
-            QCOMPARE(candidate.value("options").toObject().value("pipeline").toString(), QString("share"));
-            QVERIFY(candidate.value("confirmationRequired").toBool());
+            const auto offers = hub.offers({QJsonObject{{"type", "file/image"}, {"path", "/image.png"}, {"size", 10}}});
+            QStringList ids, titles;
+            for (const auto &value : offers) {
+                ids << value.toObject().value("action").toString();
+                titles << value.toObject().value("title").toString();
+            }
+            // Ranked first, renamed by the catalog, hidden by the user, the generic pipeline actions never.
+            QCOMPARE(ids.first(), QStringLiteral("box:convert"));
+            QVERIFY(ids.contains("box.pipeline:share") && ids.contains("box:renamed") && ids.contains("box:small"));
+            QVERIFY(!ids.contains("box:hidden") && !ids.contains("box.pipeline.run") && !ids.contains("box.pipelines"));
+            QVERIFY(titles.contains("Better name") && titles.contains("Share image"));
+            for (const auto &value : offers) {
+                const auto offer = value.toObject();
+                if (offer.value("action") == "box.pipeline:share") QVERIFY(offer.value("confirmationRequired").toBool());
+                if (offer.value("action") == "box:small") {
+                    QVERIFY(!offer.value("enabled").toBool(true));
+                    QVERIFY(!offer.value("reason").toString().isEmpty());
+                }
+            }
             QVERIFY(hub.offers({QJsonObject{{"type", "text/plain"}, {"text", "hello"}}}).isEmpty());
         }
-        server.stop();
         qunsetenv("ARCADE_HOME");
     }
 

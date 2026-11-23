@@ -1,0 +1,188 @@
+{
+  "comment": "The shared app list (SPEC \u00a73.1). `catalog` is a catalog.json; each lookup runs against it, and `fallback` lookups run with no catalog (the compiled values). Entries with the wrong shape or an id that isn't arcade.<name> are skipped; the top-level `tools` entry is Arcade Tools. appIds: the known apps the catalog lists, in the compiled order, then the catalog's other apps in its order; never arcade.tools.",
+  "catalog": {
+    "schema": 1,
+    "apps": [
+      {
+        "id": "arcade.zebra",
+        "name": "Arcade Zebra",
+        "tagline": "Stripes.",
+        "repo": "qa-p1/Arcade-zebra"
+      },
+      {
+        "id": "arcade.lens",
+        "name": "Arcade Lens"
+      },
+      {
+        "id": "arcade.box",
+        "name": "Arcade Box",
+        "tagline": "Tools for everything.",
+        "repo": "qa-p1/Arcade-box",
+        "future": 1
+      },
+      {
+        "id": "arcade.find",
+        "name": "Arcade Find",
+        "repo": "qa-p1/Arcade-Find",
+        "pairs": {
+          "arcade.box": "Run Box tools on found files.",
+          "arcade.paint": "Find pictures to paint on."
+        }
+      },
+      {
+        "id": "arcade.paint",
+        "name": "Arcade Paint",
+        "tagline": "Draw on anything.",
+        "repo": "qa-p1/Arcade-paint"
+      },
+      {
+        "id": "arcade.broken",
+        "name": 7
+      },
+      {
+        "id": "not-arcade",
+        "name": "X"
+      },
+      "junk"
+    ],
+    "tools": {
+      "id": "arcade.tools",
+      "name": "Arcade Tools",
+      "repo": "qa-p1/Arcade-tools",
+      "tagline": "Home for the apps."
+    }
+  },
+  "lookups": [
+    {
+      "fn": "name",
+      "expect": "Arcade Paint",
+      "id": "arcade.paint"
+    },
+    {
+      "fn": "name",
+      "expect": "Arcade Lens",
+      "id": "arcade.lens"
+    },
+    {
+      "fn": "name",
+      "expect": "arcade.broken",
+      "id": "arcade.broken"
+    },
+    {
+      "fn": "tagline",
+      "expect": "Tools for everything.",
+      "id": "arcade.box"
+    },
+    {
+      "fn": "tagline",
+      "expect": "Press a shortcut, type, and any file or folder shows up.",
+      "id": "arcade.find"
+    },
+    {
+      "fn": "tagline",
+      "expect": "",
+      "id": "arcade.unknown"
+    },
+    {
+      "fn": "releasesUrl",
+      "expect": "https://github.com/qa-p1/Arcade-paint/releases",
+      "id": "arcade.paint"
+    },
+    {
+      "fn": "releasesUrl",
+      "expect": "https://github.com/qa-p1/Arcade-lens/releases",
+      "id": "arcade.lens"
+    },
+    {
+      "fn": "pair",
+      "expect": "Find pictures to paint on.",
+      "app": "arcade.find",
+      "peer": "arcade.paint"
+    },
+    {
+      "fn": "pair",
+      "expect": "Run Box tools on found files.",
+      "app": "arcade.find",
+      "peer": "arcade.box"
+    },
+    {
+      "fn": "pair",
+      "expect": "Preview files from your search.",
+      "app": "arcade.find",
+      "peer": "arcade.look"
+    },
+    {
+      "fn": "pair",
+      "expect": "Draw on anything.",
+      "app": "arcade.box",
+      "peer": "arcade.paint"
+    },
+    {
+      "fn": "pair",
+      "expect": "Tools for everything.",
+      "app": "arcade.look",
+      "peer": "arcade.box"
+    },
+    {
+      "fn": "appIds",
+      "expect": [
+        "arcade.box",
+        "arcade.lens",
+        "arcade.find",
+        "arcade.zebra",
+        "arcade.paint"
+      ]
+    },
+    {
+      "fn": "tagline",
+      "expect": "Home for the apps.",
+      "id": "arcade.tools"
+    },
+    {
+      "fn": "tagline",
+      "expect": "Select anything on screen and act on it.",
+      "id": "arcade.lens"
+    }
+  ],
+  "fallback": [
+    {
+      "fn": "name",
+      "expect": "Arcade Box",
+      "id": "arcade.box"
+    },
+    {
+      "fn": "tagline",
+      "expect": "Select anything on screen and act on it.",
+      "id": "arcade.lens"
+    },
+    {
+      "fn": "releasesUrl",
+      "expect": "https://github.com/qa-p1/Arcade-Find/releases",
+      "id": "arcade.find"
+    },
+    {
+      "fn": "pair",
+      "expect": "Preview a selection in Look.",
+      "app": "arcade.lens",
+      "peer": "arcade.look"
+    },
+    {
+      "fn": "pair",
+      "expect": "Press Space, see anything.",
+      "app": "arcade.wheel",
+      "peer": "arcade.look"
+    },
+    {
+      "fn": "appIds",
+      "expect": [
+        "arcade.box",
+        "arcade.lens",
+        "arcade.look",
+        "arcade.wheel",
+        "arcade.clipboard",
+        "arcade.shelf",
+        "arcade.find"
+      ]
+    }
+  ]
+}

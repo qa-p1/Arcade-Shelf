@@ -20,22 +20,6 @@ QJsonObject ShelfInvoke::actionFor(const QJsonObject &manifest, const QJsonObjec
         if (!preset.isEmpty() && action.value("id").toString() == id + '#' + preset) return action;
         if (action.value("id").toString() == id) plain = action;
     }
-    const auto pipeline = payload.value("options").toObject().value("pipeline").toString();
-    if (id == "box.pipeline.run" && !pipeline.isEmpty() && manifest.contains("pipelines")) {
-        if (!manifest.value("pipelinesLoaded").toBool()) return {};
-        for (const auto &value : manifest.value("pipelines").toArray()) {
-            const auto entry = value.toObject();
-            if (entry.value("id").toString() != pipeline) continue;
-            if (plain.isEmpty()) return {};
-            for (const auto &key : {"accepts", "produces", "effects", "interactive"}) plain.insert(key, entry.value(key));
-            plain.insert("title", entry.value("name"));
-            plain.insert("options", QJsonObject{{"pipeline", pipeline}});
-            plain.insert("available", plain.value("available").toBool(true) && entry.value("available").toBool(true));
-            if (entry.contains("reason")) plain.insert("reason", entry.value("reason"));
-            return plain;
-        }
-        return {};
-    }
     return plain;
 }
 

@@ -138,12 +138,7 @@ bool safeText(const QString &text)
 
 bool validItemType(const QString &type)
 {
-    static const QSet<QString> fileKinds{
-        QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("audio"), QStringLiteral("pdf"),
-        QStringLiteral("document"), QStringLiteral("spreadsheet"), QStringLiteral("presentation"),
-        QStringLiteral("archive"), QStringLiteral("text"), QStringLiteral("code"), QStringLiteral("font"),
-        QStringLiteral("model"), QStringLiteral("any")};
-    return (type.startsWith(QStringLiteral("file/")) && fileKinds.contains(type.mid(5))) ||
+    return isFileType(type) ||
            type == QStringLiteral("folder/reference") || type == QStringLiteral("text/plain") ||
            type == QStringLiteral("text/rich") || type == QStringLiteral("text/url");
 }

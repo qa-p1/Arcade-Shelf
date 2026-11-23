@@ -113,29 +113,6 @@ void PeerHub::publishRegistry()
         manifest.insert("state", state);
         manifest.insert("running", state == "Running");
         if (state == "Running") manifest.insert("runningVersion", runningVersion);
-        // Pipelines have individual contracts; the broad run action is insufficient.
-        // Fetch the read-only catalog on registry changes, never when opening menus.
-        if (m_workerEnabled && !m_workerDisabled.contains("arcade.box") && manifest.value("id").toString() == "arcade.box" && state == "Running") {
-            bool canList = false;
-            for (const auto &value : manifest.value("actions").toArray()) {
-                const auto action = value.toObject();
-                if (action.value("id").toString() == "box.pipelines" && ArcadeLink::actionUsable(manifest, action)) canList = true;
-            }
-            if (canList) {
-                QJsonObject result;
-                ArcadeLink::Error error;
-                const QJsonObject request{{"action", "box.pipelines"}, {"version", 1}, {"inputs", QJsonArray{}}, {"options", QJsonObject{}}, {"context", QJsonObject{{"source", "arcade.shelf"}, {"interactive", false}, {"reason", "discovery"}}}};
-                if (ShelfInvoke::run(m_registry->locations(), manifest, request, &result, &error, {}, &m_stopping, 3000, false)) {
-                    for (const auto &value : result.value("outputs").toArray()) {
-                        const auto output = value.toObject();
-                        if (output.value("type").toString() == "structured/pipelines") {
-                            manifest.insert("pipelines", output.value("data"));
-                            manifest.insert("pipelinesLoaded", true);
-                        }
-                    }
-                }
-            }
-        }
         snapshot.append(manifest);
     }
     if (m_stopping.load()) return;
@@ -184,23 +161,37 @@ QJsonArray PeerHub::offers(QJsonArray selected) const
 {
     QJsonArray out;
     if (!m_enabled || selected.isEmpty()) return out;
-    for (const auto &value : m_manifests) {
-        const auto manifest = value.toObject();
-        if (!uses(manifest.value("id").toString())) continue;
-        for (const auto &entry : manifest.value("actions").toArray()) {
-            const auto action = entry.toObject();
-            if (action.value("id").toString() == "box.pipeline.run") {
-                for (const auto &pipelineValue : manifest.value("pipelines").toArray()) {
-                    const auto pipeline = pipelineValue.toObject();
-                    auto candidate = action;
-                    for (const auto &key : {"accepts", "produces", "effects", "interactive"})
-                        candidate.insert(key, pipeline.value(key));
-                    candidate.insert("title", pipeline.value("name"));
-                    candidate.insert("options", QJsonObject{{"pipeline", pipeline.value("id")}});
-                    if (compatible(manifest, candidate, selected)) out.append(offer(manifest, candidate, selected));
-                }
-            } else if (compatible(manifest, action, selected)) out.append(offer(manifest, action, selected));
+    // "What can I do with this?" is Link's shared answer (SPEC §5.5): the same actions, order, names and limits as
+    // every Arcade menu, from the cards, the catalog's rules and the user's choices.
+    QJsonArray items;
+    for (const auto &value : selected) {
+        const auto content = value.toObject();
+        QJsonObject item{{"type", content.value("type")}};
+        const qint64 bytes = inputBytes(QJsonArray{content});
+        if (bytes > 0) item.insert("size", bytes);
+        if (content.contains("hints")) item.insert("hints", content.value("hints"));
+        items.append(item);
+    }
+    QList<QJsonObject> cards;
+    for (const auto &value : m_manifests)
+        if (uses(value.toObject().value("id").toString())) cards << value.toObject();
+    const auto locations = ArcadeLink::Locations::discover();
+    const auto answer = ArcadeLink::offers(items, "palette", cards, ArcadeLink::Catalog::load(locations).rules, ArcadeLink::loadOfferPrefs(locations));
+    for (const auto &shared : answer) {
+        QJsonObject manifest, action;
+        for (const auto &card : cards)
+            if (card.value("id") == shared.value("app")) manifest = card;
+        for (const auto &entry : manifest.value("actions").toArray())
+            if (entry.toObject().value("id") == shared.value("action")) action = entry.toObject();
+        if (action.isEmpty()) continue;
+        auto entry = offer(manifest, action, selected);
+        entry.insert("title", shared.value("title"));
+        // Shelf's own size check (it also counts text) keeps its message; Link's covers the rest (too many items).
+        if (!shared.value("enabled").toBool(true) && entry.value("enabled").toBool(true)) {
+            entry.insert("enabled", false);
+            entry.insert("reason", shared.value("reason"));
         }
+        out.append(entry);
     }
     return out;
 }

@@ -1,4 +1,6 @@
 #pragma once
+#include <QSet>
+#include <QString>
 
 #include "ArcadeLink.h"
 #include <QJsonArray>
@@ -7,6 +9,18 @@
 #include <QStringList>
 
 namespace Shelf {
+
+// A file type Shelf keeps: every file kind Arcade Link names (Link SPEC §5.1, with the 1.1 refinements such as
+// file/svg and file/markdown) and file/any.
+inline bool isFileType(const QString &type)
+{
+    static const QSet<QString> kinds{QStringLiteral("image"), QStringLiteral("svg"), QStringLiteral("video"), QStringLiteral("audio"),
+                                     QStringLiteral("pdf"), QStringLiteral("document"), QStringLiteral("ebook"), QStringLiteral("spreadsheet"),
+                                     QStringLiteral("csv"), QStringLiteral("presentation"), QStringLiteral("archive"), QStringLiteral("text"),
+                                     QStringLiteral("markdown"), QStringLiteral("code"), QStringLiteral("json"), QStringLiteral("html"),
+                                     QStringLiteral("subtitle"), QStringLiteral("font"), QStringLiteral("model"), QStringLiteral("any")};
+    return type.startsWith(QStringLiteral("file/")) && kinds.contains(type.mid(5));
+}
 
 struct AddResult {
     QJsonObject result;

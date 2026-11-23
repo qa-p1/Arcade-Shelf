@@ -242,7 +242,6 @@ struct Input {
 // the owned storage left. Touches no database: duplicates are the caller's.
 Input resolveInput(const QJsonValue &value, qint64 quota, qint64 used)
 {
-    static const QSet<QString> fileKinds{QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("audio"), QStringLiteral("pdf"), QStringLiteral("document"), QStringLiteral("spreadsheet"), QStringLiteral("presentation"), QStringLiteral("archive"), QStringLiteral("text"), QStringLiteral("code"), QStringLiteral("font"), QStringLiteral("model"), QStringLiteral("any")};
     Input r;
     const auto skip = [&r](const QString &why, bool exceeded = false, qint64 limit = std::numeric_limits<qint64>::max()) {
         r.skip = why;
@@ -252,7 +251,7 @@ Input resolveInput(const QJsonValue &value, qint64 quota, qint64 used)
     };
     const auto c = value.toObject();
     r.type = c.value(QStringLiteral("type")).toString();
-    const bool file = r.type.startsWith(QStringLiteral("file/")) && fileKinds.contains(r.type.mid(5));
+    const bool file = isFileType(r.type);
     const bool folder = r.type == QStringLiteral("folder/reference");
     r.textContent = r.type == QStringLiteral("text/plain") || r.type == QStringLiteral("text/rich") || r.type == QStringLiteral("text/url");
     if (!value.isObject() || (!file && !folder && !r.textContent)) return skip(QStringLiteral("unsupported_type"));
@@ -271,9 +270,12 @@ Input resolveInput(const QJsonValue &value, qint64 quota, qint64 used)
         // folder. Verify that claim using metadata only, while retaining
         // the alias path itself for identity, persistence, and transfer.
         const bool directoryTarget = info.directory || (info.symlink && QFileInfo(r.path).isDir());
-        if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && r.type != QStringLiteral("file/any") && r.type.mid(5) != ArcadeLink::fileKindForPath(kindPath)))
+        // The file's own kind must be the declared one or refine it (an .svg sent as file/image); Shelf keeps the
+        // file's own kind.
+        const QString actual = QStringLiteral("file/") + ArcadeLink::fileKindForPath(kindPath);
+        if ((folder && !directoryTarget) || (file && directoryTarget) || (file && !info.regular && !info.symlink) || (file && r.type != QStringLiteral("file/any") && !ArcadeLink::isKind(actual, r.type)))
             return skip(QStringLiteral("type_mismatch"));
-        if (file && r.type == QStringLiteral("file/any")) r.type = QStringLiteral("file/") + ArcadeLink::fileKindForPath(kindPath);
+        if (file) r.type = actual;
         r.name = QFileInfo(r.path).fileName();
         if (r.name.isEmpty()) r.name = r.path;
         r.size = info.symlink && target.isFile() ? target.size() : info.size;
