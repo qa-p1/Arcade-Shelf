@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-23
+
 ### Changed
 - Shelf's Actions menu shows Arcade Link's shared answer to "what can I do with this?" instead of a list of its own:
   the same actions, order, names and limits as your file manager's menu and the browser extension. Actions the

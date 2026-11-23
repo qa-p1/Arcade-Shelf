@@ -2,9 +2,9 @@
 
 ## 2026-11-23: 1.1.0 (Arcade everywhere)
 
-- Released: 1.0.0 (2026-11-18) and 1.0.1 (2026-11-22), each promoted from a release candidate that passed Gates and
-  checked byte for byte. 1.1.0 is in progress: Arcade Link 1.1.1, the Actions menu from Link's shared `offers`, Link
-  1.1's file kinds kept (`isFileType`), and the card's Link 1.1 fields. Details in [CHANGELOG](../CHANGELOG.md) and
+- Released: 1.0.0 (2026-11-18), 1.0.1 (2026-11-22) and 1.1.0 (2026-11-23), each promoted from a release candidate
+  that passed Gates and checked byte for byte (1.1.0 from rc.1). 1.1.0: Arcade Link 1.1.1, the Actions menu from Link's
+  shared `offers`, Link 1.1's file kinds kept (`isFileType`), and the card's Link 1.1 fields. Details in [CHANGELOG](../CHANGELOG.md) and
   [v1 progress](v1/PROGRESS.md).
 - Large collections: `tst_Ui::aLargeCollectionStaysResponsive` loads 5,000 references, filters them and selects them
   all with the Actions menu computed (on the cloud container under software rendering: 175 ms, 11 ms and 29 ms; the

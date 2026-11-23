@@ -14,6 +14,9 @@ Detail for `qa-p1/Arcade-catalog` › `dev/v1/PROGRESS.md`. Newest first. "Teste
   recorded in STATUS's backlog with where they get checked.
 - Dependabot #17–#21 (GitHub Actions) applied here, proven by this rc; the PRs are closed as included.
 - Tested locally: `scripts/check.py` with Qt 6.8.3 and the Link mock on PATH, 20/20 CTest suites.
+- Released: PR #27 merged; 1.1.0-rc.1 passed Gates (upgrade from 1.0.1 with the user's data, Tools' delta updater
+  with signature and tampered-chunk checks, conformance, memory budgets, N-1, Windows and macOS installer smoke,
+  Hyprland and tier-2 smoke) and was promoted to 1.1.0; the stable files match rc.1 byte for byte.
 
 ## 2026-11-22 (cloud session) - 1.0.1
 
