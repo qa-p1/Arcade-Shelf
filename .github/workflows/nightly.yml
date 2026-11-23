@@ -19,11 +19,11 @@ jobs:
         run: echo "version=$(python3 scripts/check-version.py)" >> "$GITHUB_OUTPUT"
   nightly:
     needs: version
-    uses: qa-p1/Arcade-Link/.github/workflows/app-nightly.yml@v1.1.0
+    uses: qa-p1/Arcade-Link/.github/workflows/app-nightly.yml@v1.1.1
     with:
       app: arcade.shelf
       version: ${{ needs.version.outputs.version }}
       artifacts: package-*
-      link-ref: v1.1.0
+      link-ref: v1.1.1
     secrets:
       ARCADE_UPDATE_SIGNING_KEY: ${{ secrets.ARCADE_UPDATE_SIGNING_KEY }}

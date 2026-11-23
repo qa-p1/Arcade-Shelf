@@ -1,11 +1,11 @@
 {
   "repository": "https://github.com/qa-p1/Arcade-Link",
   "arcadeLink": "v0.3.0 (protocol 1)",
-  "commit": "b79b89d6229608cada1d1172fb239efd982a3617",
+  "commit": "d04f3ca33c01e31727a829afb54f2fbc1bb03e74",
   "license": "MIT OR Apache-2.0",
   "files": {
-    "Cargo.toml": "c6d15581c907f9aa4adbd8a82bbcbc961908c2b11462deafebd56a61ff1b6a9e",
-    "SPEC.md": "e1d1534247dcf5e9edac19da0ed4c7b08e0c35bc4616911892d7e6527311c384",
+    "Cargo.toml": "9e033bd70be5a4404b9839abd57a17eecde90f04b5c5f64310a2f15e11d698b2",
+    "SPEC.md": "c81277c85aae1d9859c928dad86fa56ea7d9a688e7b6e315da7825caf76b2e22",
     "assets/strings/install.json": "2567789e4eba440240fcf4de8c1e43f126b0eb0aadc6306d743e299cb4c80407",
     "design/fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
     "design/fonts/OFL.txt": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a",

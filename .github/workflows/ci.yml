@@ -198,19 +198,19 @@ jobs:
   # above; Tier 2: start, --status, tray and quit on sway, KWin, Mutter and X11.
   desktop:
     needs: package
-    uses: qa-p1/Arcade-Link/.github/workflows/desktop-e2e.yml@v1.1.0
+    uses: qa-p1/Arcade-Link/.github/workflows/desktop-e2e.yml@v1.1.1
     with:
       name: shelf
       test: tests/desktop/shelf_desktop.py
       args: '"$APP"'
       artifact: package-linux-x64
-      link-ref: v1.1.0
+      link-ref: v1.1.1
   desktop-tier2:
     needs: package
-    uses: qa-p1/Arcade-Link/.github/workflows/desktop-tier2.yml@v1.1.0
+    uses: qa-p1/Arcade-Link/.github/workflows/desktop-tier2.yml@v1.1.1
     with:
       artifact: package-linux-x64
-      link-ref: v1.1.0
+      link-ref: v1.1.1
 
   # The three installers together, as one release would carry them.
   manifest:

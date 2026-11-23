@@ -467,9 +467,10 @@ from that AppImage's own mount).
 
 - **Menus:** the helper writes per-user file manager entries (Linux: Open
   With, Nautilus/Caja scripts, Dolphin, Nemo, Thunar; Windows: a cascading
-  "Arcade" entry under HKCU) for "Arcade…" (the picker) and the user's pins,
+  "Arcade" entry under HKCU; macOS: one Finder Quick Action per entry in
+  `~/Library/Services`) for "Arcade…" (the picker) and the user's pins,
   and rewrites them when cards, the catalog copy or `offers.json` change.
-  macOS gets them from Arcade Tools' bundle (Services). What it wrote is
+  The helper stops when its own card is removed. What it wrote is
   listed in `<registry>/../helper/integrations.json`, so `arcade-helper
   integrate --remove` takes away exactly that.
 - **Results:** files an action returns are copied, never overwriting
